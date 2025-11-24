@@ -33,7 +33,7 @@ impl NodeConstraint {
         }
     }
 
-    fn matches(&self, entity: &GraphEntity) -> bool {
+    pub fn matches(&self, entity: &GraphEntity) -> bool {
         if let Some(kind) = &self.kind {
             if &entity.kind != kind {
                 return false;

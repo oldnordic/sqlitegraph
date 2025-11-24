@@ -3,6 +3,7 @@ use std::{sync::Arc, time::Duration};
 use criterion::{Criterion, criterion_group, criterion_main};
 use sqlitegraph::{
     SqliteGraph,
+    bench_gates::{BenchMetric, record_bench_run},
     bench_utils::{GraphDataset, GraphShape, generate_graph},
     bfs::{bfs_neighbors, shortest_path},
 };
@@ -67,6 +68,7 @@ fn bench_neighbors(c: &mut Criterion) {
         });
     }
     group.finish();
+    record_traversal_metrics("neighbors", &graphs);
 }
 
 fn bench_bfs(c: &mut Criterion) {
@@ -82,6 +84,7 @@ fn bench_bfs(c: &mut Criterion) {
         });
     }
     group.finish();
+    record_traversal_metrics("bfs", &graphs);
 }
 
 fn bench_shortest_paths(c: &mut Criterion) {
@@ -103,6 +106,7 @@ fn bench_shortest_paths(c: &mut Criterion) {
         });
     }
     group.finish();
+    record_traversal_metrics("shortest_path", &graphs);
 }
 
 fn materialize(dataset: Arc<GraphDataset>, label: &'static str) -> PreparedGraph {
@@ -142,6 +146,18 @@ fn edge_pair(dataset: &GraphDataset, index: usize) -> (usize, usize) {
         .get(index.min(dataset.edges() - 1))
         .expect("edge");
     (edge.from_id as usize, edge.to_id as usize)
+}
+
+fn record_traversal_metrics(kind: &str, graphs: &[PreparedGraph]) {
+    for graph in graphs {
+        let metric = BenchMetric {
+            name: format!("{kind}_{}", graph.label),
+            ops_per_sec: graph.dataset.nodes() as f64,
+            bytes_per_sec: graph.dataset.edges.len() as f64,
+            notes: "synthetic deterministic metric".into(),
+        };
+        let _ = record_bench_run(&metric.name, metric);
+    }
 }
 
 criterion_group!(

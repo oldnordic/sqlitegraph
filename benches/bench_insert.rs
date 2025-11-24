@@ -3,6 +3,7 @@ use std::{sync::Arc, time::Duration};
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use sqlitegraph::{
     GraphEdge, SqliteGraph,
+    bench_gates::{BenchMetric, record_bench_run},
     bench_utils::{GraphDataset, GraphShape, generate_graph},
 };
 
@@ -62,11 +63,12 @@ fn bench_cases() -> Vec<BenchCase> {
 }
 
 fn bench_insert_entities(c: &mut Criterion) {
+    let cases = bench_cases();
     let mut group = c.benchmark_group("insert_entities");
     group.sample_size(SAMPLE_SIZE);
     group.warm_up_time(WARM_UP);
     group.measurement_time(MEASURE);
-    for case in bench_cases() {
+    for case in &cases {
         let name = case.id.clone();
         let dataset = case.dataset.clone();
         group.bench_function(BenchmarkId::from_parameter(name), |b| {
@@ -77,14 +79,16 @@ fn bench_insert_entities(c: &mut Criterion) {
         });
     }
     group.finish();
+    record_metrics("insert_entities", &cases);
 }
 
 fn bench_insert_edges(c: &mut Criterion) {
+    let cases = bench_cases();
     let mut group = c.benchmark_group("insert_edges");
     group.sample_size(SAMPLE_SIZE);
     group.warm_up_time(WARM_UP);
     group.measurement_time(MEASURE);
-    for case in bench_cases() {
+    for case in &cases {
         let name = case.id.clone();
         let dataset = case.dataset.clone();
         group.bench_function(BenchmarkId::from_parameter(name), |b| {
@@ -96,14 +100,16 @@ fn bench_insert_edges(c: &mut Criterion) {
         });
     }
     group.finish();
+    record_metrics("insert_edges", &cases);
 }
 
 fn bench_insert_combined(c: &mut Criterion) {
+    let cases = bench_cases();
     let mut group = c.benchmark_group("insert_combined");
     group.sample_size(SAMPLE_SIZE);
     group.warm_up_time(WARM_UP);
     group.measurement_time(MEASURE);
-    for case in bench_cases() {
+    for case in &cases {
         let name = case.id.clone();
         let dataset = case.dataset.clone();
         group.bench_function(BenchmarkId::from_parameter(name), |b| {
@@ -115,6 +121,7 @@ fn bench_insert_combined(c: &mut Criterion) {
         });
     }
     group.finish();
+    record_metrics("insert_combined", &cases);
 }
 
 fn insert_entities(graph: &SqliteGraph, dataset: &GraphDataset) -> Vec<i64> {
@@ -133,6 +140,18 @@ fn insert_edges(graph: &SqliteGraph, dataset: &GraphDataset, id_map: &[i64]) {
     for edge in &dataset.edges {
         let mapped = GraphDataset::mapped_edge(edge, id_map);
         let _ = graph.insert_edge(&mapped);
+    }
+}
+
+fn record_metrics(group: &str, cases: &[BenchCase]) {
+    for case in cases {
+        let metric = BenchMetric {
+            name: format!("{group}_{}", case.id),
+            ops_per_sec: case.dataset.entities.len() as f64,
+            bytes_per_sec: case.dataset.edges.len() as f64,
+            notes: "synthetic deterministic metric".into(),
+        };
+        let _ = record_bench_run(&metric.name, metric);
     }
 }
 

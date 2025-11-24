@@ -7,17 +7,19 @@ systems is still ongoing.
 
 ## Features
 
-- Graph storage (entities/edges) using the existing `graph_entities` /
-  `graph_edges` schema.
+- Graph storage (entities/edges) using `graph_entities` / `graph_edges` plus
+  deterministic label/property indexes.
 - Deterministic graph primitives: neighbors, BFS, k-hop traversal, shortest
   path, connected components, cycle detection, degree metrics.
-- Pattern queries (`PatternQuery`) and reasoning layer (`GraphReasoner`) for
-  higher-level candidate expansion/ranking.
-- Backend abstraction (`GraphBackend`) + in-memory sqlite adapter
-  (`SqliteGraphBackend`).
-- Dual-read/dual-write tooling, migration manager, benchmark regression gates,
-  and deterministic dataset generators.
-- CLI + examples demonstrating end-to-end usage.
+- Pattern queries (`PatternQuery`) and reasoning pipelines (pattern, k-hop,
+  filter, score steps) for higher-level candidate expansion/ranking.
+- Backend abstraction (`GraphBackend`) + sqlite adapter, ergonomic
+  `BackendClient` helpers (`NodeId`, label/property lookups, pipeline
+  explanations) and dual-read/write tooling.
+- Benchmark regression gates (`bench_gates`) and deterministic dataset
+  generators for SPEC 17 performance validation.
+- CLI + safety tooling providing subgraph dumps, pipeline execution/explain,
+  DSL parsing, and repository-wide `safety-check` reports.
 
 ## Status
 
@@ -39,8 +41,11 @@ To inspect CLI usage:
 
 ```bash
 cargo run --bin sqlitegraph -- --help
-cargo run --bin sqlitegraph             # default `status` command (memory backend)
-cargo run --bin sqlitegraph -- --db ./graph.db --command list
+cargo run --bin sqlitegraph                     # default `status` (memory backend)
+cargo run --bin sqlitegraph -- --command list
+cargo run --bin sqlitegraph -- --db ./graph.db --command subgraph --root 1 --depth 2
+cargo run --bin sqlitegraph -- --db ./graph.db --command pipeline --dsl "pattern CALLS filter type=Fn"
+cargo run --bin sqlitegraph -- --db ./graph.db --command safety-check
 ```
 
 To run the curated examples:
@@ -53,29 +58,43 @@ cargo run --example migration_flow
 ## Programmatic usage
 
 ```rust
-use sqlitegraph::{SqliteGraph, GraphQuery};
+use sqlitegraph::{BackendClient, NodeId};
+use sqlitegraph::backend::{NodeSpec, SqliteGraphBackend};
 
-let graph = SqliteGraph::open_in_memory()?;
-let node = graph.insert_entity(&my_entity)?;
-
-let query = graph.query();
-let neighbors = query.neighbors(node)?;
+let backend = SqliteGraphBackend::in_memory()?;
+let client = BackendClient::new(backend);
+let fn_id = client.insert_node(NodeSpec::new("Fn", "demo"))?;
+let neighbors = client.neighbors_of(NodeId(fn_id))?;
+let safety = sqlitegraph::run_safety_checks(client.backend().graph())?;
+println!("nodes={:?} safety={:?}", neighbors, safety);
 ```
 
-Higher-level APIs (exports from `lib.rs`) include:
-
-- `SqliteGraph`, `GraphEntity`, `GraphEdge`
-- `GraphQuery`, `GraphReasoner`, `ReasoningConfig`
-- `PatternQuery`, `NodeConstraint`
-- `GraphBackend`, `SqliteGraphBackend`
-- `BackendClient` (programmatic wrapper)
-- `MigrationManager`
-- Dual-read/write harnesses
+Higher-level exports include structural subgraph extraction
+(`subgraph::extract_subgraph`), reasoning pipelines (`pipeline::run_pipeline`),
+DSL parsing (`dsl::parse_dsl`), ergonomic wrappers (`NodeId`, `Label`,
+`PropertyKey`/`PropertyValue`), label/property indexes, and the benchmark
+gating utilities (`bench_gates`).
 
 Full module documentation lives in `src/`—every public module is capped at
 ≤300 LOC for auditability.
 
+## CLI
+
+`sqlitegraph --help` lists all commands. Highlights:
+
+- `status`, `list` – legacy info commands (file or memory DB).
+- `subgraph --root N --depth D [--types edge=CALLS --types node=Fn]` – dumps
+  deterministic nodes/edges/signature as JSON.
+- `pipeline --dsl "pattern CALLS filter type=Fn"` (or `--file pipeline.json`) –
+  runs a reasoning pipeline, returning JSON nodes/scores.
+- `explain-pipeline --dsl ...` – emits per-step counts, filters, scoring notes.
+- `dsl-parse --input "CALLS->USES"` – classifies DSL input (pattern/pipeline/
+  subgraph) with metadata.
+- `safety-check` – runs orphan/duplicate/label/property validators and prints a
+  JSON safety report.
+
 ## Manual & License
 
-- Operator/developer manual: [`manual.md`](manual.md).
+- Operator/developer manual: [`manual.md`](manual.md) (build/test, ergonomic
+  APIs, benchmark gates, CLI reasoning/safety, migration guidance).
 - License: GPL-3.0-only (see [`LICENSE`](LICENSE)).

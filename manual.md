@@ -31,14 +31,21 @@ all benches sequentially and surfaces pass/fail summaries.
 - `GraphReasoner` – `analyze(start, &PatternQuery, &ReasoningConfig)` returning
   ranked `ReasoningCandidate`s.
 
-### Backend abstraction
+### Backend abstraction & ergonomic client
 
 - `GraphBackend` trait standardizes inserts, traversal, pattern queries and
   multi-hop functions.
 - `SqliteGraphBackend` is the sqlite-backed implementation (supports `in_memory`
   and `from_graph`).
-- `BackendClient` wraps any `GraphBackend` for simple operations (insert,
-  neighbors, BFS).
+- `BackendClient` wraps any `GraphBackend` and provides ergonomic helpers using
+  wrapper types:
+  - `NodeId` / `EdgeId` newtypes (deterministic ordering guarantees).
+  - `Label`, `PropertyKey`, `PropertyValue` helpers for the label/property
+    indexes (`labeled`, `with_property`).
+  - `neighbors_of`, `get_node`, `subgraph`, `run_pattern`, `run_pipeline`,
+    `explain_pipeline`.
+  - `explain_pipeline` returns `PipelineExplanation` with step summaries, per
+    step counts, filters and scoring notes.
 
 ### Multi-hop & pattern querying
 
@@ -50,6 +57,8 @@ all benches sequentially and surfaces pass/fail summaries.
 
 - `GraphReasoner` pairs pattern matches with deterministic multi-hop expansions
   and structural scores (`ReasoningCandidate`).
+- `ReasoningPipeline` (pattern / KHops / Filter / Score steps) powers the CLI
+  reasoning commands and programmatic inference.
 
 ---
 
@@ -81,14 +90,26 @@ Binary: `sqlitegraph` (see `src/bin/sqlitegraph.rs`).
 Usage:
 
 ```
-sqlitegraph [--backend sqlite] [--db memory|PATH] [--command status|list]
+sqlitegraph [--backend sqlite] [--db memory|PATH] --command <subcommand> [args]
 ```
 
-Commands:
+Deterministic subcommands:
 
-- `status` (default) – prints backend type + entity count.
-- `list` – lists entity IDs + names.
-- Unrecognized commands fall back to `status`.
+- `status` (default) – backend + entity count.
+- `list` – entity IDs + names (ascending id).
+- `subgraph --root N --depth D [--types edge=CALLS --types node=Fn]` – emits a
+  JSON neighborhood (`nodes`, `edges`, `signature`) using the same deterministic
+  traversal as `subgraph::extract_subgraph`.
+- `pipeline --dsl "<dsl>"` or `--file pipeline.json` – runs a reasoning pipeline
+  and returns `nodes` plus detailed `scores` (node/score pairs).
+- `explain-pipeline --dsl "<dsl>"` – returns `steps_summary`, `node_counts`,
+  `filters`, `scoring` arrays describing the executed pipeline.
+- `dsl-parse --input "<expr>"` – parses DSL input and classifies it as
+  pattern/pipeline/subgraph with metadata (legs, depth, filter counts).
+- `safety-check` – runs all validators (orphans, duplicates, invalid
+  labels/properties) and emits a JSON report (used for CI/operations).
+- Legacy `dsl:<expr>` form redirects to `dsl-parse` but the structured command
+  is preferred.
 
 Environment variable `CARGO_BIN_EXE_sqlitegraph` is used in tests; the CLI
 operates purely locally (in-memory or file-backed sqlite). Use `cargo run
@@ -119,14 +140,21 @@ Invoke: `cargo run --example migration_flow`.
 
 ---
 
-## 6. Benchmark Gating
+## 6. Benchmark Gating & Performance Logging
 
-- `BenchRun` stores name/mean/samples.
-- `BenchGate` accepts thresholds + baseline runs + tolerance.
-- `GateEnforcer::evaluate(runs)` yields `GateReport { passed, reasons }`.
-
-Use gating in CI to enforce max latency/regression tolerance (see
-`tests/bench_gate_tests.rs` and `tests/bench_report_tests.rs`).
+- `bench_gates::record_bench_run(name, BenchMetric)` records deterministic
+  metrics (ops/sec, bytes/sec, free-form notes) into a JSON file
+  (`sqlitegraph_bench.json` by default, path configurable via
+  `set_bench_file_path`).
+- `bench_gates::check_thresholds(name, BenchThreshold)` enforces minimum throughput
+  / maximum latency before CI passes.
+- `bench_gates::compare_to_baseline` compares against stored metrics to detect
+  regressions or improvements.
+- Criterion benches call `record_bench_run` exactly once per benchmark; the
+  values are deterministic mock metrics so tests remain repeatable while the
+  real benches still write actual measurements when run manually.
+- Use gating in CI to enforce max latency/regression tolerance (see
+  `tests/bench_gates_tests.rs` for API coverage).
 
 ---
 
@@ -161,3 +189,53 @@ free). All take `(node_count, seed)`; outputs are sorted deterministically.
 With the manual + README in place, sqlitegraph is fully documented and ready to
 serve as the embedded graph backend needed to replace Neo4j. Contributions
 should follow the existing TDD workflow and keep new files under 300 LOC.
+
+---
+
+## 10. DSL parser
+
+- `parse_dsl("CALLS->USES")` → `PatternQuery` with appropriate legs.
+- `parse_dsl("3-hop type=Fn")` → `SubgraphRequest { depth: 3, allowed_node_types: ["Fn"] }`.
+- `parse_dsl("pattern CALLS*3 filter type=Module")` → `ReasoningPipeline` with a
+  repeated CALL chain and a node filter.
+- Invalid inputs return `DslResult::Error(message)`.
+
+Use the DSL for quick CLI interactions (`--command dsl:CALLS->USES`) or to
+bootstrap pipelines/subgraph requests from config files.
+
+---
+
+## 11. CLI reasoning & DSL workflows
+
+- Build DSL expressions (`CALLS->USES`, `pattern CALLS*3 filter type=Module`,
+  `3-hop type=Fn`) and feed them to:
+  - `sqlitegraph --command pipeline --dsl "<expr>"` to execute reasoning.
+  - `sqlitegraph --command explain-pipeline --dsl "<expr>"` to inspect per-step
+    counts (useful for tuning TDD tests).
+  - `sqlitegraph --command dsl-parse --input "<expr>"` for dry-run validation.
+- Pipelines can also be provided via files (JSON containing `{ "dsl": "..." }`).
+- CLI commands mirror library functions, so you can reproduce failing CI runs
+  locally by copying the DSL snippet.
+
+## 12. Safety checks
+
+- Library: `run_safety_checks(&SqliteGraph)` aggregates:
+  - `validate_referential_integrity` (edges referencing missing nodes).
+  - `validate_no_duplicate_edges` (duplicate rows per from/to/type triple).
+  - `validate_labels_properties` (label/property rows referencing missing nodes).
+- Strict mode: `run_strict_safety_checks` returns `SafetyError` if any counters
+  are non-zero.
+- CLI: `sqlitegraph --command safety-check [--db path]` emits the structured
+  JSON report, enabling automation/CI.
+- Tests: `tests/safety_tests.rs` cover each validator, `tests/cli_safety_tests.rs`
+  ensures CLI parity.
+
+---
+
+## 12. Label & property indexes
+
+- `index::add_label`, `index::get_entities_by_label`
+- `index::add_property`, `index::get_entities_by_property`
+
+All functions are deterministic and sort by `entity_id`. These APIs are used by
+the extended `BackendClient` helpers and CLI tooling.

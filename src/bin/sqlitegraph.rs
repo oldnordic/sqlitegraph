@@ -3,6 +3,7 @@ use std::{env, path::PathBuf, process};
 use sqlitegraph::{
     SqliteGraphError,
     backend::SqliteGraphBackend,
+    cli_reasoning,
     client::{BackendClient, CommandLineConfig},
     graph::SqliteGraph,
 };
@@ -31,7 +32,7 @@ fn main() {
     };
 
     let client = BackendClient::new(backend);
-    if let Err(err) = run_command(&client, &config.command) {
+    if let Err(err) = run_command(&client, &config.command, &config.command_args) {
         eprintln!("command failed: {err}");
         process::exit(1);
     }
@@ -53,9 +54,14 @@ fn open_backend(config: &CommandLineConfig) -> Result<SqliteGraphBackend, String
 }
 
 fn run_command(
-    client: &BackendClient<SqliteGraphBackend>,
+    client: &BackendClient,
     command: &str,
+    args: &[String],
 ) -> Result<(), SqliteGraphError> {
+    if let Some(json) = cli_reasoning::handle_command(client, command, args)? {
+        println!("{json}");
+        return Ok(());
+    }
     match command {
         "status" => {
             let nodes = client.backend().entity_ids()?.len();

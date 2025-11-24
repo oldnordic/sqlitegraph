@@ -5,6 +5,7 @@
 //! adapter compiled in, simplifying future backend selection.
 
 use rusqlite::params;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
@@ -17,7 +18,7 @@ use crate::{
 
 pub use crate::multi_hop::ChainStep;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BackendDirection {
     Outgoing,
     Incoming,

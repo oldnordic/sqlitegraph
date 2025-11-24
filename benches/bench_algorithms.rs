@@ -4,6 +4,7 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use sqlitegraph::{
     SqliteGraph,
     algo::{connected_components, find_cycles_limited, nodes_by_degree},
+    bench_gates::{BenchMetric, record_bench_run},
     bench_utils::{GraphDataset, GraphShape, generate_graph},
 };
 
@@ -78,13 +79,14 @@ fn bench_components_random(c: &mut Criterion) {
     group.sample_size(SAMPLE_SIZE);
     group.warm_up_time(WARM_UP);
     group.measurement_time(MEASURE);
-    for case in cases {
+    for case in &cases {
         let id = case.label.clone();
         group.bench_function(BenchmarkId::from_parameter(id), |b| {
             b.iter(|| connected_components(&case.graph).expect("components"));
         });
     }
     group.finish();
+    record_ready_metrics("components_random", &cases);
 }
 
 fn bench_components_scalefree(c: &mut Criterion) {
@@ -98,13 +100,14 @@ fn bench_components_scalefree(c: &mut Criterion) {
     group.sample_size(SAMPLE_SIZE);
     group.warm_up_time(WARM_UP);
     group.measurement_time(MEASURE);
-    for case in cases {
+    for case in &cases {
         let id = case.label.clone();
         group.bench_function(BenchmarkId::from_parameter(id), |b| {
             b.iter(|| connected_components(&case.graph).expect("components"));
         });
     }
     group.finish();
+    record_ready_metrics("components_scalefree", &cases);
 }
 
 fn bench_cycle_detection(c: &mut Criterion) {
@@ -124,6 +127,7 @@ fn bench_cycle_detection(c: &mut Criterion) {
         b.iter(|| find_cycles_limited(&case.graph, 32).expect("cycles"));
     });
     group.finish();
+    record_ready_metrics("cycles", &[case]);
 }
 
 fn bench_degree_ranking(c: &mut Criterion) {
@@ -141,6 +145,19 @@ fn bench_degree_ranking(c: &mut Criterion) {
         b.iter(|| nodes_by_degree(&case.graph, false).expect("degrees"));
     });
     group.finish();
+    record_ready_metrics("degree_rank", &[case]);
+}
+
+fn record_ready_metrics(kind: &str, cases: &[ReadyGraph]) {
+    for case in cases {
+        let metric = BenchMetric {
+            name: format!("{kind}_{}", case.label),
+            ops_per_sec: case.graph.all_entity_ids().unwrap().len() as f64,
+            bytes_per_sec: 0.0,
+            notes: "synthetic deterministic metric".into(),
+        };
+        let _ = record_bench_run(&metric.name, metric);
+    }
 }
 
 criterion_group!(

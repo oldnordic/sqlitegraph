@@ -248,9 +248,17 @@ impl SqliteGraph {
         Ok(exists.is_some())
     }
 
-    fn invalidate_caches(&self) {
+    pub(crate) fn invalidate_caches(&self) {
         self.outgoing_cache.clear();
         self.incoming_cache.clear();
+    }
+
+    pub(crate) fn outgoing_cache_ref(&self) -> &AdjacencyCache {
+        &self.outgoing_cache
+    }
+
+    pub(crate) fn incoming_cache_ref(&self) -> &AdjacencyCache {
+        &self.incoming_cache
     }
 
     fn from_connection(conn: Connection) -> Self {
