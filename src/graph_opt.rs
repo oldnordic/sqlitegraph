@@ -1,7 +1,11 @@
 use ahash::AHashSet;
 use serde_json::Value;
 
-use crate::{SqliteGraphError, cache::CacheStats, graph::SqliteGraph};
+use crate::{
+    SqliteGraphError,
+    cache::CacheStats,
+    graph::{InstrumentedConnection, SqliteGraph},
+};
 
 #[derive(Clone, Debug)]
 pub struct GraphEntityCreate {
@@ -31,7 +35,9 @@ pub fn bulk_insert_entities(
         .map_err(|e| SqliteGraphError::query(e.to_string()))?;
     let result = (|| {
         let mut stmt = conn
-            .prepare("INSERT INTO graph_entities(kind,name,file_path,data) VALUES(?1,?2,?3,?4)")
+            .prepare_cached(
+                "INSERT INTO graph_entities(kind,name,file_path,data) VALUES(?1,?2,?3,?4)",
+            )
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;
         let mut ids = Vec::new();
         for entry in entries {
@@ -47,7 +53,6 @@ pub fn bulk_insert_entities(
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;
             ids.push(conn.last_insert_rowid());
         }
-        stmt.finalize().ok();
         Ok(ids)
     })();
     finalize_transaction(graph, conn, result)
@@ -65,7 +70,9 @@ pub fn bulk_insert_edges(
         .map_err(|e| SqliteGraphError::query(e.to_string()))?;
     let result = (|| {
         let mut stmt = conn
-            .prepare("INSERT INTO graph_edges(from_id,to_id,edge_type,data) VALUES(?1,?2,?3,?4)")
+            .prepare_cached(
+                "INSERT INTO graph_edges(from_id,to_id,edge_type,data) VALUES(?1,?2,?3,?4)",
+            )
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;
         let mut ids = Vec::new();
         let mut seen = AHashSet::new();
@@ -74,7 +81,7 @@ pub fn bulk_insert_edges(
             if !seen.insert((entry.from_id, entry.to_id, entry.edge_type.clone())) {
                 continue;
             }
-            validate_endpoints_exist(conn, entry.from_id, entry.to_id)?;
+            validate_endpoints_exist(&conn, entry.from_id, entry.to_id)?;
             let payload = serde_json::to_string(&entry.data)
                 .map_err(|e| SqliteGraphError::invalid_input(e.to_string()))?;
             stmt.execute(rusqlite::params![
@@ -86,7 +93,6 @@ pub fn bulk_insert_edges(
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;
             ids.push(conn.last_insert_rowid());
         }
-        stmt.finalize().ok();
         Ok(ids)
     })();
     finalize_transaction(graph, conn, result)
@@ -135,7 +141,7 @@ pub fn cache_stats(graph: &SqliteGraph) -> CacheStats {
 
 fn finalize_transaction(
     graph: &SqliteGraph,
-    conn: &rusqlite::Connection,
+    conn: InstrumentedConnection<'_>,
     result: Result<Vec<i64>, SqliteGraphError>,
 ) -> Result<Vec<i64>, SqliteGraphError> {
     match result {
@@ -171,21 +177,16 @@ fn validate_edge_create(entry: &GraphEdgeCreate) -> Result<(), SqliteGraphError>
             "edge endpoints must be positive ids",
         ));
     }
-    if entry.from_id == entry.to_id {
-        return Err(SqliteGraphError::invalid_input(
-            "self loops are not supported",
-        ));
-    }
     Ok(())
 }
 
 fn validate_endpoints_exist(
-    conn: &rusqlite::Connection,
+    conn: &InstrumentedConnection<'_>,
     from: i64,
     to: i64,
 ) -> Result<(), SqliteGraphError> {
     let mut stmt = conn
-        .prepare("SELECT COUNT(1) FROM graph_entities WHERE id IN (?1, ?2)")
+        .prepare_cached("SELECT COUNT(1) FROM graph_entities WHERE id IN (?1, ?2)")
         .map_err(|e| SqliteGraphError::query(e.to_string()))?;
     let count: i64 = stmt
         .query_row(rusqlite::params![from, to], |row| row.get(0))

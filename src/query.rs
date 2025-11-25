@@ -36,10 +36,9 @@ impl<'a> GraphQuery<'a> {
         if edge_type.trim().is_empty() {
             return Err(SqliteGraphError::invalid_input("edge_type required"));
         }
-        let mut stmt = self
-            .graph
-            .connection()
-            .prepare(
+        let conn = self.graph.connection();
+        let mut stmt = conn
+            .prepare_cached(
                 "SELECT to_id FROM graph_edges WHERE from_id=?1 AND edge_type=?2 ORDER BY to_id, id",
             )
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;

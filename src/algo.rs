@@ -94,7 +94,7 @@ pub fn nodes_by_degree(
     Ok(degrees)
 }
 
-fn normalize_cycles(cycles: &mut Vec<Vec<i64>>) {
+fn normalize_cycles(cycles: &mut [Vec<i64>]) {
     for cycle in cycles.iter_mut() {
         // rotate so smallest node first for determinism
         if let Some((min_idx, _)) = cycle.iter().enumerate().min_by_key(|(_, value)| *value) {

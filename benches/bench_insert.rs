@@ -2,7 +2,7 @@ use std::{sync::Arc, time::Duration};
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use sqlitegraph::{
-    GraphEdge, SqliteGraph,
+    SqliteGraph,
     bench_gates::{BenchMetric, record_bench_run},
     bench_utils::{GraphDataset, GraphShape, generate_graph},
 };
@@ -151,7 +151,8 @@ fn record_metrics(group: &str, cases: &[BenchCase]) {
             bytes_per_sec: case.dataset.edges.len() as f64,
             notes: "synthetic deterministic metric".into(),
         };
-        let _ = record_bench_run(&metric.name, metric);
+        let name = metric.name.clone();
+        let _ = record_bench_run(&name, metric);
     }
 }
 

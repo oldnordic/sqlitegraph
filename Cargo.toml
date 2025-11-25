@@ -40,3 +40,7 @@ harness = false
 [[bench]]
 name = "bench_algorithms"
 harness = false
+
+[[bench]]
+name = "bench_syncompat"
+harness = false

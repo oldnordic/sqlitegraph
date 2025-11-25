@@ -1,0 +1,47 @@
+use std::fs;
+
+fn read(path: &str) -> String {
+    fs::read_to_string(path).expect("doc file")
+}
+
+#[test]
+fn test_readme_contains_safety_invariants() {
+    let readme = read("README.md");
+    assert!(readme.contains("## Safety Invariants"));
+}
+
+#[test]
+fn test_readme_contains_dsl_constraints() {
+    let readme = read("README.md");
+    assert!(readme.contains("## DSL Constraints"));
+}
+
+#[test]
+fn test_readme_contains_regression_gate_explanation() {
+    let readme = read("README.md");
+    assert!(readme.contains("Performance thresholds in sqlitegraph_bench.json"));
+}
+
+#[test]
+fn test_manual_contains_safety_invariants() {
+    let manual = read("manual.md");
+    assert!(manual.contains("### Safety Invariants"));
+}
+
+#[test]
+fn test_manual_contains_dsl_constraints() {
+    let manual = read("manual.md");
+    assert!(manual.contains("### DSL Constraints"));
+}
+
+#[test]
+fn test_readme_mentions_metrics_command() {
+    let readme = read("README.md");
+    assert!(readme.contains("`sqlitegraph --command metrics [--reset-metrics]`"));
+}
+
+#[test]
+fn test_manual_mentions_metrics_command() {
+    let manual = read("manual.md");
+    assert!(manual.contains("CLI metrics command"));
+}

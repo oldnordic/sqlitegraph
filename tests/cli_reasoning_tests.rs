@@ -50,6 +50,31 @@ fn subgraph_cli_matches_library_subgraph() {
 }
 
 #[test]
+fn subgraph_cli_reports_filters() {
+    let ctx = test_graph("subgraph_filters");
+    let output = run_cli(
+        &ctx.path,
+        &[
+            "--command",
+            "subgraph",
+            "--root",
+            &ctx.root.to_string(),
+            "--depth",
+            "1",
+            "--types",
+            "edge=CALLS",
+            "--types",
+            "node=Fn",
+        ],
+    );
+    assert_eq!(output["command"], Value::String("subgraph".into()));
+    assert_eq!(output["edge_filters"], json!(["CALLS"]));
+    assert_eq!(output["node_filters"], json!(["Fn"]));
+    let nodes = output["nodes"].as_array().expect("nodes array");
+    assert!(nodes.contains(&json!(ctx.root)));
+}
+
+#[test]
 fn pipeline_cli_matches_manual_chain() {
     let ctx = test_graph("pipeline");
     let backend = backend_for_path(&ctx.path);
@@ -74,6 +99,58 @@ fn pipeline_cli_matches_manual_chain() {
 }
 
 #[test]
+fn pipeline_cli_echoes_dsl_expression() {
+    let ctx = test_graph("pipeline_dsl");
+    let dsl = "pattern CALLS filter type=Fn";
+    let output = run_cli(&ctx.path, &["--command", "pipeline", "--dsl", dsl]);
+    assert_eq!(output["command"], Value::String("pipeline".into()));
+    assert_eq!(output["dsl"], Value::String(dsl.into()));
+}
+
+#[test]
+fn pipeline_cli_supports_file_input() {
+    let ctx = test_graph("pipeline_file");
+    let dsl = "pattern CALLS filter type=Fn";
+    let path = write_pipeline_file("pipeline_file.dsl", dsl);
+    let output = run_cli(
+        &ctx.path,
+        &["--command", "pipeline", "--file", path.to_str().unwrap()],
+    );
+    assert_eq!(output["command"], Value::String("pipeline".into()));
+    assert_eq!(output["dsl"], Value::String(dsl.into()));
+}
+
+#[test]
+fn pipeline_cli_reads_first_json_object_in_file() {
+    let ctx = test_graph("pipeline_json_first");
+    let path = write_pipeline_contents(
+        "pipeline_json_first.dsl",
+        "{\"dsl\":\"pattern CALLS filter type=Fn\"}{\"dsl\":\"pattern USES\"}",
+    );
+    let output = run_cli(
+        &ctx.path,
+        &["--command", "pipeline", "--file", path.to_str().unwrap()],
+    );
+    assert_eq!(output["command"], Value::String("pipeline".into()));
+    assert_eq!(
+        output["dsl"],
+        Value::String("pattern CALLS filter type=Fn".into())
+    );
+}
+
+#[test]
+fn metrics_cli_reports_snapshot_and_reset() {
+    let ctx = test_graph("metrics_cli");
+    let reset = run_cli(&ctx.path, &["--command", "metrics", "--reset-metrics"]);
+    assert_eq!(reset["command"], Value::String("metrics".into()));
+    assert_eq!(reset["prepare_count"], Value::Number(0.into()));
+    let snapshot = run_cli(&ctx.path, &["--command", "metrics"]);
+    assert_eq!(snapshot["command"], Value::String("metrics".into()));
+    assert!(snapshot.get("prepare_cache_hits").is_some());
+    assert!(snapshot.get("prepare_cache_misses").is_some());
+}
+
+#[test]
 fn explain_cli_matches_manual_explanation() {
     let ctx = test_graph("explain");
     let backend = backend_for_path(&ctx.path);
@@ -88,6 +165,15 @@ fn explain_cli_matches_manual_explanation() {
     assert_eq!(output["node_counts"], json!(expected.node_counts_per_step));
     assert_eq!(output["filters"], json!(expected.filters_applied));
     assert_eq!(output["scoring"], json!(expected.scoring_notes));
+}
+
+#[test]
+fn explain_cli_echoes_dsl_expression() {
+    let ctx = test_graph("explain_dsl");
+    let dsl = "pattern CALLS filter type=Fn";
+    let output = run_cli(&ctx.path, &["--command", "explain-pipeline", "--dsl", dsl]);
+    assert_eq!(output["command"], Value::String("explain-pipeline".into()));
+    assert_eq!(output["dsl"], Value::String(dsl.into()));
 }
 
 #[test]
@@ -185,5 +271,16 @@ fn pipeline_from_dsl(expr: &str) -> ReasoningPipeline {
 fn temp_db_path(name: &str) -> PathBuf {
     let path = std::env::temp_dir().join(name);
     let _ = std::fs::remove_file(&path);
+    path
+}
+
+fn write_pipeline_file(name: &str, dsl: &str) -> PathBuf {
+    write_pipeline_contents(name, dsl)
+}
+
+fn write_pipeline_contents(name: &str, contents: &str) -> PathBuf {
+    let path = std::env::temp_dir().join(name);
+    let _ = std::fs::remove_file(&path);
+    std::fs::write(&path, contents).expect("write pipeline file");
     path
 }

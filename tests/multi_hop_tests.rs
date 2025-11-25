@@ -1,6 +1,6 @@
 use serde_json::json;
 use sqlitegraph::backend::{BackendDirection, ChainStep};
-use sqlitegraph::{GraphEdge, GraphEntity, SqliteGraph};
+use sqlitegraph::{GraphEdge, GraphEntity, SqliteGraph, multi_hop};
 
 fn insert_node(graph: &SqliteGraph, name: &str) -> i64 {
     graph
@@ -80,4 +80,23 @@ fn test_chain_query_with_direction_and_type() {
     ];
     let matches = query.chain(ids[0], &chain).expect("chain query");
     assert_eq!(matches, vec![ids[3]]);
+}
+
+#[test]
+fn multi_source_khop_matches_union_of_single_runs() {
+    let (graph, ids) = build_sample_graph();
+    let seeds = vec![ids[0], ids[1]];
+    let mut expected = Vec::new();
+    for &seed in &seeds {
+        let hops = graph.query().k_hop_outgoing(seed, 2).expect("single hop");
+        expected.extend(hops);
+    }
+    expected.sort();
+    expected.dedup();
+    expected.retain(|id| !seeds.contains(id));
+    expected.sort();
+    let mut combined =
+        multi_hop::k_hop_multi(&graph, &seeds, 2, BackendDirection::Outgoing).expect("multi hop");
+    combined.sort();
+    assert_eq!(combined, expected);
 }

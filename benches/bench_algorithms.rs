@@ -152,11 +152,12 @@ fn record_ready_metrics(kind: &str, cases: &[ReadyGraph]) {
     for case in cases {
         let metric = BenchMetric {
             name: format!("{kind}_{}", case.label),
-            ops_per_sec: case.graph.all_entity_ids().unwrap().len() as f64,
+            ops_per_sec: case.graph.list_entity_ids().unwrap().len() as f64,
             bytes_per_sec: 0.0,
             notes: "synthetic deterministic metric".into(),
         };
-        let _ = record_bench_run(&metric.name, metric);
+        let name = metric.name.clone();
+        let _ = record_bench_run(&name, metric);
     }
 }
 

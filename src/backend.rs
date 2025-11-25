@@ -57,6 +57,7 @@ pub struct EdgeSpec {
 
 pub trait GraphBackend {
     fn insert_node(&self, node: NodeSpec) -> Result<i64, SqliteGraphError>;
+    fn get_node(&self, id: i64) -> Result<GraphEntity, SqliteGraphError>;
     fn insert_edge(&self, edge: EdgeSpec) -> Result<i64, SqliteGraphError>;
     fn neighbors(&self, node: i64, query: NeighborQuery) -> Result<Vec<i64>, SqliteGraphError>;
     fn bfs(&self, start: i64, depth: u32) -> Result<Vec<i64>, SqliteGraphError>;
@@ -108,10 +109,9 @@ impl SqliteGraphBackend {
             (BackendDirection::Outgoing, None) => self.graph.fetch_outgoing(node),
             (BackendDirection::Incoming, None) => self.graph.fetch_incoming(node),
             (BackendDirection::Outgoing, Some(edge_type)) => {
-                let mut stmt = self
-                    .graph
-                    .connection()
-                    .prepare(
+                let conn = self.graph.connection();
+                let mut stmt = conn
+                    .prepare_cached(
                         "SELECT to_id FROM graph_edges WHERE from_id=?1 AND edge_type=?2 ORDER BY to_id, id",
                     )
                     .map_err(|e| SqliteGraphError::query(e.to_string()))?;
@@ -125,10 +125,9 @@ impl SqliteGraphBackend {
                 Ok(values)
             }
             (BackendDirection::Incoming, Some(edge_type)) => {
-                let mut stmt = self
-                    .graph
-                    .connection()
-                    .prepare(
+                let conn = self.graph.connection();
+                let mut stmt = conn
+                    .prepare_cached(
                         "SELECT from_id FROM graph_edges WHERE to_id=?1 AND edge_type=?2 ORDER BY from_id, id",
                     )
                     .map_err(|e| SqliteGraphError::query(e.to_string()))?;
@@ -154,6 +153,10 @@ impl GraphBackend for SqliteGraphBackend {
             file_path: node.file_path,
             data: node.data,
         })
+    }
+
+    fn get_node(&self, id: i64) -> Result<GraphEntity, SqliteGraphError> {
+        self.graph.get_entity(id)
     }
 
     fn insert_edge(&self, edge: EdgeSpec) -> Result<i64, SqliteGraphError> {
@@ -226,12 +229,16 @@ impl SqliteGraphBackend {
     }
 }
 
-impl<'a, B> GraphBackend for &'a B
+impl<B> GraphBackend for &B
 where
     B: GraphBackend + ?Sized,
 {
     fn insert_node(&self, node: NodeSpec) -> Result<i64, SqliteGraphError> {
         (*self).insert_node(node)
+    }
+
+    fn get_node(&self, id: i64) -> Result<GraphEntity, SqliteGraphError> {
+        (*self).get_node(id)
     }
 
     fn insert_edge(&self, edge: EdgeSpec) -> Result<i64, SqliteGraphError> {

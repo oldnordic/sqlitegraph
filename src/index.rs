@@ -20,9 +20,9 @@ pub fn get_entities_by_label(
     graph: &SqliteGraph,
     label: &str,
 ) -> Result<Vec<GraphEntity>, SqliteGraphError> {
-    let mut stmt = graph
-        .connection()
-        .prepare("SELECT entity_id FROM graph_labels WHERE label=?1 ORDER BY entity_id")
+    let conn = graph.connection();
+    let mut stmt = conn
+        .prepare_cached("SELECT entity_id FROM graph_labels WHERE label=?1 ORDER BY entity_id")
         .map_err(|e| SqliteGraphError::query(e.to_string()))?;
     let rows = stmt
         .query_map(params![label], |row| row.get(0))
@@ -55,9 +55,9 @@ pub fn get_entities_by_property(
     key: &str,
     value: &str,
 ) -> Result<Vec<GraphEntity>, SqliteGraphError> {
-    let mut stmt = graph
-        .connection()
-        .prepare(
+    let conn = graph.connection();
+    let mut stmt = conn
+        .prepare_cached(
             "SELECT entity_id FROM graph_properties \
              WHERE key=?1 AND value=?2 ORDER BY entity_id",
         )

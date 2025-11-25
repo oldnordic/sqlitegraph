@@ -14,6 +14,25 @@ cargo test
 cargo bench        # deterministic Criterion benches
 ```
 
+### Targeted suites
+
+- `cargo test --test subgraph_tests` – subgraph extraction cycles/self-loops/depth determinism.
+- `cargo test --test pipeline_tests` and `--test dsl_tests` – reasoning pipeline sequences plus DSL ambiguity/error handling.
+- `cargo test --test backend_trait_tests` / `--test migration_tests` – trait conformance, dual-write/shadow-read/cutover stress (including 100-node/300-edge loads).
+- `cargo test --test cli_reasoning_tests` / `--test cli_safety_tests` – CLI coverage for subgraph/pipeline/explain/dsl-parse/safety-check (`--strict`).
+- `cargo test --test perf_gate_tests` – ensures the committed `sqlitegraph_bench.json` baselines are honored via `bench_gates`.
+
+### Safety Invariants
+
+- Orphan edges are detected by verifying every edge endpoint references a stored entity before any reasoning or subgraph extraction runs.
+- Duplicate edges (identical `(from,to,type)` tuples) are tallied so traversal/pipeline counts stay deterministic and regressions surface quickly.
+- Invalid label/property references (metadata rows pointing at missing entities) are reported, and `safety-check --strict` fails builds whenever any of the above appear.
+
+### DSL Constraints
+
+- Supported clauses are limited to deterministic `pattern`, `k-hop`, `filter type=…`, and `score` steps; ordering matters and only one filter clause is allowed.
+- Combination syntax (`CALLS*2`, `CALLS->USES`) must not introduce conflicting filters or unknown tokens—ambiguous or unsupported input causes parser errors surfaced to the CLI/tests.
+
 Benchmarks produce HTML reports under `target/criterion`. Use `cargo bench
 --bench bench_insert` (etc.) to isolate suites. The `bench_driver` binary runs
 all benches sequentially and surfaces pass/fail summaries.
@@ -98,18 +117,24 @@ Deterministic subcommands:
 - `status` (default) – backend + entity count.
 - `list` – entity IDs + names (ascending id).
 - `subgraph --root N --depth D [--types edge=CALLS --types node=Fn]` – emits a
-  JSON neighborhood (`nodes`, `edges`, `signature`) using the same deterministic
-  traversal as `subgraph::extract_subgraph`.
+  JSON neighborhood (`nodes`, `edges`, `signature`) plus the applied node/edge
+  filters using the same deterministic traversal as `subgraph::extract_subgraph`.
 - `pipeline --dsl "<dsl>"` or `--file pipeline.json` – runs a reasoning pipeline
-  and returns `nodes` plus detailed `scores` (node/score pairs).
+  and returns `nodes` + detailed `scores`, echoing the DSL string for auditing.
 - `explain-pipeline --dsl "<dsl>"` – returns `steps_summary`, `node_counts`,
-  `filters`, `scoring` arrays describing the executed pipeline.
+  `filters`, `scoring` arrays describing the executed pipeline and the DSL.
 - `dsl-parse --input "<expr>"` – parses DSL input and classifies it as
   pattern/pipeline/subgraph with metadata (legs, depth, filter counts).
-- `safety-check` – runs all validators (orphans, duplicates, invalid
-  labels/properties) and emits a JSON report (used for CI/operations).
+- `safety-check [--strict]` – runs all validators (orphans, duplicates, invalid
+  labels/properties) and emits a JSON report (used for CI/operations). With
+  `--strict`, the command exits with a failure code when violations exist.
 - Legacy `dsl:<expr>` form redirects to `dsl-parse` but the structured command
   is preferred.
+
+The CLI metrics command (`sqlitegraph --db <path> --command metrics [--reset-metrics]`)
+reports the live instrumentation snapshot—prepare/execute counts, transaction
+begins/commits/rollbacks, plus cache hits/misses—and optionally clears the
+counters so operators can capture deltas while reproducing workloads.
 
 Environment variable `CARGO_BIN_EXE_sqlitegraph` is used in tests; the CLI
 operates purely locally (in-memory or file-backed sqlite). Use `cargo run
@@ -155,6 +180,7 @@ Invoke: `cargo run --example migration_flow`.
   real benches still write actual measurements when run manually.
 - Use gating in CI to enforce max latency/regression tolerance (see
   `tests/bench_gates_tests.rs` for API coverage).
+Performance thresholds in sqlitegraph_bench.json enforce stability across versions.
 
 ---
 

@@ -234,3 +234,136 @@ fn test_backend_multi_hop_and_chain_queries() {
     let sequences: Vec<Vec<i64>> = pattern_matches.into_iter().map(|m| m.nodes).collect();
     assert_eq!(sequences, vec![vec![a, b, c, d]]);
 }
+
+#[test]
+fn sqlite_backend_satisfies_trait_suite() {
+    let backend = SqliteGraphBackend::in_memory().expect("backend");
+    run_trait_suite(&backend);
+}
+
+fn run_trait_suite(api: &impl GraphBackend) {
+    let root = api.insert_node(sample_node("root")).unwrap();
+    let mid = api.insert_node(sample_node("mid")).unwrap();
+    let leaf = api.insert_node(sample_node("leaf")).unwrap();
+    let module = api.insert_node(sample_node("module")).unwrap();
+
+    api.insert_edge(EdgeSpec {
+        from: root,
+        to: mid,
+        edge_type: "CALLS".into(),
+        data: json!({}),
+    })
+    .unwrap();
+    api.insert_edge(EdgeSpec {
+        from: mid,
+        to: leaf,
+        edge_type: "CALLS".into(),
+        data: json!({}),
+    })
+    .unwrap();
+    api.insert_edge(EdgeSpec {
+        from: leaf,
+        to: module,
+        edge_type: "USES".into(),
+        data: json!({}),
+    })
+    .unwrap();
+    api.insert_edge(EdgeSpec {
+        from: root,
+        to: module,
+        edge_type: "USES".into(),
+        data: json!({}),
+    })
+    .unwrap();
+    api.insert_edge(EdgeSpec {
+        from: leaf,
+        to: root,
+        edge_type: "LINK".into(),
+        data: json!({}),
+    })
+    .unwrap();
+
+    let entity = api.get_node(root).unwrap();
+    assert_eq!(entity.name, "root");
+
+    let calls = api
+        .neighbors(
+            root,
+            NeighborQuery {
+                direction: BackendDirection::Outgoing,
+                edge_type: Some("CALLS".into()),
+            },
+        )
+        .unwrap();
+    assert_eq!(calls, vec![mid]);
+
+    let uses_incoming = api
+        .neighbors(
+            module,
+            NeighborQuery {
+                direction: BackendDirection::Incoming,
+                edge_type: Some("USES".into()),
+            },
+        )
+        .unwrap();
+    assert_eq!(uses_incoming, vec![root, leaf]);
+
+    let bfs = api.bfs(root, 2).unwrap();
+    assert_eq!(bfs, vec![root, mid, module, leaf]);
+
+    let shortest = api.shortest_path(root, module).unwrap();
+    assert_eq!(shortest, Some(vec![root, module]));
+
+    let degrees = api.node_degree(root).unwrap();
+    assert_eq!(degrees, (2, 1));
+
+    let hops = api.k_hop(root, 2, BackendDirection::Outgoing).unwrap();
+    assert_eq!(hops, vec![mid, module, leaf]);
+
+    let allowed = vec!["CALLS"];
+    let filtered = api
+        .k_hop_filtered(root, 2, BackendDirection::Outgoing, &allowed)
+        .unwrap();
+    assert_eq!(filtered, vec![mid, leaf]);
+
+    let chain = [
+        ChainStep {
+            direction: BackendDirection::Outgoing,
+            edge_type: Some("CALLS".into()),
+        },
+        ChainStep {
+            direction: BackendDirection::Outgoing,
+            edge_type: Some("CALLS".into()),
+        },
+        ChainStep {
+            direction: BackendDirection::Outgoing,
+            edge_type: Some("USES".into()),
+        },
+    ];
+    let chained = api.chain_query(root, &chain).unwrap();
+    assert_eq!(chained, vec![module]);
+
+    let pattern = PatternQuery {
+        root: Some(NodeConstraint::kind("Node")),
+        legs: vec![
+            PatternLeg {
+                direction: BackendDirection::Outgoing,
+                edge_type: Some("CALLS".into()),
+                constraint: Some(NodeConstraint::kind("Node")),
+            },
+            PatternLeg {
+                direction: BackendDirection::Outgoing,
+                edge_type: Some("CALLS".into()),
+                constraint: Some(NodeConstraint::kind("Node")),
+            },
+            PatternLeg {
+                direction: BackendDirection::Outgoing,
+                edge_type: Some("USES".into()),
+                constraint: Some(NodeConstraint::kind("Node")),
+            },
+        ],
+    };
+    let matches = api.pattern_search(root, &pattern).unwrap();
+    assert_eq!(matches.len(), 1);
+    assert_eq!(matches[0].nodes, vec![root, mid, leaf, module]);
+}

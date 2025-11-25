@@ -41,7 +41,7 @@ pub use crate::backend_client::{BackendClient, CommandLineConfig, Constraint, Ma
 pub use crate::cache::CacheStats;
 pub use crate::dsl::{DslResult, parse_dsl};
 pub use crate::errors::SqliteGraphError;
-pub use crate::graph::{GraphEdge, GraphEntity, SqliteGraph};
+pub use crate::graph::{GraphEdge, GraphEntity, GraphMetricsSnapshot, SqliteGraph};
 pub use crate::graph_opt::{
     GraphEdgeCreate, GraphEntityCreate, adjacency_fetch_incoming_batch,
     adjacency_fetch_outgoing_batch, bulk_insert_edges, bulk_insert_entities, cache_clear_ranges,

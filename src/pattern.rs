@@ -34,18 +34,83 @@ impl NodeConstraint {
     }
 
     pub fn matches(&self, entity: &GraphEntity) -> bool {
-        if let Some(kind) = &self.kind {
-            if &entity.kind != kind {
-                return false;
-            }
+        if self.kind.as_ref().is_some_and(|kind| &entity.kind != kind) {
+            return false;
         }
-        if let Some(prefix) = &self.name_prefix {
-            if !entity.name.starts_with(prefix) {
-                return false;
-            }
+        if self
+            .name_prefix
+            .as_ref()
+            .is_some_and(|prefix| !entity.name.starts_with(prefix))
+        {
+            return false;
         }
         true
     }
+}
+
+pub fn entity_ids_with_constraint(
+    graph: &SqliteGraph,
+    constraint: &NodeConstraint,
+) -> Result<Vec<i64>, SqliteGraphError> {
+    match (
+        constraint.kind.as_deref(),
+        constraint.name_prefix.as_deref(),
+    ) {
+        (None, None) => graph.all_entity_ids(),
+        (Some(kind), Some(prefix)) => query_kind_and_prefix(graph, kind, prefix),
+        (Some(kind), None) => query_kind(graph, kind),
+        (None, Some(prefix)) => query_prefix(graph, prefix),
+    }
+}
+
+fn query_kind(graph: &SqliteGraph, kind: &str) -> Result<Vec<i64>, SqliteGraphError> {
+    let conn = graph.connection();
+    let mut stmt = conn
+        .prepare_cached("SELECT id FROM graph_entities WHERE kind=?1 ORDER BY id")
+        .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+    let rows = stmt
+        .query_map(params![kind], |row| row.get(0))
+        .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+    collect_ids(rows)
+}
+
+fn query_prefix(graph: &SqliteGraph, prefix: &str) -> Result<Vec<i64>, SqliteGraphError> {
+    let like = format!("{prefix}%");
+    let conn = graph.connection();
+    let mut stmt = conn
+        .prepare_cached("SELECT id FROM graph_entities WHERE name LIKE ?1 ORDER BY id")
+        .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+    let rows = stmt
+        .query_map(params![like], |row| row.get(0))
+        .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+    collect_ids(rows)
+}
+
+fn query_kind_and_prefix(
+    graph: &SqliteGraph,
+    kind: &str,
+    prefix: &str,
+) -> Result<Vec<i64>, SqliteGraphError> {
+    let like = format!("{prefix}%");
+    let conn = graph.connection();
+    let mut stmt = conn
+        .prepare_cached("SELECT id FROM graph_entities WHERE kind=?1 AND name LIKE ?2 ORDER BY id")
+        .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+    let rows = stmt
+        .query_map(params![kind, like], |row| row.get(0))
+        .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+    collect_ids(rows)
+}
+
+fn collect_ids<F>(rows: rusqlite::MappedRows<'_, F>) -> Result<Vec<i64>, SqliteGraphError>
+where
+    F: FnMut(&rusqlite::Row<'_>) -> rusqlite::Result<i64>,
+{
+    let mut ids = Vec::new();
+    for entry in rows {
+        ids.push(entry.map_err(|e| SqliteGraphError::query(e.to_string()))?);
+    }
+    Ok(ids)
 }
 
 #[derive(Clone, Debug)]
@@ -132,9 +197,9 @@ fn filter_neighbors(
     sql: &str,
     edge_type: &str,
 ) -> Result<Vec<i64>, SqliteGraphError> {
-    let mut stmt = graph
-        .connection()
-        .prepare(sql)
+    let conn = graph.connection();
+    let mut stmt = conn
+        .prepare_cached(sql)
         .map_err(|e| SqliteGraphError::query(e.to_string()))?;
     let rows = stmt
         .query_map(params![node, edge_type], |row| row.get(0))

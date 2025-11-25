@@ -1,6 +1,6 @@
 use serde_json::json;
 use sqlitegraph::backend::BackendDirection;
-use sqlitegraph::pattern::{NodeConstraint, PatternLeg, PatternQuery};
+use sqlitegraph::pattern::{self, NodeConstraint, PatternLeg, PatternQuery};
 use sqlitegraph::{GraphEdge, GraphEntity, SqliteGraph};
 
 fn insert_node(graph: &SqliteGraph, kind: &str, name: &str) -> i64 {
@@ -89,6 +89,22 @@ fn test_pattern_query_blocks_root_constraint() {
         .pattern_matches(ids[0], &pattern)
         .expect("pattern");
     assert!(matches.is_empty());
+}
+
+#[test]
+fn entity_ids_with_constraint_filters_by_kind_and_prefix() {
+    let graph = SqliteGraph::open_in_memory().expect("graph");
+    let alpha_fn = insert_node(&graph, "Fn", "alpha_fn");
+    let beta_fn = insert_node(&graph, "Fn", "beta_fn");
+    let _module = insert_node(&graph, "Module", "alpha_mod");
+
+    let mut constraint = NodeConstraint::kind("Fn");
+    let ids = pattern::entity_ids_with_constraint(&graph, &constraint).expect("ids");
+    assert_eq!(ids, vec![alpha_fn, beta_fn]);
+
+    constraint.name_prefix = Some("alpha".into());
+    let ids = pattern::entity_ids_with_constraint(&graph, &constraint).expect("prefixed");
+    assert_eq!(ids, vec![alpha_fn]);
 }
 
 #[test]

@@ -24,8 +24,8 @@ pub fn parse_dsl(input: &str) -> DslResult {
     if let Some(result) = parse_hop_command(trimmed) {
         return result;
     }
-    if trimmed.contains("->") {
-        return DslResult::Pattern(parse_chain(trimmed));
+    if trimmed.contains("->") || trimmed.contains('*') {
+        return DslResult::Pattern(parse_repetitive_pattern(trimmed));
     }
     DslResult::Error(format!("unsupported DSL form: {trimmed}"))
 }
@@ -41,8 +41,17 @@ fn parse_pattern_pipeline(input: &str) -> DslResult {
     let mut steps = vec![ReasoningStep::Pattern(query)];
     if let Some(filter_part) = segments.next() {
         let text = filter_part.trim();
-        if let Some(kind) = text.strip_prefix("type=") {
-            steps.push(ReasoningStep::Filter(NodeConstraint::kind(kind.trim())));
+        let mut tokens = text.split_whitespace();
+        let clause = tokens.next().unwrap_or("");
+        if tokens.next().is_some() {
+            return DslResult::Error("multiple filter clauses are not supported".into());
+        }
+        if let Some(kind) = clause.strip_prefix("type=") {
+            let trimmed = kind.trim();
+            if trimmed.is_empty() {
+                return DslResult::Error("unsupported filter clause".into());
+            }
+            steps.push(ReasoningStep::Filter(NodeConstraint::kind(trimmed)));
         } else {
             return DslResult::Error("unsupported filter clause".into());
         }
@@ -70,22 +79,6 @@ fn parse_repetitive_pattern(segment: &str) -> PatternQuery {
                 constraint: None,
             });
         }
-    }
-    PatternQuery { root: None, legs }
-}
-
-fn parse_chain(input: &str) -> PatternQuery {
-    let mut legs = Vec::new();
-    for segment in input.split("->") {
-        let ty = segment.trim();
-        if ty.is_empty() {
-            continue;
-        }
-        legs.push(PatternLeg {
-            direction: BackendDirection::Outgoing,
-            edge_type: Some(ty.to_string()),
-            constraint: None,
-        });
     }
     PatternQuery { root: None, legs }
 }

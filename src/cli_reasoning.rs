@@ -1,4 +1,8 @@
-use std::{fs, path::Path};
+use std::{
+    fs,
+    io::{BufRead, BufReader, Read},
+    path::Path,
+};
 
 use serde_json::{Map, Value, json};
 
@@ -23,7 +27,8 @@ pub fn handle_command(
         "pipeline" => run_pipeline(client, args).map(Some),
         "explain-pipeline" => run_explain_pipeline(client, args).map(Some),
         "dsl-parse" => run_dsl_parse(args).map(Some),
-        "safety-check" => run_safety_check(client).map(Some),
+        "safety-check" => run_safety_check(client, args).map(Some),
+        "metrics" => run_metrics(client, args).map(Some),
         _ => Ok(None),
     }
 }
@@ -32,6 +37,12 @@ fn run_subgraph(client: &BackendClient, args: &[String]) -> Result<String, Sqlit
     let root = parse_required_i64(args, "--root")?;
     let depth = parse_optional_u32(args, "--depth").unwrap_or(1);
     let (edge_types, node_types) = parse_type_filters(args)?;
+    let mut edge_filters = edge_types.clone();
+    edge_filters.sort();
+    edge_filters.dedup();
+    let mut node_filters = node_types.clone();
+    node_filters.sort();
+    node_filters.dedup();
     let request = SubgraphRequest {
         root,
         depth,
@@ -52,6 +63,8 @@ fn run_subgraph(client: &BackendClient, args: &[String]) -> Result<String, Sqlit
     object.insert("nodes".into(), json!(subgraph.nodes));
     object.insert("edges".into(), Value::Array(edges));
     object.insert("signature".into(), Value::String(signature));
+    object.insert("edge_filters".into(), json!(edge_filters));
+    object.insert("node_filters".into(), json!(node_filters));
     encode(object)
 }
 
@@ -66,8 +79,36 @@ fn run_pipeline(client: &BackendClient, args: &[String]) -> Result<String, Sqlit
         .collect::<Vec<_>>();
     let mut object = Map::new();
     object.insert("command".into(), Value::String("pipeline".into()));
+    object.insert("dsl".into(), Value::String(expr));
     object.insert("nodes".into(), json!(result.nodes));
     object.insert("scores".into(), Value::Array(scores));
+    encode(object)
+}
+
+fn run_metrics(client: &BackendClient, args: &[String]) -> Result<String, SqliteGraphError> {
+    let graph = client.backend().graph();
+    if has_flag(args, "--reset-metrics") {
+        graph.reset_metrics();
+    }
+    let snapshot = graph.metrics_snapshot();
+    let mut object = Map::new();
+    object.insert("command".into(), Value::String("metrics".into()));
+    object.insert("prepare_count".into(), json!(snapshot.prepare_count));
+    object.insert("execute_count".into(), json!(snapshot.execute_count));
+    object.insert("tx_begin_count".into(), json!(snapshot.tx_begin_count));
+    object.insert("tx_commit_count".into(), json!(snapshot.tx_commit_count));
+    object.insert(
+        "tx_rollback_count".into(),
+        json!(snapshot.tx_rollback_count),
+    );
+    object.insert(
+        "prepare_cache_hits".into(),
+        json!(snapshot.prepare_cache_hits),
+    );
+    object.insert(
+        "prepare_cache_misses".into(),
+        json!(snapshot.prepare_cache_misses),
+    );
     encode(object)
 }
 
@@ -80,6 +121,7 @@ fn run_explain_pipeline(
     let explanation = client.explain_pipeline(pipeline)?;
     let mut object = Map::new();
     object.insert("command".into(), Value::String("explain-pipeline".into()));
+    object.insert("dsl".into(), Value::String(expr));
     object.insert("steps_summary".into(), json!(explanation.steps_summary));
     object.insert(
         "node_counts".into(),
@@ -90,8 +132,18 @@ fn run_explain_pipeline(
     encode(object)
 }
 
-fn run_safety_check(client: &BackendClient) -> Result<String, SqliteGraphError> {
+fn run_safety_check(client: &BackendClient, args: &[String]) -> Result<String, SqliteGraphError> {
+    let strict = args.iter().any(|arg| arg == "--strict");
     let report = run_safety_checks(client.backend().graph())?;
+    if strict && report.has_issues() {
+        return Err(invalid(format!(
+            "safety violations detected: orphan_edges={} duplicate_edges={} invalid_labels={} invalid_properties={}",
+            report.orphan_edges,
+            report.duplicate_edges,
+            report.invalid_labels,
+            report.invalid_properties
+        )));
+    }
     let mut object = Map::new();
     object.insert("command".into(), Value::String("safety-check".into()));
     object.insert("report".into(), report_to_value(&report));
@@ -169,21 +221,69 @@ fn pipeline_from_expression(expr: &str) -> Result<ReasoningPipeline, SqliteGraph
 }
 
 fn read_pipeline_file(path: &str) -> Result<String, SqliteGraphError> {
-    let contents = fs::read_to_string(Path::new(path))
+    let file = fs::File::open(Path::new(path))
+        .map_err(|e| invalid(format!("unable to read pipeline file: {e}")))?;
+    read_pipeline_reader(file)
+}
+
+fn read_pipeline_reader<R: Read>(reader: R) -> Result<String, SqliteGraphError> {
+    let mut buf = BufReader::new(reader);
+    match peek_non_whitespace(&mut buf)? {
+        None => Err(invalid("pipeline file is empty")),
+        Some(b'{') => read_pipeline_json(buf),
+        _ => read_pipeline_plain(buf),
+    }
+}
+
+fn read_pipeline_json<R: Read>(reader: R) -> Result<String, SqliteGraphError> {
+    let mut stream = serde_json::Deserializer::from_reader(reader).into_iter::<Value>();
+    let first = stream
+        .next()
+        .ok_or_else(|| invalid("pipeline json must contain a 'dsl' string"))
+        .and_then(|result| result.map_err(|e| invalid(format!("invalid pipeline json: {e}"))))?;
+    if let Some(expr) = first.get("dsl").and_then(|v| v.as_str()) {
+        Ok(expr.to_string())
+    } else {
+        Err(invalid("pipeline json must contain a 'dsl' string"))
+    }
+}
+
+fn read_pipeline_plain<R: Read>(mut reader: R) -> Result<String, SqliteGraphError> {
+    let mut contents = String::new();
+    reader
+        .read_to_string(&mut contents)
         .map_err(|e| invalid(format!("unable to read pipeline file: {e}")))?;
     let trimmed = contents.trim();
-    if trimmed.starts_with('{') {
-        let value: Value = serde_json::from_str(trimmed)
-            .map_err(|e| invalid(format!("invalid pipeline json: {e}")))?;
-        if let Some(expr) = value.get("dsl").and_then(|v| v.as_str()) {
-            return Ok(expr.to_string());
-        }
-        return Err(invalid("pipeline json must contain a 'dsl' string"));
-    }
     if trimmed.is_empty() {
         Err(invalid("pipeline file is empty"))
     } else {
         Ok(trimmed.to_string())
+    }
+}
+
+fn peek_non_whitespace<R: BufRead>(reader: &mut R) -> Result<Option<u8>, SqliteGraphError> {
+    loop {
+        let (buffer_len, result) = {
+            let buffer = reader
+                .fill_buf()
+                .map_err(|e| invalid(format!("unable to read pipeline file: {e}")))?;
+            if buffer.is_empty() {
+                return Ok(None);
+            }
+            let mut idx = 0;
+            while idx < buffer.len() {
+                let byte = buffer[idx];
+                if byte.is_ascii_whitespace() {
+                    idx += 1;
+                    continue;
+                }
+                reader.consume(idx);
+                return Ok(Some(byte));
+            }
+            (buffer.len(), ())
+        };
+        let _ = result;
+        reader.consume(buffer_len);
     }
 }
 
@@ -230,6 +330,10 @@ fn value(args: &[String], flag: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn has_flag(args: &[String], flag: &str) -> bool {
+    args.iter().any(|arg| arg == flag)
 }
 
 fn encode(object: Map<String, Value>) -> Result<String, SqliteGraphError> {

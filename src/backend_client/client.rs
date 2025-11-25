@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use ahash::AHashSet;
 use rusqlite::params;
 
+use super::types::{Constraint, MatchResult};
 use crate::{
     SqliteGraphError,
     api_ergonomics::{
@@ -12,75 +13,10 @@ use crate::{
     backend::{EdgeSpec, GraphBackend, NeighborQuery, NodeSpec, SqliteGraphBackend},
     graph::GraphEntity,
     index::{get_entities_by_label, get_entities_by_property},
-    pattern::{PatternMatch, PatternQuery},
+    pattern::PatternQuery,
     pipeline::{PipelineResult, ReasoningPipeline, run_pipeline},
     subgraph::{Subgraph, SubgraphRequest, extract_subgraph},
 };
-
-pub type MatchResult = PatternMatch;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CommandLineConfig {
-    pub backend: String,
-    pub database: String,
-    pub command: String,
-    pub command_args: Vec<String>,
-}
-
-impl CommandLineConfig {
-    pub fn from_args(args: &[&str]) -> Result<Self, String> {
-        let mut backend = String::from("sqlite");
-        let mut database = String::from("memory");
-        let mut command = String::from("status");
-        let mut command_args = Vec::new();
-        let mut command_set = false;
-        let mut iter = args.iter().skip(1);
-        while let Some(arg) = iter.next() {
-            if command_set {
-                command_args.push(arg.to_string());
-                continue;
-            }
-            match *arg {
-                "--backend" => {
-                    backend = iter
-                        .next()
-                        .ok_or_else(|| "--backend requires a value".to_string())?
-                        .to_string();
-                }
-                "--db" | "--database" => {
-                    database = iter
-                        .next()
-                        .ok_or_else(|| "--db requires a value".to_string())?
-                        .to_string();
-                }
-                "--command" => {
-                    command = iter
-                        .next()
-                        .ok_or_else(|| "--command requires a value".to_string())?
-                        .to_string();
-                    command_set = true;
-                }
-                other if other.starts_with('-') => {
-                    return Err(format!("unknown flag {other}"));
-                }
-                _ => {
-                    command = arg.to_string();
-                    command_set = true;
-                }
-            }
-        }
-        Ok(Self {
-            backend,
-            database,
-            command,
-            command_args,
-        })
-    }
-
-    pub fn help() -> &'static str {
-        "Usage: sqlitegraph [--backend sqlite] [--db memory|PATH] [--command status]\n"
-    }
-}
 
 pub struct BackendClient {
     backend: SqliteGraphBackend,
@@ -252,10 +188,7 @@ impl BackendClient {
         extract_subgraph(&self.backend, request)
     }
 
-    pub fn entity_by_label(
-        &self,
-        label: &str,
-    ) -> Result<Vec<crate::graph::GraphEntity>, SqliteGraphError> {
+    pub fn entity_by_label(&self, label: &str) -> Result<Vec<GraphEntity>, SqliteGraphError> {
         get_entities_by_label(self.backend.graph(), label)
     }
 
@@ -263,7 +196,7 @@ impl BackendClient {
         &self,
         key: &str,
         value: &str,
-    ) -> Result<Vec<crate::graph::GraphEntity>, SqliteGraphError> {
+    ) -> Result<Vec<GraphEntity>, SqliteGraphError> {
         get_entities_by_property(self.backend.graph(), key, value)
     }
 
@@ -320,9 +253,11 @@ fn fetch_outgoing(
     graph: &crate::graph::SqliteGraph,
     node: i64,
 ) -> Result<Vec<(i64, String)>, SqliteGraphError> {
-    let mut stmt = graph
-        .connection()
-        .prepare("SELECT to_id, edge_type FROM graph_edges WHERE from_id=?1 ORDER BY to_id, edge_type, id")
+    let conn = graph.connection();
+    let mut stmt = conn
+        .prepare_cached(
+            "SELECT to_id, edge_type FROM graph_edges WHERE from_id=?1 ORDER BY to_id, edge_type, id",
+        )
         .map_err(|e| SqliteGraphError::query(e.to_string()))?;
     let rows = stmt
         .query_map(params![node], |row| {
@@ -336,10 +271,4 @@ fn fetch_outgoing(
         edges.push(row.map_err(|e| SqliteGraphError::query(e.to_string()))?);
     }
     Ok(edges)
-}
-
-#[derive(Clone, Debug)]
-pub struct Constraint {
-    pub allowed_edge_types: Vec<String>,
-    pub allowed_node_types: Vec<String>,
 }

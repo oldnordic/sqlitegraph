@@ -124,7 +124,7 @@ fn bench_metrics_file() -> PathBuf {
     if let Ok(path) = env::var("SQLITEGRAPH_BENCH_FILE") {
         return PathBuf::from(path);
     }
-    Path::new(".sqlitegraph_bench.json").to_path_buf()
+    Path::new("sqlitegraph_bench.json").to_path_buf()
 }
 
 fn load_runs_from(path: &Path) -> Result<Vec<BenchMetric>, SqliteGraphError> {

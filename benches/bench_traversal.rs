@@ -156,7 +156,8 @@ fn record_traversal_metrics(kind: &str, graphs: &[PreparedGraph]) {
             bytes_per_sec: graph.dataset.edges.len() as f64,
             notes: "synthetic deterministic metric".into(),
         };
-        let _ = record_bench_run(&metric.name, metric);
+        let name = metric.name.clone();
+        let _ = record_bench_run(&name, metric);
     }
 }
 

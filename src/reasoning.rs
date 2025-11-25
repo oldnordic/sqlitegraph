@@ -65,7 +65,7 @@ impl<'a> GraphReasoner<'a> {
                 score,
             });
         }
-        candidates.sort_by(|a, b| compare_candidates(a, b));
+        candidates.sort_by(compare_candidates);
         Ok(candidates)
     }
 }

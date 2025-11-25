@@ -167,8 +167,8 @@ fn generate_scale_free_edges(node_count: usize, m: usize, seed: u64) -> Vec<Grap
         while targets.len() < m {
             let pick = rng.gen_range(0..total_degree);
             let mut cumulative = 0usize;
-            for candidate in 0..new_node {
-                cumulative += degrees[candidate];
+            for (candidate, degree) in degrees.iter().take(new_node).enumerate() {
+                cumulative += *degree;
                 if pick < cumulative {
                     if !targets.contains(&candidate) {
                         targets.push(candidate);

@@ -40,18 +40,18 @@ impl BenchGate {
     pub fn evaluate(&self, runs: &[BenchRun]) -> BenchOutcome {
         let mut failures = Vec::new();
         for run in runs {
-            if let Some(max_ns) = self.thresholds.get(&run.name) {
-                if !run.within_threshold(*max_ns) {
-                    failures.push(format!("{} exceeds threshold {}ns", run.name, max_ns));
-                }
+            if let Some(max_ns) = self.thresholds.get(&run.name)
+                && !run.within_threshold(*max_ns)
+            {
+                failures.push(format!("{} exceeds threshold {}ns", run.name, max_ns));
             }
-            if let Some(baseline) = self.baseline.get(&run.name) {
-                if !run.within_regression(baseline, self.tolerance) {
-                    failures.push(format!(
-                        "{} regression: current={}ns baseline={}ns tolerance={}",
-                        run.name, run.mean_ns, baseline.mean_ns, self.tolerance
-                    ));
-                }
+            if let Some(baseline) = self.baseline.get(&run.name)
+                && !run.within_regression(baseline, self.tolerance)
+            {
+                failures.push(format!(
+                    "{} regression: current={}ns baseline={}ns tolerance={}",
+                    run.name, run.mean_ns, baseline.mean_ns, self.tolerance
+                ));
             }
         }
         if failures.is_empty() {

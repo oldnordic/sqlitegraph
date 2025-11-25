@@ -98,11 +98,13 @@ fn test_insert_edge_requires_type() {
 }
 
 #[test]
-fn test_insert_edge_rejects_self_loops_without_flag() {
+fn test_insert_edge_allows_self_loops() {
     let graph = prepared_graph();
     let edge = sample_edge(1, 1, "CALLS");
-    let err = graph.insert_edge(&edge).expect_err("invalid");
-    assert!(matches!(err, SqliteGraphError::InvalidInput(_)));
+    let id = graph.insert_edge(&edge).expect("self loop ok");
+    let stored = graph.get_edge(id).expect("edge");
+    assert_eq!(stored.from_id, 1);
+    assert_eq!(stored.to_id, 1);
 }
 
 #[test]

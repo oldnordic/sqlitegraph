@@ -41,16 +41,17 @@ pub fn extract_subgraph(
             continue;
         }
         for (target, edge_type) in fetch_outgoing(graph, node)? {
-            if let Some(filter) = allowed_edge_types.as_ref() {
-                if !filter.contains(edge_type.as_str()) {
-                    continue;
-                }
+            if allowed_edge_types
+                .as_ref()
+                .is_some_and(|filter| !filter.contains(edge_type.as_str()))
+            {
+                continue;
             }
             let entity = graph.get_entity(target)?;
-            if let Some(filter) = allowed_node_types.as_ref() {
-                if !filter.contains(entity.kind.as_str()) {
-                    continue;
-                }
+            if let Some(filter) = allowed_node_types.as_ref()
+                && !filter.contains(entity.kind.as_str())
+            {
+                continue;
             }
             edges.push((node, target, edge_type.clone()));
             if visited.insert(target) {
@@ -65,14 +66,17 @@ pub fn extract_subgraph(
 }
 
 pub fn structural_signature(subgraph: &Subgraph) -> String {
-    let node_str = subgraph
-        .nodes
+    let mut nodes = subgraph.nodes.clone();
+    nodes.sort_unstable();
+    nodes.dedup();
+    let node_str = nodes
         .iter()
         .map(|id| id.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    let edge_str = subgraph
-        .edges
+    let mut edges = subgraph.edges.clone();
+    edges.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
+    let edge_str = edges
         .iter()
         .map(|(from, to, ty)| format!("{from}->{to}:{ty}"))
         .collect::<Vec<_>>()
@@ -89,9 +93,9 @@ fn into_lookup(items: &[String]) -> Option<AHashSet<&str>> {
 }
 
 fn fetch_outgoing(graph: &SqliteGraph, node: i64) -> Result<Vec<(i64, String)>, SqliteGraphError> {
-    let mut stmt = graph
-        .connection()
-        .prepare(
+    let conn = graph.connection();
+    let mut stmt = conn
+        .prepare_cached(
             "SELECT to_id, edge_type FROM graph_edges \
              WHERE from_id=?1 ORDER BY to_id, edge_type, id",
         )

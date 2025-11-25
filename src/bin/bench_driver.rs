@@ -1,7 +1,12 @@
 use std::process::{Command, Stdio};
 
 fn main() {
-    let benches = ["bench_insert", "bench_traversal", "bench_algorithms"];
+    let benches = [
+        "bench_insert",
+        "bench_traversal",
+        "bench_algorithms",
+        "bench_syncompat",
+    ];
     println!("sqlitegraph bench driver\n========================");
     let results = collect_results(&benches, |bench| {
         Command::new("cargo")

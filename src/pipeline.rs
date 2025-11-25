@@ -4,7 +4,7 @@ use crate::{
     SqliteGraphError,
     backend::{BackendDirection, GraphBackend, SqliteGraphBackend},
     multi_hop,
-    pattern::{NodeConstraint, PatternQuery},
+    pattern::{self, NodeConstraint, PatternQuery},
     query::GraphQuery,
 };
 
@@ -52,6 +52,7 @@ pub fn run_pipeline(
             }
             ReasoningStep::Score(config) => {
                 scores = score_nodes(backend, &nodes, config)?;
+                nodes = scores.iter().map(|(id, _)| *id).collect();
             }
         }
     }
@@ -64,7 +65,13 @@ fn pattern_nodes(
 ) -> Result<Vec<i64>, SqliteGraphError> {
     let graph = backend.graph();
     let mut nodes = AHashSet::new();
-    for id in graph.all_entity_ids()? {
+    let candidates = match &query.root {
+        Some(constraint) if constraint.kind.is_some() || constraint.name_prefix.is_some() => {
+            pattern::entity_ids_with_constraint(graph, constraint)?
+        }
+        _ => graph.all_entity_ids()?,
+    };
+    for id in candidates {
         let matches = GraphQuery::new(graph).pattern_matches(id, query)?;
         for m in matches {
             for node in m.nodes {
@@ -82,10 +89,8 @@ fn expand_khops(
 ) -> Result<Vec<i64>, SqliteGraphError> {
     let graph = backend.graph();
     let mut nodes: AHashSet<i64> = seeds.iter().copied().collect();
-    for &seed in seeds {
-        let hops = multi_hop::k_hop(graph, seed, depth, BackendDirection::Outgoing)?;
-        nodes.extend(hops);
-    }
+    let hops = multi_hop::k_hop_multi(graph, seeds, depth, BackendDirection::Outgoing)?;
+    nodes.extend(hops);
     Ok(sorted(nodes))
 }
 

@@ -24,6 +24,39 @@ pub fn k_hop(
     k_hop_internal(graph, start, depth, direction, None)
 }
 
+pub fn k_hop_multi(
+    graph: &SqliteGraph,
+    starts: &[i64],
+    depth: u32,
+    direction: BackendDirection,
+) -> Result<Vec<i64>, SqliteGraphError> {
+    if depth == 0 || starts.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut visited = AHashSet::new();
+    let mut queue = VecDeque::new();
+    for &start in starts {
+        if visited.insert(start) {
+            queue.push_back((start, 0));
+        }
+    }
+    let mut ordered = Vec::new();
+    while let Some((node, level)) = queue.pop_front() {
+        if level == depth {
+            continue;
+        }
+        let neighbors = adjacency_for(graph, node, direction, None)?;
+        for neighbor in neighbors {
+            if visited.insert(neighbor) {
+                ordered.push((level + 1, neighbor));
+                queue.push_back((neighbor, level + 1));
+            }
+        }
+    }
+    ordered.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+    Ok(ordered.into_iter().map(|(_, node)| node).collect())
+}
+
 pub fn k_hop_filtered(
     graph: &SqliteGraph,
     start: i64,
@@ -129,9 +162,9 @@ fn filter_neighbors(
         BackendDirection::Outgoing => OUTGOING_TYPED_SQL,
         BackendDirection::Incoming => INCOMING_TYPED_SQL,
     };
-    let mut stmt = graph
-        .connection()
-        .prepare(sql)
+    let conn = graph.connection();
+    let mut stmt = conn
+        .prepare_cached(sql)
         .map_err(|e| SqliteGraphError::query(e.to_string()))?;
     let rows = stmt
         .query_map([node], |row| {
@@ -143,10 +176,8 @@ fn filter_neighbors(
     let mut result = Vec::new();
     for row in rows {
         let (neighbor, edge_type) = row.map_err(|e| SqliteGraphError::query(e.to_string()))?;
-        if allowed_types.contains(edge_type.as_str()) {
-            if result.last().copied() != Some(neighbor) {
-                result.push(neighbor);
-            }
+        if allowed_types.contains(edge_type.as_str()) && result.last().copied() != Some(neighbor) {
+            result.push(neighbor);
         }
     }
     Ok(result)
