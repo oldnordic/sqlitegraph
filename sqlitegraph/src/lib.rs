@@ -28,6 +28,7 @@ pub mod bench_regression; // Public for tests
 pub mod bench_utils; // Public for tests
 pub mod bfs; // Public for tests
 pub mod cache; // Public for tests
+pub mod cli_reasoning; // Public for binary
 pub mod client; // Public for binary
 pub mod dsl; // Public for examples
 pub mod dual_orchestrator; // Public for tests
@@ -52,6 +53,7 @@ pub use api_ergonomics::{Label, NodeId, explain_pipeline}; // Pipeline explanati
 pub use backend::SqliteGraphBackend; // SQLite backend for binary
 pub use backend_client::BackendClient; // Client interface
 pub use cache::CacheStats; // Cache statistics for tests
+pub use cli_reasoning::handle_command; // CLI command handling for binary
 pub use dsl::{DslResult, parse_dsl}; // DSL parsing for tests
 pub use errors::SqliteGraphError; // Error type for all SQLiteGraph operations
 pub use graph::{GraphEdge, GraphEntity, SqliteGraph}; // Core graph types and SQLite backend

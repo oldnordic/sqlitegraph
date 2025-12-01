@@ -5,6 +5,7 @@ use sqlitegraph::{
     BackendClient, ReindexConfig, SqliteGraph, SqliteGraphError,
     backend::SqliteGraphBackend,
     backend_client::CommandLineConfig,
+    handle_command,
     recovery::{dump_graph_to_path, load_graph_from_path},
 };
 
@@ -102,11 +103,21 @@ fn run_command(
             Ok(())
         }
         other => {
-            println!("unknown command {other}, defaulting to status");
-            let nodes = client.backend().entity_ids()?.len();
-            let version = client.backend().graph().schema_version()?;
-            println!("backend=sqlite schema_version={version} nodes={nodes}");
-            Ok(())
+            // Try to handle with cli_reasoning module
+            match handle_command(client, other, args) {
+                Ok(Some(output)) => {
+                    println!("{output}");
+                    Ok(())
+                }
+                Ok(None) => {
+                    println!("unknown command {other}, defaulting to status");
+                    let nodes = client.backend().entity_ids()?.len();
+                    let version = client.backend().graph().schema_version()?;
+                    println!("backend=sqlite schema_version={version} nodes={nodes}");
+                    Ok(())
+                }
+                Err(err) => Err(err),
+            }
         }
     }
 }
