@@ -5,7 +5,7 @@ edition = "2021"
 description = "Command-line interface for SQLiteGraph graph database"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/oldnordic/sqlitegraph"
-readme = "../README.md"
+
 keywords = ["graph", "database", "sqlite", "cli", "embedded"]
 categories = ["command-line-utilities", "database"]
 
