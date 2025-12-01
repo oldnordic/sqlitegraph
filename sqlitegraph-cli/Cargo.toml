@@ -10,7 +10,7 @@ keywords = ["graph", "database", "sqlite", "cli", "embedded"]
 categories = ["command-line-utilities", "database"]
 
 [[bin]]
-name = "sqlitegraph-cli"
+name = "sqlitegraph"
 path = "src/main.rs"
 
 [dependencies]
