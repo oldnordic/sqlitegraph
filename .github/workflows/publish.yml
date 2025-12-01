@@ -1,0 +1,25 @@
+name: Publish Crates
+
+on:
+  push:
+    tags:
+      - "v*.*"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish sqlitegraph
+        working-directory: sqlitegraph
+        run: cargo publish --allow-dirty
+
+      - name: Publish sqlitegraph-cli
+        working-directory: sqlitegraph-cli
+        run: cargo publish --allow-dirty

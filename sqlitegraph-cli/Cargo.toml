@@ -1,0 +1,12 @@
+[package]
+name = "sqlitegraph-cli"
+edition = "2021"
+version = "0.1.0"
+
+[[bin]]
+name = "sqlitegraph"
+path = "src/main.rs"
+
+[dependencies]
+sqlitegraph = { path = "../sqlitegraph" }
+serde_json = "1"

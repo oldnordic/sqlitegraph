@@ -1,0 +1,398 @@
+[
+  {
+    "name": "bfs_er",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49997.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "bfs_line",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 9999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "bfs_scalefree",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "components_random_er_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 0.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "components_random_er_20000",
+    "ops_per_sec": 20000.0,
+    "bytes_per_sec": 0.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "components_random_er_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 0.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "components_scalefree_sf_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 0.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "components_scalefree_sf_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 0.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "cycles_cycles",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 0.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "degree_rank_degree",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 0.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_er_1000",
+    "ops_per_sec": 1000.0,
+    "bytes_per_sec": 4999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_er_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_er_100000",
+    "ops_per_sec": 100000.0,
+    "bytes_per_sec": 499998.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_er_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 24997.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_er_50000",
+    "ops_per_sec": 50000.0,
+    "bytes_per_sec": 249998.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_line_1000",
+    "ops_per_sec": 1000.0,
+    "bytes_per_sec": 999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_line_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 9999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_line_100000",
+    "ops_per_sec": 100000.0,
+    "bytes_per_sec": 99999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_line_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 4999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_line_50000",
+    "ops_per_sec": 50000.0,
+    "bytes_per_sec": 49999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_scalefree_1000",
+    "ops_per_sec": 1000.0,
+    "bytes_per_sec": 4985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_scalefree_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_scalefree_100000",
+    "ops_per_sec": 100000.0,
+    "bytes_per_sec": 499985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_scalefree_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 24985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_combined_scalefree_50000",
+    "ops_per_sec": 50000.0,
+    "bytes_per_sec": 249985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_er_1000",
+    "ops_per_sec": 1000.0,
+    "bytes_per_sec": 4999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_er_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_er_100000",
+    "ops_per_sec": 100000.0,
+    "bytes_per_sec": 499998.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_er_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 24997.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_er_50000",
+    "ops_per_sec": 50000.0,
+    "bytes_per_sec": 249998.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_line_1000",
+    "ops_per_sec": 1000.0,
+    "bytes_per_sec": 999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_line_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 9999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_line_100000",
+    "ops_per_sec": 100000.0,
+    "bytes_per_sec": 99999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_line_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 4999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_line_50000",
+    "ops_per_sec": 50000.0,
+    "bytes_per_sec": 49999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_scalefree_1000",
+    "ops_per_sec": 1000.0,
+    "bytes_per_sec": 4985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_scalefree_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_scalefree_100000",
+    "ops_per_sec": 100000.0,
+    "bytes_per_sec": 499985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_scalefree_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 24985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_edges_scalefree_50000",
+    "ops_per_sec": 50000.0,
+    "bytes_per_sec": 249985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_er_1000",
+    "ops_per_sec": 1000.0,
+    "bytes_per_sec": 4999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_er_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_er_100000",
+    "ops_per_sec": 100000.0,
+    "bytes_per_sec": 499998.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_er_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 24997.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_er_50000",
+    "ops_per_sec": 50000.0,
+    "bytes_per_sec": 249998.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_line_1000",
+    "ops_per_sec": 1000.0,
+    "bytes_per_sec": 999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_line_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 9999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_line_100000",
+    "ops_per_sec": 100000.0,
+    "bytes_per_sec": 99999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_line_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 4999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_line_50000",
+    "ops_per_sec": 50000.0,
+    "bytes_per_sec": 49999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_scalefree_1000",
+    "ops_per_sec": 1000.0,
+    "bytes_per_sec": 4985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_scalefree_10000",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_scalefree_100000",
+    "ops_per_sec": 100000.0,
+    "bytes_per_sec": 499985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_scalefree_5000",
+    "ops_per_sec": 5000.0,
+    "bytes_per_sec": 24985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "insert_entities_scalefree_50000",
+    "ops_per_sec": 50000.0,
+    "bytes_per_sec": 249985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "migration_shadow_read",
+    "ops_per_sec": 820.0,
+    "bytes_per_sec": 4096.0,
+    "notes": "baseline dual-runtime shadow reads"
+  },
+  {
+    "name": "neighbors_er",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49997.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "neighbors_line",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 9999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "neighbors_scalefree",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "pipeline_reason",
+    "ops_per_sec": 980.0,
+    "bytes_per_sec": 6144.0,
+    "notes": "baseline reasoning pipeline"
+  },
+  {
+    "name": "shortest_path_er",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49997.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "shortest_path_line",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 9999.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "shortest_path_scalefree",
+    "ops_per_sec": 10000.0,
+    "bytes_per_sec": 49985.0,
+    "notes": "synthetic deterministic metric"
+  },
+  {
+    "name": "subgraph_extract",
+    "ops_per_sec": 1250.0,
+    "bytes_per_sec": 5120.0,
+    "notes": "baseline deterministic subgraph"
+  },
+  {
+    "name": "syncompat_pipeline",
+    "ops_per_sec": 720.0,
+    "bytes_per_sec": 2048.0,
+    "notes": "syncompat reasoning pipeline"
+  },
+  {
+    "name": "syncompat_subgraph",
+    "ops_per_sec": 1200.0,
+    "bytes_per_sec": 4096.0,
+    "notes": "syncompat harness subgraph"
+  }
+]
