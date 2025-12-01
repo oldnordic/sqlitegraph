@@ -1,10 +1,10 @@
 [package]
 name = "sqlitegraph"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Deterministic, embedded graph database built on SQLite"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/syncore/sqlitegraph"
+repository = "https://github.com/oldnordic/sqlitegraph"
 documentation = "https://docs.rs/sqlitegraph"
 readme = "README.md"
 keywords = ["graph", "database", "sqlite", "embedded", "deterministic"]
