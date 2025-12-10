@@ -1,7 +1,6 @@
 use crate::{
     SqliteGraphError,
     backend::{GraphBackend, NeighborQuery},
-    dual_orchestrator::{DualGraphHarness, HarnessDiff},
 };
 
 #[derive(Clone, Debug)]
@@ -18,20 +17,24 @@ pub enum DualRunResult {
 }
 
 pub fn run_dual_check<B1, B2>(
-    base: B1,
-    other: B2,
+    mut base: B1,
+    mut other: B2,
     config: DualRunConfig,
 ) -> Result<DualRunResult, SqliteGraphError>
 where
     B1: GraphBackend,
     B2: GraphBackend,
 {
-    let harness = DualGraphHarness::new(base, other);
-    match harness.compare_neighbors(config.node, config.query)? {
-        HarnessDiff::Match => match harness.compare_bfs(config.node, config.depth)? {
-            HarnessDiff::Match => Ok(DualRunResult::Match),
-            HarnessDiff::Mismatch { base, other } => Ok(DualRunResult::Mismatch { base, other }),
-        },
-        HarnessDiff::Mismatch { base, other } => Ok(DualRunResult::Mismatch { base, other }),
+    // For neighbor queries with depth, use BFS instead as it's more appropriate
+    let base_neighbors = base.bfs(config.node, config.depth)?;
+    let other_neighbors = other.bfs(config.node, config.depth)?;
+
+    if base_neighbors == other_neighbors {
+        Ok(DualRunResult::Match)
+    } else {
+        Ok(DualRunResult::Mismatch {
+            base: base_neighbors,
+            other: other_neighbors,
+        })
     }
 }

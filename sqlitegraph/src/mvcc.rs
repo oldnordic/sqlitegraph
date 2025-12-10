@@ -23,7 +23,7 @@ pub struct SnapshotState {
     pub outgoing: HashMap<NodeId, Vec<NodeId>>,
     /// Immutable copy of incoming adjacency map  
     pub incoming: HashMap<NodeId, Vec<NodeId>>,
-    /// Snapshot creation timestamp for debugging
+    /// Snapshot creation timestamp
     pub created_at: std::time::SystemTime,
 }
 

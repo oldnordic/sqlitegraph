@@ -28,28 +28,22 @@ arc-swap = "1"
 criterion = { version = "0.5", features = ["html_reports"] }
 assert_cmd = "2"
 tempfile = "3"
+rand = "0.8"
 
 [features]
 default = ["sqlite-backend"]
 bench-ci = []
 sqlite-backend = []
 
-[[bin]]
-name = "bench_driver"
-path = "src/bin/bench_driver.rs"
-
+# Phase 8 Backend Comparison Benchmarks
 [[bench]]
-name = "bench_insert"
+name = "bfs"
 harness = false
 
 [[bench]]
-name = "bench_traversal"
+name = "k_hop"
 harness = false
 
 [[bench]]
-name = "bench_algorithms"
-harness = false
-
-[[bench]]
-name = "bench_syncompat"
+name = "insert"
 harness = false

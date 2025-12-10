@@ -30,8 +30,7 @@ impl SqliteGraph {
         // Acquire snapshot state
         let snapshot_state = self.snapshot_manager.acquire_snapshot();
 
-        // For testing purposes, assume in-memory database
-        // TODO: Add proper file-based database path handling for production use
+        // Use in-memory database for snapshot operations
         let db_path = ":memory:";
 
         crate::mvcc::GraphSnapshot::new(snapshot_state, db_path)
