@@ -67,3 +67,10 @@ docs/V2_INVARIANTS_*.md
 docs/V2_PERFORMANCE_*.md
 docs/V2_PROOF_*.md
 docs/V2_TEST_*.md
+
+# Project development files (should never be in repo)
+CLAUDE.md
+*.zip
+*.tar.gz
+*.tgz
+*.rar
