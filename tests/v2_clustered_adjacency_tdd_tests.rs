@@ -22,13 +22,13 @@ const V2_BFS_1000_MS: f64 = 931.45; // Current V2 1000-node BFS
 const SQLITE_BFS_100_MS: f64 = 6.01; // SQLite 100-node BFS
 const SQLITE_BFS_1000_MS: f64 = 43.02; // SQLite 1000-node BFS
 
-/// TEST 1: V2 Clustered Adjacency Must Be Used Instead of V1 Scattered Slots
+/// TEST 1: V2 Clustered Adjacency Must Use Clustered Storage
 ///
-/// This test verifies that the V2 runtime actually uses clustered adjacency
-/// instead of falling back to V1-style scattered edge slots.
+/// This test verifies that the V2 runtime uses clustered adjacency
+/// storage for optimal performance.
 #[test]
 #[should_panic(expected = "V2 clustered adjacency not yet implemented")]
-fn test_v2_uses_clustered_adjacency_not_v1_scattered() {
+fn test_v2_uses_clustered_adjacency() {
     let config = Config::default();
     let mut native_backend = SqliteGraphBackend::in_memory().unwrap();
     let graph = native_backend
@@ -51,7 +51,7 @@ fn test_v2_uses_clustered_adjacency_not_v1_scattered() {
 /// TEST 2: V2 Clustered Adjacency Must Provide Sequential I/O Performance
 ///
 /// Clustered adjacency should provide significant performance improvements
-/// by enabling sequential I/O patterns instead of random access to V1 slots.
+/// by enabling sequential I/O patterns for improved throughput.
 #[test]
 #[should_panic(expected = "V2 clustered adjacency performance not achieved")]
 fn test_v2_clustered_adjacency_performance_gains() {
@@ -181,11 +181,11 @@ fn test_v2_edge_cluster_integration() {
 
 /// TEST 5: V2 Clustered Adjacency Must Maintain Functional Correctness
 ///
-/// While improving performance, clustered adjacency must maintain
-/// exact functional parity with existing V1-style adjacency.
+/// Clustered adjacency must maintain exact functional correctness
+/// for all adjacency operations.
 #[test]
-#[should_panic(expected = "V2 clustered adjacency functional parity not achieved")]
-fn test_v2_clustered_adjacency_functional_parity() {
+#[should_panic(expected = "V2 clustered adjacency functional correctness not achieved")]
+fn test_v2_clustered_adjacency_functional_correctness() {
     let config = Config::default();
     let mut native_backend = SqliteGraphBackend::in_memory().unwrap();
     let graph = native_backend
@@ -215,10 +215,9 @@ fn test_v2_clustered_adjacency_functional_parity() {
         );
     }
 
-    // Until clustered adjacency is implemented, we expect this to fail in some way
-    // For now, this documents the expected behavior
+    // Until clustered adjacency is fully implemented, this documents expected behavior
     panic!(
-        "V2 clustered adjacency functional parity not achieved - test documents expected behavior"
+        "V2 clustered adjacency functional correctness not achieved - test documents expected behavior"
     );
 }
 

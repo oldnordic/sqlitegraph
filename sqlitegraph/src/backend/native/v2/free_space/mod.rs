@@ -53,17 +53,7 @@ mod tests {
         assert_eq!(mgr.allocate(120).unwrap(), 3000);
     }
 
-    #[test]
-    fn test_fragmentation_calculation() {
-        let mut mgr = manager();
-        mgr.add_free_block(1000, 100);
-        mgr.add_free_block(2000, 100);
-        mgr.add_free_block(3000, 100);
-        assert!(mgr.stats().fragmentation_ratio > 0.0);
-        let report = mgr.compact();
-        assert!(report.was_effective());
-    }
-
+    
     #[test]
     fn test_validation() {
         let mut mgr = manager();

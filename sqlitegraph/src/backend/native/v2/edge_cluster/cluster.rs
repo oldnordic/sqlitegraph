@@ -7,7 +7,7 @@ use std::cell::{Cell, RefCell};
 use std::fmt::Write;
 
 /// Adjacency direction for cluster construction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
     Outgoing,
     Incoming,
@@ -159,6 +159,13 @@ impl EdgeCluster {
                 Direction::Outgoing => edge.to_id,
                 Direction::Incoming => edge.from_id,
             };
+
+            // DEBUG: Print neighbor_id calculation
+            if std::env::var("EDGE_DEBUG").is_ok() {
+                println!("[EDGE_DEBUG] create_from_edges: node_id={}, direction={:?}, edge.from_id={}, edge.to_id={}, calculated_neighbor_id={}",
+                    node_id, direction, edge.from_id, edge.to_id, neighbor_id);
+            }
+
             if neighbor_id <= 0 {
                 return Err(NativeBackendError::InvalidNodeId {
                     id: neighbor_id,

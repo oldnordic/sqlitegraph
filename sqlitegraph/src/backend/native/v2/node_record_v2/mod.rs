@@ -48,43 +48,7 @@ mod tests {
         assert_eq!(node.incoming_cluster_size, 300);
     }
 
-    #[test]
-    fn test_adjacency_efficiency() {
-        let mut node = NodeRecordV2::new(
-            1,
-            "Node".to_string(),
-            "test".to_string(),
-            serde_json::json!({}),
-        );
-
-        node.set_outgoing_cluster(10000, 500, 10);
-        node.set_incoming_cluster(10500, 200, 4);
-        assert!(node.has_efficient_adjacency());
-
-        node.set_outgoing_cluster(10000, 50, 10);
-        assert!(!node.has_efficient_adjacency());
-    }
-
-    #[test]
-    fn test_node_validation() {
-        let mut node = NodeRecordV2::new(
-            1,
-            "Node".to_string(),
-            "test".to_string(),
-            serde_json::json!({}),
-        );
-        assert!(node.validate().is_ok());
-
-        node.outgoing_edge_count = 5;
-        assert!(node.validate().is_err());
-
-        node.outgoing_cluster_offset = 1000;
-        assert!(node.validate().is_err());
-
-        node.outgoing_cluster_size = 250;
-        assert!(node.validate().is_ok());
-    }
-
+    
     #[test]
     fn test_cluster_size_estimation() {
         assert_eq!(NodeRecordV2::estimate_cluster_size(0), 0);

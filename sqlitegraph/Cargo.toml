@@ -41,9 +41,7 @@ bench-ci = []
 sqlite-backend = []
 trace_v2_io = []  # STEP 1: Temporary instrumentation for Phase 66 debugging
 # Phase 63: V2 is now default behavior for Native backend (no experimental gate)
-v1_legacy = []  # Opt-in V1 scattered slot adjacency for compatibility
-# DEPRECATED: Compatibility alias - no longer gates behavior
-v2_experimental = ["v2_io_exclusive_std"]  # Phase 63: Legacy compatibility alias
+v2_experimental = ["v2_io_exclusive_std"]  # Compatibility alias for existing code
 # Phase 41: Exclusive I/O modes for corruption isolation
 v2_io_exclusive_mmap = []
 v2_io_exclusive_std = []

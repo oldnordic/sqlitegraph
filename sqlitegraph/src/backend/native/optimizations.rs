@@ -103,13 +103,13 @@ impl NeighborPointerTable {
 #[derive(Debug, Clone, PartialEq)]
 pub struct NodeHot {
     /// Number of outgoing edges
-    pub outgoing_count: u32,
+    pub outgoing_edge_count: u32,
     /// Starting offset for outgoing edges
-    pub outgoing_offset: u64,
+    pub outgoing_cluster_offset: u64,
     /// Number of incoming edges
-    pub incoming_count: u32,
+    pub incoming_edge_count: u32,
     /// Starting offset for incoming edges
-    pub incoming_offset: u64,
+    pub incoming_cluster_offset: u64,
 }
 
 pub struct NodeHotCache {
@@ -237,10 +237,10 @@ pub fn put_node_hot(node_id: NativeNodeId, metadata: NodeHot) {
 #[inline(always)]
 pub fn extract_node_hot(node: &crate::backend::native::types::NodeRecord) -> NodeHot {
     NodeHot {
-        outgoing_count: node.outgoing_count,
-        outgoing_offset: node.outgoing_offset,
-        incoming_count: node.incoming_count,
-        incoming_offset: node.incoming_offset,
+        outgoing_edge_count: node.outgoing_edge_count,
+        outgoing_cluster_offset: node.outgoing_cluster_offset,
+        incoming_edge_count: node.incoming_edge_count,
+        incoming_cluster_offset: node.incoming_cluster_offset,
     }
 }
 
@@ -287,17 +287,17 @@ mod tests {
         let mut cache = NodeHotCache::with_capacity(2);
 
         let metadata1 = NodeHot {
-            outgoing_count: 5,
-            outgoing_offset: 1000,
-            incoming_count: 3,
-            incoming_offset: 2000,
+            outgoing_edge_count: 5,
+            outgoing_cluster_offset: 1000,
+            incoming_edge_count: 3,
+            incoming_cluster_offset: 2000,
         };
 
         let metadata2 = NodeHot {
-            outgoing_count: 2,
-            outgoing_offset: 3000,
-            incoming_count: 7,
-            incoming_offset: 4000,
+            outgoing_edge_count: 2,
+            outgoing_cluster_offset: 3000,
+            incoming_edge_count: 7,
+            incoming_cluster_offset: 4000,
         };
 
         // Insert metadata
@@ -311,10 +311,10 @@ mod tests {
 
         // Test cache eviction
         let metadata3 = NodeHot {
-            outgoing_count: 1,
-            outgoing_offset: 5000,
-            incoming_count: 1,
-            incoming_offset: 6000,
+            outgoing_edge_count: 1,
+            outgoing_cluster_offset: 5000,
+            incoming_edge_count: 1,
+            incoming_cluster_offset: 6000,
         };
 
         cache.put(3, metadata3);
@@ -325,10 +325,10 @@ mod tests {
         assert_eq!(
             cache.get(3),
             Some(&NodeHot {
-                outgoing_count: 1,
-                outgoing_offset: 5000,
-                incoming_count: 1,
-                incoming_offset: 6000,
+                outgoing_edge_count: 1,
+                outgoing_cluster_offset: 5000,
+                incoming_edge_count: 1,
+                incoming_cluster_offset: 6000,
             })
         );
     }

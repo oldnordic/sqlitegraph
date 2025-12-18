@@ -27,6 +27,10 @@ pub mod graph_validation;
 // V2 clustered edge kernel (Phase 14)
 pub mod v2;
 
+// Phase 3: V1 Legacy Prevention - Permanent V1 ban
+#[path = "v1_prevention.rs"]
+pub mod v1_prevention;
+
 // Re-export public types for external use
 pub use types::{
     CpuProfile, EdgeFlags, EdgeRecord, FileHeader, FileOffset, NativeBackendError, NativeEdgeId,
@@ -36,7 +40,7 @@ pub use types::{
 pub use adjacency::{AdjacencyHelpers, AdjacencyIterator, Direction};
 pub use edge_store::EdgeStore;
 pub use graph_backend::NativeGraphBackend;
-pub use graph_file::{GraphFile, decode_persistent_header, encode_persistent_header};
+pub use graph_file::{GraphFile, decode_persistent_header, encode_persistent_header, get_slice_safe};
 pub use node_cache::NodeRecordCache;
 pub use node_store::{NodeStore, clear_node_cache};
 

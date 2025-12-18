@@ -1,4 +1,4 @@
-//! SQLite-based graph database with dual backend support.
+//! SQLite-based graph database with unified backend support.
 //!
 //! sqlitegraph provides a lightweight, deterministic graph database for embedded Rust applications.
 //! It supports both SQLite and Native storage backends through a unified API.
@@ -114,7 +114,6 @@ pub mod backend_selector;
 pub mod bfs; // Public for tests
 pub mod cache; // Public for tests
 mod client; // Public for binary
-pub mod dual_runner; // Public for tests
 mod fault_injection; // Public for tests
 pub mod graph_opt; // Public for tests
 pub mod index; // Public for tests

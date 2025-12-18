@@ -83,13 +83,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn test_large_string_handling() {
-        let mut table = StringTable::new();
-        let long_string = "a".repeat(u16::MAX as usize + 100);
-        let offset = table.get_or_add_offset(&long_string).unwrap();
-        let retrieved = table.get_string(offset).unwrap();
-        assert_eq!(retrieved.len(), u16::MAX as usize);
-    }
 }

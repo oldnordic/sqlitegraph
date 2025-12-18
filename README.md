@@ -7,8 +7,9 @@ systems is still ongoing.
 
 ## Features
 
-- Graph storage (entities/edges) using `graph_entities` / `graph_edges` plus
-  deterministic label/property indexes.
+**V2-Only Architecture** - V1 legacy code has been permanently removed.
+
+- V2 clustered adjacency storage with `outgoing_edge_count` and `incoming_edge_count` fields
 - Deterministic graph primitives: neighbors, BFS, k-hop traversal, shortest
   path, connected components, cycle detection, degree metrics.
 - Pattern queries (`PatternQuery`) and reasoning pipelines (pattern, k-hop,
@@ -21,13 +22,17 @@ systems is still ongoing.
   SPEC 17 performance validation.
 - Safety tooling providing subgraph dumps, pipeline execution/explain,
   DSL parsing, and `safety-check` reports.
+- **V1 Prevention**: Compile-time barriers prevent V1 code from ever being reintroduced.
 
 ## Status
 
 - ✅ SPEC 16 / SPEC 17 feature set implemented inside this crate
+- ✅ V2-only native backend with clustered adjacency storage
+- ✅ V1 legacy code completely removed and prevented from returning
 - ✅ Deterministic multi-hop, pattern, reasoning, dual-read/write, migration,
   and benchmark gating
 - ✅ Examples demonstrating practical workflows
+- ✅ V1 prevention barriers ensure future V2-only development
 - ⚠️ Still awaiting broader SynCore wiring and real-world performance tuning;
   expect public APIs to stabilize as integration feedback arrives.
 
@@ -103,10 +108,12 @@ Full module documentation lives in `src/`—every public module is capped at
 
 ## Schema Compatibility Matrix
 
-| Schema version | Changes | Notes |
-| -------------- | ------- | ----- |
-| 1 | Base tables (`graph_entities`, `graph_edges`, `graph_labels`, `graph_properties`) plus indexes and the `graph_meta` row containing the schema version. | Created whenever an empty database file is opened. |
-| 2 | Adds `graph_meta_history` and records each applied migration step. | Call `run_pending_migrations` when upgrading older files. Newer binaries refuse to open DBs whose version exceeds `SCHEMA_VERSION`. |
+| Schema version | Status | Changes | Notes |
+| -------------- | ------ | ------- | ----- |
+| 1 | ❌ **Removed** | Base tables (`graph_entities`, `graph_edges`, `graph_labels`, `graph_properties`) plus indexes and the `graph_meta` row containing the schema version. | V1 databases no longer supported - must migrate to V2. |
+| 2 | ✅ **Current** | V2 clustered adjacency storage + `graph_meta_history` recording each applied migration step. | All databases now report `schema_version=2`. Future development is V2-only. |
+
+**V1 Legacy Status**: V1 code and database support has been permanently removed. V1 prevention barriers ensure V1 cannot be reintroduced. All new development must use V2 APIs and patterns.
 
 Use `read_schema_version` to inspect the current version. All future migrations must append a row to this table so the upgrade path remains auditable.
 

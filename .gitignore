@@ -46,3 +46,24 @@ cobertura.xml
 # Benchmark outputs
 *.json.bak
 benchmark_results/
+
+# Claude and internal development files
+.claude/
+results/
+
+# Temporary benchmark scripts and results
+quick_comparison_results.json
+scripts/
+
+# Internal documentation and reports
+V1_LEGACY_PURGE_MISSION_REPORT.md
+V2_REGRESSION_GATES_*.md
+docs/V1_*.md
+docs/V2_BENCHMARK_*.md
+docs/V2_BENCH_*.md
+docs/V2_COMPARATIVE_*.md
+docs/V2_FIELD_*.md
+docs/V2_INVARIANTS_*.md
+docs/V2_PERFORMANCE_*.md
+docs/V2_PROOF_*.md
+docs/V2_TEST_*.md

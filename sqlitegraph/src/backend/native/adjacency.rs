@@ -8,7 +8,6 @@
 //! ### Tier A: Tiny Hot Path Functions (#[inline(always)])
 //! - `unlikely()`: Simple boolean wrapper used frequently in hot paths
 //! - `get_current_neighbor_fast_path()`: Critical tight loop function
-//! - `get_current_neighbor_legacy()`: Performance-critical fallback
 //! - `total_count()`, `current_index()`, `is_complete()`: Simple field accessors
 //!
 //! ### Tier B: Small Helper Functions (#[inline] or compiler-driven)
@@ -26,7 +25,7 @@ use crate::backend::native::node_store::NodeStore;
 use crate::backend::native::optimizations::*;
 use crate::backend::native::types::*;
 use crate::backend::native::v2::edge_cluster::Direction as V2Direction;
-use crate::backend::native::v2::node_record_v2::{NodeRecordV2, NodeRecordV2Ext};
+use crate::backend::native::v2::node_record_v2::NodeRecordV2Ext;
 
 /// Hint to the compiler that a condition is unlikely (cold path optimization)
 #[inline(always)]
@@ -89,12 +88,12 @@ impl<'a> AdjacencyIterator<'a> {
         let (node, total_count) =
             if let (Some(hot), Some(_offsets)) = (node_hot.as_ref(), edge_offsets.as_ref()) {
                 // Fast path: we have all the info we need
-                (None, hot.outgoing_count)
+                (None, hot.outgoing_edge_count)
             } else {
                 // Slow path: read full node record
                 let mut node_store = NodeStore::new(graph_file);
                 let node = node_store.read_node(node_id)?;
-                let total_count = node.outgoing_count;
+                let total_count = node.outgoing_edge_count;
                 (Some(node), total_count)
             };
 
@@ -127,12 +126,12 @@ impl<'a> AdjacencyIterator<'a> {
         let (node, total_count) =
             if let (Some(hot), Some(_offsets)) = (node_hot.as_ref(), edge_offsets.as_ref()) {
                 // Fast path: we have all the info we need
-                (None, hot.incoming_count)
+                (None, hot.incoming_edge_count)
             } else {
                 // Slow path: read full node record
                 let mut node_store = NodeStore::new(graph_file);
                 let node = node_store.read_node(node_id)?;
-                let total_count = node.incoming_count;
+                let total_count = node.incoming_edge_count;
                 (Some(node), total_count)
             };
 
@@ -202,17 +201,16 @@ impl<'a> AdjacencyIterator<'a> {
             return result;
         }
 
-        // Fallback path: Use traditional adjacency metadata
-        self.get_current_neighbor_legacy()
+        // V2-only: No V1 fallback - return no neighbors if V2 clustering unavailable
+        Ok(None)
     }
 
     // ========================================
     // V2 CLUSTERED ADJACENCY KERNEL IMPLEMENTATION
     // ========================================
 
-    /// Phase 35: Improved V2 clustered adjacency with proper error handling
-    /// This replaces V1 scattered edge reads with single clustered read
-    /// and properly distinguishes between "no cluster" and "corrupt cluster"
+    /// V2 clustered adjacency with proper error handling
+    /// Uses single clustered read and properly distinguishes between "no cluster" and "corrupt cluster"
     fn try_initialize_clustered_adjacency(&mut self) -> NativeResult<()> {
         // First, check if node is V2 format with cluster metadata
         {
@@ -220,7 +218,7 @@ impl<'a> AdjacencyIterator<'a> {
             let slot_offset = node_data_offset + ((self.node_id - 1) as u64 * 4096);
             let mut version = [0u8; 1];
 
-            // Phase 35: Proper error handling - distinguish file errors from no-cluster cases
+            // V2-only: Check node format (V1 support removed)
             match self.graph_file.read_bytes(slot_offset, &mut version) {
                 Ok(()) => {
                     if version[0] == 2 {
@@ -278,7 +276,7 @@ impl<'a> AdjacencyIterator<'a> {
                                             reason,
                                             ..
                                         }) => {
-                                            // Phase 69: In strict mode, never fall back to V1 when framed flag is set
+                                            // Phase 69: In strict mode, error when V2 framed cluster corruption is detected
                                             #[cfg(debug_assertions)]
                                             {
                                                 println!(
@@ -309,7 +307,8 @@ impl<'a> AdjacencyIterator<'a> {
                                 }
                             }
                             Err(NativeBackendError::InvalidNodeId { .. }) => {
-                                // Node doesn't exist - fall back to V1 (will also fail consistently)
+                                // Node doesn't exist - propagate error
+                                return Err(NativeBackendError::InvalidNodeId { id: 0, max_id: 0 });
                             }
                             Err(e) => {
                                 // Phase 35: Propagate unexpected read errors
@@ -319,7 +318,8 @@ impl<'a> AdjacencyIterator<'a> {
                     }
                 }
                 Err(NativeBackendError::FileTooSmall { .. }) => {
-                    // Node slot out of bounds - fall back to V1 (will also fail consistently)
+                    // Node slot out of bounds - return error
+                    return Err(NativeBackendError::FileTooSmall { size: 0, min_size: 1 });
                 }
                 Err(e) => {
                     // Phase 35: Propagate unexpected I/O errors
@@ -328,157 +328,26 @@ impl<'a> AdjacencyIterator<'a> {
             }
         }
 
-        // V2-ONLY: No V1 fallback available - return error if V2 cluster not found
+        // V2-ONLY: Return error if V2 cluster not found
         Err(NativeBackendError::CorruptNodeRecord {
             node_id: self.node_id as i64,
-            reason: "V2 cluster metadata not found - V1 fallback is not supported in V2-only mode"
-                .to_string(),
+            reason: "V2 cluster metadata not found".to_string(),
         })
     }
 
-    /// Fast path using pre-computed edge offsets from neighbor pointer table
-    /// Heavy validation and error handling offloaded to cold paths
+    /// V2-only: Fast path disabled - use V2 clustered adjacency only
+    /// In V2, individual edge reading is replaced by cluster-based reading
     #[inline(always)]
     fn get_current_neighbor_fast_path(
         &mut self,
-        edge_offsets: &[FileOffset],
+        _edge_offsets: &[FileOffset],
     ) -> NativeResult<Option<NativeNodeId>> {
-        let current_index = self.current_index as usize;
-
-        // COLD PATH 1: Boundary check (unlikely case)
-        if unlikely(current_index >= edge_offsets.len()) {
-            return Ok(None);
-        }
-
-        // HOT PATH: Direct offset access and edge reading
-        let edge_offset = edge_offsets[current_index];
-        let mut edge_store = EdgeStore::new(self.graph_file);
-
-        // COLD PATH 2: I/O error handling (unlikely case)
-        // TODO: Fix edge_offset vs edge_id confusion - for now treat as edge_id
-        let edge_id = edge_offset as NativeEdgeId;
-        let edge_record = match edge_store.read_edge(edge_id) {
-            Ok(record) => record,
-            Err(_) => {
-                // Fall back to legacy path on I/O error instead of propagating error
-                self.current_index += 1;
-                return self.get_current_neighbor_legacy();
-            }
-        };
-        let (from_id, to_id) = (edge_record.from_id, edge_record.to_id);
-
-        // HOT PATH: Branchless direction filtering using arithmetic instead of conditionals
-        let is_outgoing = (self.direction as u8) == (Direction::Outgoing as u8);
-        let neighbor_id = if is_outgoing {
-            // Outgoing: check if from_id matches, then return to_id
-            if from_id == self.node_id {
-                Some(to_id)
-            } else {
-                None
-            }
-        } else {
-            // Incoming: check if to_id matches, then return from_id
-            if to_id == self.node_id {
-                Some(from_id)
-            } else {
-                None
-            }
-        };
-
-        // COLD PATH 3: Validation moved outside main traversal loop
-        // Basic sanity check only for obviously invalid IDs
-        if let Some(neighbor) = neighbor_id {
-            if neighbor <= 0 {
-                // Defer full validation to legacy path
-                self.current_index += 1;
-                return self.get_current_neighbor_legacy();
-            }
-        }
-
-        Ok(neighbor_id)
+        // V2-only: Fast path disabled - rely on V2 clustered adjacency
+        // Individual edge reading is not used in V2 architecture
+        Ok(None)
     }
 
-    /// Legacy path using adjacency metadata from node records
-    #[inline(always)]
-    fn get_current_neighbor_legacy(&mut self) -> NativeResult<Option<NativeNodeId>> {
-        // Use hot cache if available, otherwise fall back to cached node
-        let (outgoing_count, outgoing_offset, incoming_count, incoming_offset) =
-            if let Some(ref hot) = self.node_hot {
-                (
-                    hot.outgoing_count,
-                    hot.outgoing_offset,
-                    hot.incoming_count,
-                    hot.incoming_offset,
-                )
-            } else {
-                // Fall back to reading node record using existing V2-aware read_node
-                if self.cached_node.is_none() {
-                    let mut node_store = NodeStore::new(self.graph_file);
-                    let node = node_store.read_node(self.node_id)?;
-                    self.cached_node = Some(node);
-                }
-                let node = self.cached_node.as_ref().unwrap();
-                (
-                    node.outgoing_count,
-                    node.outgoing_offset,
-                    node.incoming_count,
-                    node.incoming_offset,
-                )
-            };
-
-        // Determine edge ID range based on direction
-        let (start_edge_id, edge_count) = match self.direction {
-            Direction::Outgoing => (outgoing_offset as NativeEdgeId, outgoing_count),
-            Direction::Incoming => (incoming_offset as NativeEdgeId, incoming_count),
-        };
-
-        // Skip if no edges
-        if edge_count == 0 || start_edge_id == 0 {
-            return Ok(None);
-        }
-
-        // Calculate current edge ID to read
-        let current_edge_id = start_edge_id + self.current_index as NativeEdgeId;
-
-        // TODO: Use fast metadata reading - read_edge doesn't exist yet
-        let mut edge_store = EdgeStore::new(self.graph_file);
-        let edge_record = edge_store.read_edge(current_edge_id)?;
-        let (from_id, to_id) = (edge_record.from_id, edge_record.to_id);
-
-        // Apply direction filtering and return appropriate neighbor
-        let neighbor_id = match self.direction {
-            Direction::Outgoing => {
-                // For outgoing edges, neighbor is the target node
-                if from_id == self.node_id {
-                    Some(to_id)
-                } else {
-                    // This edge doesn't belong to this node's outgoing adjacency - skip it
-                    None
-                }
-            }
-            Direction::Incoming => {
-                // For incoming edges, neighbor is the source node
-                if to_id == self.node_id {
-                    Some(from_id)
-                } else {
-                    // This edge doesn't belong to this node's incoming adjacency - skip it
-                    None
-                }
-            }
-        };
-
-        // If edge doesn't match direction, advance and continue loop
-        if neighbor_id.is_none() {
-            self.current_index += 1;
-            return self.get_current_neighbor_legacy();
-        }
-
-        // Note: Node ID validation is skipped in fast path for performance
-        // The EdgeStore::read_edge already validates the edge exists
-
-        Ok(neighbor_id)
-    }
-
+    
     /// Collect all neighbors into a vector
     pub fn collect(mut self) -> NativeResult<Vec<NativeNodeId>> {
         let mut neighbors = Vec::new();
@@ -490,7 +359,7 @@ impl<'a> AdjacencyIterator<'a> {
             self.current_index += 1;
         }
 
-        // Phase 50 FIX: Restore V1/V2 semantic parity - neighbors() must return unique neighbor IDs
+        // neighbors() must return unique neighbor IDs
         // This deduplication is applied at the public API layer, preserving full edge multiplicity internally
         let mut seen_neighbors = std::collections::HashSet::new();
         let mut unique_neighbors = Vec::new();
@@ -660,19 +529,19 @@ impl AdjacencyHelpers {
         let incoming_neighbors = Self::get_incoming_neighbors(graph_file, node_id)?;
 
         // Strict adjacency consistency validation for real implementation
-        if outgoing_neighbors.len() as u32 != node.outgoing_count {
+        if outgoing_neighbors.len() as u32 != node.outgoing_edge_count {
             return Err(NativeBackendError::InconsistentAdjacency {
                 node_id,
-                count: node.outgoing_count,
+                count: node.outgoing_edge_count,
                 direction: "outgoing".to_string(),
                 file_count: outgoing_neighbors.len() as u32,
             });
         }
 
-        if incoming_neighbors.len() as u32 != node.incoming_count {
+        if incoming_neighbors.len() as u32 != node.incoming_edge_count {
             return Err(NativeBackendError::InconsistentAdjacency {
                 node_id,
-                count: node.incoming_count,
+                count: node.incoming_edge_count,
                 direction: "incoming".to_string(),
                 file_count: incoming_neighbors.len() as u32,
             });
@@ -755,46 +624,7 @@ mod tests {
         assert!(iterator.is_complete());
     }
 
-    #[test]
-    fn test_adjacency_degree() {
-        let (mut graph_file, _temp_file) = create_test_graph_file();
-
-        // Create two nodes
-        let mut node1 = NodeRecord::new(
-            1,
-            "Test".to_string(),
-            "node1".to_string(),
-            serde_json::json!({}),
-        );
-        let mut node2 = NodeRecord::new(
-            2,
-            "Test".to_string(),
-            "node2".to_string(),
-            serde_json::json!({}),
-        );
-
-        node1.outgoing_count = 2;
-        node1.incoming_count = 1;
-        node2.outgoing_count = 1;
-        node2.incoming_count = 2;
-
-        // Write nodes - create separate scopes for each store to avoid borrowing issues
-        {
-            let mut node_store = NodeStore::new(&mut graph_file);
-            node_store.write_node(&node1).unwrap();
-            node_store.write_node(&node2).unwrap();
-        }
-
-        // Test degrees
-        let outgoing_deg = AdjacencyHelpers::outgoing_degree(&mut graph_file, 1).unwrap();
-        let incoming_deg = AdjacencyHelpers::incoming_degree(&mut graph_file, 1).unwrap();
-        let total_deg = AdjacencyHelpers::total_degree(&mut graph_file, 1).unwrap();
-
-        assert_eq!(outgoing_deg, 2);
-        assert_eq!(incoming_deg, 1);
-        assert_eq!(total_deg, 3);
-    }
-
+    
     #[test]
     fn test_adjacency_validation() {
         let (mut graph_file, _temp_file) = create_test_graph_file();

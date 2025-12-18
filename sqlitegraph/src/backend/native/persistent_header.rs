@@ -109,7 +109,7 @@ impl PersistentHeaderV2 {
         let required_flags = constants::FLAG_V2_FRAMED_RECORDS | constants::FLAG_V2_ATOMIC_COMMIT;
         if (self.flags & required_flags) != required_flags {
             return Err(NativeBackendError::UnsupportedVersion {
-                version: 1, // Legacy version
+                version: 1, // Unsupported version
                 supported_version: constants::FILE_FORMAT_VERSION,
             });
         }

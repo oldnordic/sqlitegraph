@@ -6,6 +6,26 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+// Phase 3: V1 Prevention - Top-level compile-time barrier
+const _: () = {
+    // This will fail if anyone tries to add V1 feature flags
+    #[cfg(feature = "v1")]
+    compile_error!("V1 FEATURE DETECTED: V1 has been permanently removed. This codebase is V2-ONLY.");
+
+    // This will fail if anyone tries to enable V1 compatibility
+    #[cfg(feature = "v1_compatibility")]
+    compile_error!("V1 COMPATIBILITY DETECTED: V1 has been permanently removed. Use V2 APIs only.");
+
+    // Intentional guard configs - these will remain noisy as V1 prevention
+    #[allow(unexpected_cfgs)]
+    #[cfg(feature = "v1")]
+    const _: () = compile_error!("V1 FEATURE DETECTED: V1 has been permanently removed. This codebase is V2-ONLY.");
+
+    #[allow(unexpected_cfgs)]
+    #[cfg(feature = "v1_compatibility")]
+    const _: () = compile_error!("V1 COMPATIBILITY DETECTED: V1 has been permanently removed. Use V2 APIs only.");
+};
+
 /// Native node identifier (alias for i64 to match existing NodeId)
 pub type NativeNodeId = i64;
 
@@ -105,7 +125,7 @@ pub struct FileHeader {
     pub schema_version: u64,
     /// Offset to node data section
     pub node_data_offset: u64,
-    /// Offset to edge data section (V1) or outgoing clusters begin (V2)
+    /// Offset to edge data section or outgoing clusters begin
     pub edge_data_offset: u64,
     /// V2: Offset where outgoing edge clusters begin
     pub outgoing_cluster_offset: u64,
@@ -368,78 +388,11 @@ impl FileHeader {
     }
 }
 
-/// Node record structure for storage
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct NodeRecord {
-    /// Unique node identifier
-    pub id: NativeNodeId,
-    /// Node flags bitfield
-    pub flags: NodeFlags,
-    /// Node type/kind (e.g., "Function", "Variable", etc.)
-    pub kind: String,
-    /// Human-readable node name
-    pub name: String,
-    /// JSON metadata for the node
-    pub data: serde_json::Value,
-    /// Offset to first outgoing edge in edge file
-    pub outgoing_offset: FileOffset,
-    /// Number of outgoing edges
-    pub outgoing_count: u32,
-    /// Offset to first incoming edge in edge file
-    pub incoming_offset: FileOffset,
-    /// Number of incoming edges
-    pub incoming_count: u32,
-}
+/// V2-only node record type alias for backward compatibility
+pub type NodeRecord = crate::backend::native::v2::node_record_v2::NodeRecordV2;
 
-impl NodeRecord {
-    /// Create a new node record
-    pub fn new(id: NativeNodeId, kind: String, name: String, data: serde_json::Value) -> Self {
-        Self {
-            id,
-            flags: NodeFlags::NONE,
-            kind,
-            name,
-            data,
-            outgoing_offset: 0,
-            outgoing_count: 0,
-            incoming_offset: 0,
-            incoming_count: 0,
-        }
-    }
-
-    /// Validate the node record
-    pub fn validate(&self, max_node_id: NativeNodeId) -> Result<(), NativeBackendError> {
-        if self.id <= 0 || self.id > max_node_id {
-            return Err(NativeBackendError::InvalidNodeId {
-                id: self.id,
-                max_id: max_node_id,
-            });
-        }
-
-        if self.kind.len() > super::constants::node::MAX_STRING_LENGTH as usize {
-            return Err(NativeBackendError::RecordTooLarge {
-                size: self.kind.len() as u32,
-                max_size: super::constants::node::MAX_STRING_LENGTH as u32,
-            });
-        }
-
-        if self.name.len() > super::constants::node::MAX_STRING_LENGTH as usize {
-            return Err(NativeBackendError::RecordTooLarge {
-                size: self.name.len() as u32,
-                max_size: super::constants::node::MAX_STRING_LENGTH as u32,
-            });
-        }
-
-        Ok(())
-    }
-
-    /// Get total degree (incoming + outgoing)
-    pub fn total_degree(&self) -> u32 {
-        self.outgoing_count + self.incoming_count
-    }
-}
-
-/// Edge record structure for storage
+/// Edge record structure for API compatibility (V1-style fields for operations)
+/// This is converted to CompactEdgeRecord for V2 storage
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdgeRecord {
     /// Unique edge identifier

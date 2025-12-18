@@ -115,6 +115,11 @@ pub fn node_record_to_entity(record: NodeRecord) -> GraphEntity {
 
 /// Convert EdgeSpec to EdgeRecord for storage
 pub fn edge_spec_to_record(spec: EdgeSpec, edge_id: NativeEdgeId) -> EdgeRecord {
+    // DEBUG: Print what EdgeSpec contains before conversion to EdgeRecord
+    if std::env::var("EDGE_DEBUG").is_ok() {
+        println!("[EDGE_DEBUG] edge_spec_to_record: from={}, to={}, edge_type={}", spec.from, spec.to, spec.edge_type);
+    }
+
     EdgeRecord::new(
         edge_id,
         spec.from as NativeNodeId,

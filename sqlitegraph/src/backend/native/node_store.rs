@@ -50,23 +50,10 @@ impl<'a> NodeStore<'a> {
         Ok(next_id)
     }
 
-    /// Write a node record to the file (V2-ONLY: convert legacy to V2 format)
+    /// Write a node record to the file (V2-ONLY: direct write)
     pub fn write_node(&mut self, node: &NodeRecord) -> NativeResult<()> {
-        // Convert legacy node record to V2 format
-        let v2_record = NodeRecordV2 {
-            id: node.id,
-            flags: node.flags,
-            kind: node.kind.clone(),
-            name: node.name.clone(),
-            data: node.data.clone(),
-            outgoing_edge_count: node.outgoing_count,
-            incoming_edge_count: node.incoming_count,
-            outgoing_cluster_offset: node.outgoing_offset,
-            incoming_cluster_offset: node.incoming_offset,
-            outgoing_cluster_size: 0, // These are calculated elsewhere
-            incoming_cluster_size: 0,
-        };
-        self.write_node_v2(&v2_record)
+        // NodeRecord is now a type alias to NodeRecordV2, write directly
+        self.write_node_v2(node)
     }
 
     /// Write a V2 node record to the file
@@ -232,17 +219,10 @@ impl<'a> NodeStore<'a> {
         Ok(())
     }
 
-    /// Read a node record from the file by ID with V2 routing
+    /// Read a node record from the file by ID (V2-only)
     pub fn read_node(&mut self, node_id: NativeNodeId) -> NativeResult<NodeRecord> {
-        // Check if this is a V2 format file
-        let header = self.graph_file.header();
-        let is_v2_framed = (header.flags & super::constants::FLAG_V2_FRAMED_RECORDS) != 0;
-        let is_atomic_commit = (header.flags & super::constants::FLAG_V2_ATOMIC_COMMIT) != 0;
-        let is_v2_file = is_v2_framed && is_atomic_commit;
-
-        // V2-ONLY: Read V2 node directly and convert to legacy format for compatibility
-        let v2_record = self.read_node_v2(node_id)?;
-        Ok(self.v2_to_legacy(&v2_record))
+        // V2-only: Always use V2 node reading (V1 format detection removed)
+        self.read_node_v2(node_id)
     }
 
     /// Read a V2 node record from the file by ID
@@ -460,21 +440,7 @@ impl<'a> NodeStore<'a> {
         Ok(())
     }
 
-    /// Convert V2 node record to legacy format for API compatibility
-    fn v2_to_legacy(&self, v2_record: &NodeRecordV2) -> NodeRecord {
-        NodeRecord {
-            id: v2_record.id,
-            flags: v2_record.flags,
-            kind: v2_record.kind.clone(),
-            name: v2_record.name.clone(),
-            data: v2_record.data.clone(),
-            outgoing_count: v2_record.outgoing_edge_count,
-            incoming_count: v2_record.incoming_edge_count,
-            outgoing_offset: v2_record.outgoing_cluster_offset,
-            incoming_offset: v2_record.incoming_cluster_offset,
-        }
-    }
-}
+  }
 
 /// Clear the node cache (no-op since we removed caching)
 pub fn clear_node_cache() {

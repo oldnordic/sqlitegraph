@@ -14,7 +14,6 @@ pub const FILE_FORMAT_VERSION: u32 = 2;
 
 /// Header field offsets
 pub mod header_offset {
-    use super::HEADER_SIZE;
     pub const MAGIC: u64 = 0;
     pub const VERSION: u64 = 8;
     pub const FLAGS: u64 = 12;
@@ -98,7 +97,7 @@ pub const TX_STATE_MASK: u32 = 0x0000_00F0;
 pub const TX_STATE_CLEAN: u32 = 0x0000_0000; // No transaction in progress
 pub const TX_STATE_IN_PROGRESS: u32 = 0x0000_0010; // Transaction is being written
 
-/// Default feature flags (enable framed cluster records for all new files)
+/// Default feature flags (enable V2 framed cluster records for all new files)
 pub const DEFAULT_FEATURE_FLAGS: u32 = FLAG_V2_FRAMED_RECORDS | FLAG_V2_ATOMIC_COMMIT;
 
 /// Default schema version

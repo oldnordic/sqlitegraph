@@ -206,7 +206,36 @@ free). All take `(node_count, seed)`; outputs are sorted deterministically.
 
 ---
 
-## 8. Dual-read/dual-write Workflows
+## 8. V1 Legacy Removal (Status: Complete)
+
+**V1 legacy code has been permanently removed from SQLiteGraph as of version 0.1.1.**
+
+### What Was Removed
+- All V1 native backend implementation files
+- V1 node and edge storage formats
+- V1 adjacency management code
+- V1 serialization/deserialization logic
+- V1 graph file handling code
+
+### V1 Prevention Mechanisms
+SQLiteGraph now includes compile-time barriers to prevent V1 code from ever being reintroduced:
+- `sqlitegraph/src/backend/native/v1_prevention.rs` - Active compilation barriers
+- Feature flag guards that cause compilation failures if V1 features are enabled
+- Runtime enforcement functions ensuring V2-only behavior
+- `tests/v1_prevention_compilation_tests.rs` - 5 tests verifying V1 cannot compile
+
+### Current Architecture
+- **V2-Only**: SQLiteGraph operates exclusively with V2 native backend
+- **V2 Field Names**: `outgoing_edge_count`, `incoming_edge_count` with V2 clustered adjacency
+- **EdgeRecord Architecture**: V1-style API maintained for compatibility, backed by `CompactEdgeRecord` storage
+- **Schema Version**: All databases now report `schema_version=2` via CLI
+- **Compile Errors**: Reduced from 117 to 0 during V1 purge mission
+
+**Result**: 55/55 library tests passing, 4/4 API tests passing, 5/5 V1 prevention tests passing
+
+---
+
+## 9. Dual-read/dual-write Workflows
 
 1. Use `DualWriter` or `MigrationManager` to mirror nodes/edges into a shadow
    backend.
@@ -217,12 +246,13 @@ free). All take `(node_count, seed)`; outputs are sorted deterministically.
 
 ---
 
-## 9. Coding Guidelines (Enforced in Repo)
+## 10. Coding Guidelines (Enforced in Repo)
 
 - Max 300 LOC per file (per spec).
 - Deterministic ordering (sorted adjacency, seeded RNG) everywhere.
 - No async/runtime dependencies; pure Rust + SQLite.
 - Tests first (TDD) before implementations.
+- **V2-Only Development**: All new code must use V2 APIs and patterns only.
 
 ---
 

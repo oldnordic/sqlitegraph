@@ -214,7 +214,7 @@ impl GraphFile {
         let required_flags = FLAG_V2_FRAMED_RECORDS | FLAG_V2_ATOMIC_COMMIT;
         if (graph_file.persistent_header.flags & required_flags) != required_flags {
             return Err(NativeBackendError::UnsupportedVersion {
-                version: 1, // Any file without both V2 flags is considered V1
+                version: 1, // Any file without both V2 flags is unsupported
                 supported_version: 2,
             });
         }
@@ -588,7 +588,6 @@ impl GraphFile {
 
         // CRITICAL FIX: Do NOT rewrite V2 node slots during rollback
         // This prevents corruption of V2 format (version=2 -> version=1)
-        // Cluster metadata will be cleared on next read through V1 fallback path
 
         // Just clear the transaction tracking
         self.tx_modified_nodes.clear();
@@ -641,8 +640,7 @@ impl GraphFile {
         &mut self.transaction_state
     }
 
-    // === PHASE 1: SIMPLIFIED COMPATIBILITY LAYER ===
-    // Provide temporary compatibility methods for remaining call sites
+    // === HEADER ACCESS METHODS ===
 
     pub fn header(&self) -> &PersistentHeaderV2 {
         &self.persistent_header
@@ -1511,10 +1509,12 @@ impl GraphFile {
             kind: "node".to_string(),
             name: format!("node_{}", node_id),
             data: serde_json::Value::Null,
-            outgoing_offset: 0,
-            outgoing_count: 0,
-            incoming_offset: 0,
-            incoming_count: 0,
+            outgoing_cluster_offset: 0,
+            outgoing_cluster_size: 0,
+            outgoing_edge_count: 0,
+            incoming_cluster_offset: 0,
+            incoming_cluster_size: 0,
+            incoming_edge_count: 0,
         })
     }
 
@@ -1755,6 +1755,19 @@ pub fn encode_persistent_header(header: &PersistentHeaderV2) -> NativeResult<Vec
     Ok(buffer)
 }
 
+/// Helper function for safe slice access with bounds checking
+pub fn get_slice_safe(data: &[u8], start: usize, len: usize) -> NativeResult<&[u8]> {
+    if start.checked_add(len).map_or(true, |end| end > data.len()) {
+        return Err(NativeBackendError::InvalidHeader {
+            field: "header_data".to_string(),
+            reason: format!("slice access out of bounds: start={}, len={}, data_len={}",
+                          start, len, data.len()),
+        });
+    }
+    // This is safe now because we checked the bounds above
+    Ok(&data[start..start + len])
+}
+
 /// Decode PersistentHeaderV2 from byte array
 pub fn decode_persistent_header(bytes: &[u8]) -> NativeResult<PersistentHeaderV2> {
     use crate::backend::native::persistent_header::{PERSISTENT_HEADER_SIZE, PersistentHeaderV2};
@@ -1769,90 +1782,98 @@ pub fn decode_persistent_header(bytes: &[u8]) -> NativeResult<PersistentHeaderV2
     let mut offset = 0;
 
     // Read magic bytes
+    let magic_slice = get_slice_safe(bytes, offset, 8)?;
     let mut magic = [0u8; 8];
-    magic.copy_from_slice(&bytes[offset..offset + 8]);
+    magic.copy_from_slice(magic_slice);
     offset += 8;
 
     // Read version
+    let version_slice = get_slice_safe(bytes, offset, 4)?;
     let version = u32::from_be_bytes([
-        bytes[offset],
-        bytes[offset + 1],
-        bytes[offset + 2],
-        bytes[offset + 3],
+        version_slice[0],
+        version_slice[1],
+        version_slice[2],
+        version_slice[3],
     ]);
     offset += 4;
 
     // Read flags
+    let flags_slice = get_slice_safe(bytes, offset, 4)?;
     let flags = u32::from_be_bytes([
-        bytes[offset],
-        bytes[offset + 1],
-        bytes[offset + 2],
-        bytes[offset + 3],
+        flags_slice[0],
+        flags_slice[1],
+        flags_slice[2],
+        flags_slice[3],
     ]);
     offset += 4;
 
     // Read node count
+    let node_count_slice = get_slice_safe(bytes, offset, 8)?;
     let node_count = u64::from_be_bytes([
-        bytes[offset],
-        bytes[offset + 1],
-        bytes[offset + 2],
-        bytes[offset + 3],
-        bytes[offset + 4],
-        bytes[offset + 5],
-        bytes[offset + 6],
-        bytes[offset + 7],
+        node_count_slice[0],
+        node_count_slice[1],
+        node_count_slice[2],
+        node_count_slice[3],
+        node_count_slice[4],
+        node_count_slice[5],
+        node_count_slice[6],
+        node_count_slice[7],
     ]);
     offset += 8;
 
     // Read edge count
+    let edge_count_slice = get_slice_safe(bytes, offset, 8)?;
     let edge_count = u64::from_be_bytes([
-        bytes[offset],
-        bytes[offset + 1],
-        bytes[offset + 2],
-        bytes[offset + 3],
-        bytes[offset + 4],
-        bytes[offset + 5],
-        bytes[offset + 6],
-        bytes[offset + 7],
+        edge_count_slice[0],
+        edge_count_slice[1],
+        edge_count_slice[2],
+        edge_count_slice[3],
+        edge_count_slice[4],
+        edge_count_slice[5],
+        edge_count_slice[6],
+        edge_count_slice[7],
     ]);
     offset += 8;
 
     // Read schema version
+    let schema_version_slice = get_slice_safe(bytes, offset, 8)?;  // TODO: This should probably be 4 bytes, not 8
     let schema_version = u64::from_be_bytes([
-        bytes[offset],
-        bytes[offset + 1],
-        bytes[offset + 2],
-        bytes[offset + 3],
-        bytes[offset + 4],
-        bytes[offset + 5],
-        bytes[offset + 6],
-        bytes[offset + 7],
+        schema_version_slice[0],
+        schema_version_slice[1],
+        schema_version_slice[2],
+        schema_version_slice[3],
+        schema_version_slice[4],
+        schema_version_slice[5],
+        schema_version_slice[6],
+        schema_version_slice[7],
     ]);
     offset += 8;
 
     // Read node data offset
+    let node_data_offset_slice = get_slice_safe(bytes, offset, 8)?;
     let node_data_offset = u64::from_be_bytes([
-        bytes[offset],
-        bytes[offset + 1],
-        bytes[offset + 2],
-        bytes[offset + 3],
-        bytes[offset + 4],
-        bytes[offset + 5],
-        bytes[offset + 6],
-        bytes[offset + 7],
+        node_data_offset_slice[0],
+        node_data_offset_slice[1],
+        node_data_offset_slice[2],
+        node_data_offset_slice[3],
+        node_data_offset_slice[4],
+        node_data_offset_slice[5],
+        node_data_offset_slice[6],
+        node_data_offset_slice[7],
     ]);
     offset += 8;
 
     // Read edge data offset
+    let edge_data_offset_slice = get_slice_safe(bytes, offset, 8)?;
     let edge_data_offset = u64::from_be_bytes([
-        bytes[offset],
-        bytes[offset + 1],
-        bytes[offset + 2],
-        bytes[offset + 3],
-        bytes[offset + 4],
-        bytes[offset + 5],
-        bytes[offset + 6],
-        bytes[offset + 7],
+        edge_data_offset_slice[0],
+        edge_data_offset_slice[1],
+        edge_data_offset_slice[2],
+        edge_data_offset_slice[3],
+        edge_data_offset_slice[4],
+        edge_data_offset_slice[5],
+        edge_data_offset_slice[6],
+        edge_data_offset_slice[7],
     ]);
     offset += 8;
 
@@ -1867,22 +1888,23 @@ pub fn decode_persistent_header(bytes: &[u8]) -> NativeResult<PersistentHeaderV2
                 "[HEADER_READ_DEBUG] Reading outgoing_cluster_offset at offset {} (should be 56)",
                 offset
             );
-            let outgoing_bytes = &bytes[offset..offset + 8];
+            let outgoing_bytes = get_slice_safe(bytes, offset, 8)?;
             println!(
                 "[HEADER_READ_DEBUG] Raw outgoing bytes: {:02x?}",
                 outgoing_bytes
             );
         }
 
+        let outgoing_slice = get_slice_safe(bytes, offset, 8)?;
         outgoing_cluster_offset = u64::from_be_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-            bytes[offset + 4],
-            bytes[offset + 5],
-            bytes[offset + 6],
-            bytes[offset + 7],
+            outgoing_slice[0],
+            outgoing_slice[1],
+            outgoing_slice[2],
+            outgoing_slice[3],
+            outgoing_slice[4],
+            outgoing_slice[5],
+            outgoing_slice[6],
+            outgoing_slice[7],
         ]);
         offset += 8;
 
@@ -1892,34 +1914,36 @@ pub fn decode_persistent_header(bytes: &[u8]) -> NativeResult<PersistentHeaderV2
                 "[HEADER_READ_DEBUG] Reading incoming_cluster_offset at offset {} (should be 64)",
                 offset
             );
-            let incoming_bytes = &bytes[offset..offset + 8];
+            let incoming_bytes = get_slice_safe(bytes, offset, 8)?;
             println!(
                 "[HEADER_READ_DEBUG] Raw incoming bytes: {:02x?}",
                 incoming_bytes
             );
         }
 
+        let incoming_slice = get_slice_safe(bytes, offset, 8)?;
         incoming_cluster_offset = u64::from_be_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-            bytes[offset + 4],
-            bytes[offset + 5],
-            bytes[offset + 6],
-            bytes[offset + 7],
+            incoming_slice[0],
+            incoming_slice[1],
+            incoming_slice[2],
+            incoming_slice[3],
+            incoming_slice[4],
+            incoming_slice[5],
+            incoming_slice[6],
+            incoming_slice[7],
         ]);
         offset += 8;
 
+        let free_space_slice = get_slice_safe(bytes, offset, 8)?;
         free_space_offset = u64::from_be_bytes([
-            bytes[offset],
-            bytes[offset + 1],
-            bytes[offset + 2],
-            bytes[offset + 3],
-            bytes[offset + 4],
-            bytes[offset + 5],
-            bytes[offset + 6],
-            bytes[offset + 7],
+            free_space_slice[0],
+            free_space_slice[1],
+            free_space_slice[2],
+            free_space_slice[3],
+            free_space_slice[4],
+            free_space_slice[5],
+            free_space_slice[6],
+            free_space_slice[7],
         ]);
         offset += 8;
 

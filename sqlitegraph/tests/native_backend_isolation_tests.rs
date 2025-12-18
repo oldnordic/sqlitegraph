@@ -143,13 +143,13 @@ fn test_read_buffer_isolation() {
 
 /// Test 5: Tests that write version=1 must be skipped under native backend
 #[test]
-fn test_v1_tests_disabled_under_native_backend() {
+fn test_v2_format_is_default_under_native_backend() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("v1_test_5.db");
 
     let mut graph_file = GraphFile::create(&db_path).expect("Failed to create graph file");
 
-    // Verify V2 is the default under v2_experimental
+    // Verify V2 is the default format
     let node_slot_offset = graph_file.header().node_data_offset;
     let mut version_buf = [0u8; 1];
     graph_file

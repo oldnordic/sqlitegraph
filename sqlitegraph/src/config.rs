@@ -18,8 +18,7 @@ use crate::backend::{GraphBackend, NativeGraphBackend, SqliteGraphBackend};
 ///
 /// # Default Behavior
 ///
-/// The default backend is [`BackendKind::SQLite`] to maintain backward compatibility
-/// and provide the most feature-rich experience out of the box.
+/// The default backend is [`BackendKind::SQLite`] to provide the most feature-rich experience out of the box.
 ///
 /// # Examples
 ///
@@ -43,7 +42,7 @@ pub enum BackendKind {
     /// **Use when you need:**
     /// - ACID transactions with rollback support
     /// - Complex queries beyond basic graph operations
-    /// - Existing SQLite investments or tooling compatibility
+    /// - Existing SQLite investments or tooling integration
     /// - Standard SQL access alongside graph operations
     SQLite,
 
@@ -148,7 +147,7 @@ pub struct NativeConfig {
     ///
     /// When set, enables CPU-specific optimizations for graph traversal operations.
     /// This field allows application developers to choose CPU profiles that match
-    /// their deployment environment while maintaining backwards compatibility.
+    /// their deployment environment with optimal performance.
     ///
     /// The CPU profile can also be set via the `SQLITEGRAPH_NATIVE_CPU_PROFILE`
     /// environment variable, which takes precedence over this configuration field.
@@ -186,7 +185,7 @@ impl Default for NativeConfig {
             create_if_missing: true, // Default: create files if they don't exist
             reserve_node_capacity: None,
             reserve_edge_capacity: None,
-            cpu_profile: None, // Default: Generic profile for backwards compatibility
+            cpu_profile: None, // Default: Generic profile
         }
     }
 }
@@ -262,7 +261,7 @@ impl NativeConfig {
 /// Configuration for SQLite backend operations.
 ///
 /// Provides options specific to the SQLite storage implementation.
-/// These options control schema migrations, performance settings, and PRAGMA configurations.
+/// These options control schema initialization, performance settings, and PRAGMA configurations.
 ///
 /// # Default Configuration
 ///
@@ -275,23 +274,23 @@ impl NativeConfig {
 /// ```
 #[derive(Clone, Debug, Default)]
 pub struct SqliteConfig {
-    /// Skip schema migrations during opening
+    /// Skip schema initialization during opening
     ///
     /// **Default:** `false`
     ///
-    /// When set to `true`, the backend will skip automatic schema migrations when opening
+    /// When set to `true`, the backend will skip automatic schema initialization when opening
     /// an existing database. This can improve startup time for large databases where you're
-    /// certain the schema is already compatible.
+    /// certain the schema is already properly initialized.
     ///
-    /// **Use with caution:** Disabling migrations when the schema is incompatible will
-    /// result in runtime errors when using newer features.
+    /// **Use with caution:** Disabling schema initialization when the database is not initialized
+    /// will result in runtime errors when using graph operations.
     ///
     /// # Examples
     ///
     /// ```rust,ignore
     /// use sqlitegraph::GraphConfig;
     ///
-    /// // Skip migrations for faster startup (use when schema is known to be compatible)
+    /// // Skip schema initialization for faster startup (use when schema is already initialized)
     /// let mut cfg = GraphConfig::sqlite();
     /// cfg.sqlite.without_migrations = true;
     /// let graph = open_graph("production_graph.db", &cfg)?;
@@ -356,8 +355,8 @@ pub struct SqliteConfig {
 /// Complete configuration for graph construction.
 ///
 /// This structure combines backend selection with backend-specific
-/// configuration options. Default values maintain existing behavior
-/// and ensure backward compatibility.
+/// configuration options. Default values provide optimal behavior
+/// for most use cases.
 ///
 /// # Default Configuration
 ///
@@ -430,11 +429,11 @@ impl GraphConfig {
         // Set backend-specific defaults
         match backend {
             BackendKind::SQLite => {
-                // SQLite defaults: run migrations by default
+                // SQLite defaults: run schema initialization by default
                 sqlite_config.without_migrations = false;
             }
             BackendKind::Native => {
-                // Native backend: SQLite config won't be used, but mark as without migrations
+                // Native backend: SQLite config won't be used, but set without_migrations
                 sqlite_config.without_migrations = true;
             }
         }

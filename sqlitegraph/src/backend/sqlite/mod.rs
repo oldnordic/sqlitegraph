@@ -12,4 +12,5 @@ pub mod types;
 pub use impl_::SqliteGraphBackend;
 
 // Re-export public types for external use
+#[allow(unused_imports)] // Future extension points for SQLite backend API
 pub use types::{BackendDirection, EdgeSpec, NeighborQuery, NodeSpec};

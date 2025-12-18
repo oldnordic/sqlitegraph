@@ -9,7 +9,7 @@ mod sqlite;
 // Include native backend storage layer (no GraphBackend implementation yet)
 pub mod native;
 
-// Re-export from sqlite submodule for backward compatibility
+// Re-export from sqlite submodule
 pub use sqlite::SqliteGraphBackend;
 
 // Re-export from native submodule
@@ -17,6 +17,7 @@ pub use native::NativeGraphBackend;
 
 // Re-export types for external users
 pub use crate::multi_hop::ChainStep;
+#[allow(unused_imports)] // Backend trait API types for future GraphBackend implementations
 pub use sqlite::types::{BackendDirection, EdgeSpec, NeighborQuery, NodeSpec};
 
 use crate::{
