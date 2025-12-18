@@ -54,8 +54,7 @@ fn benchmark_sqlitegraph_v2(c: &mut Criterion) {
                     || {
                         let temp_dir = TempDir::new().unwrap();
                         let db_path = temp_dir.path().join("benchmark.db");
-                        let native_config = NativeConfig::default();
-                        let config = GraphConfig::native_with_config(native_config);
+                        let config = GraphConfig::native();
                         (db_path.to_str().unwrap().to_string(), config)
                     },
                     |(db_path, config)| {
@@ -64,9 +63,12 @@ fn benchmark_sqlitegraph_v2(c: &mut Criterion) {
 
                         // Create nodes
                         for i in 0..num_nodes {
-                            let node_spec = NodeSpec::new()
-                                .with_name(format!("node_{}", i))
-                                .with_kind("Node");
+                            let node_spec = NodeSpec {
+                                kind: "Node".to_string(),
+                                name: format!("node_{}", i),
+                                file_path: None,
+                                data: serde_json::Value::Null,
+                            };
                             let node_id = graph.insert_node(node_spec).unwrap();
                             black_box(node_id);
                         }
@@ -74,10 +76,13 @@ fn benchmark_sqlitegraph_v2(c: &mut Criterion) {
                         // Create edges
                         for (src, dst) in edges {
                             if src < num_nodes as u64 && dst < num_nodes as u64 {
-                                let edge_spec = EdgeSpec::new(src, dst)
-                                    .with_kind("Connects")
-                                    .with_weight(1.0);
-                                let _ = graph.insert_edge_directed(edge_spec).unwrap();
+                                let edge_spec = EdgeSpec {
+                                        from: src as i64,
+                                        to: dst as i64,
+                                        edge_type: "Connects".to_string(),
+                                        data: serde_json::json!({"weight": 1.0}),
+                                    };
+                                let _ = graph.insert_edge(edge_spec).unwrap();
                             }
                         }
                     },
@@ -92,24 +97,29 @@ fn benchmark_sqlitegraph_v2(c: &mut Criterion) {
             |b, &num_nodes| {
                 let temp_dir = TempDir::new().unwrap();
                 let db_path = temp_dir.path().join("benchmark.db");
-                let native_config = NativeConfig::default();
-                let config = GraphConfig::native_with_config(native_config);
+                let config = GraphConfig::native();
                 let graph = open_graph(db_path.to_str().unwrap(), &config).unwrap();
 
                 // Pre-populate graph
                 let edges = generate_dataset(42, num_nodes, edge_multiplier);
                 for i in 0..num_nodes {
-                    let node_spec = NodeSpec::new()
-                        .with_name(format!("node_{}", i))
-                        .with_kind("Node");
+                    let node_spec = NodeSpec {
+                        kind: "Node".to_string(),
+                        name: format!("node_{}", i),
+                        file_path: None,
+                        data: serde_json::Value::Null,
+                    };
                     let _ = graph.insert_node(node_spec).unwrap();
                 }
                 for (src, dst) in edges {
                     if src < num_nodes as u64 && dst < num_nodes as u64 {
-                        let edge_spec = EdgeSpec::new(src, dst)
-                            .with_kind("Connects")
-                            .with_weight(1.0);
-                        let _ = graph.insert_edge_directed(edge_spec).unwrap();
+                        let edge_spec = EdgeSpec {
+                            from: src as i64,
+                            to: dst as i64,
+                            edge_type: "Connects".to_string(),
+                            data: serde_json::json!({"weight": 1.0}),
+                        };
+                        let _ = graph.insert_edge(edge_spec).unwrap();
                     }
                 }
 
@@ -117,9 +127,11 @@ fn benchmark_sqlitegraph_v2(c: &mut Criterion) {
                 let mut rng = StdRng::seed_from_u64(42);
                 b.iter(|| {
                     let node_id = rng.gen_range(1..num_nodes) as u64;
-                    let neighbor_query = NeighborQuery::new(node_id)
-                        .with_direction(BackendDirection::Outgoing);
-                    let neighbors = graph.neighbors(neighbor_query).unwrap();
+                    let neighbor_query = NeighborQuery {
+                        direction: BackendDirection::Outgoing,
+                        edge_type: None,
+                    };
+                    let neighbors = graph.neighbors(node_id as i64, neighbor_query).unwrap();
                     black_box(neighbors);
                 });
             },
@@ -132,29 +144,34 @@ fn benchmark_sqlitegraph_v2(c: &mut Criterion) {
             |b, &num_nodes| {
                 let temp_dir = TempDir::new().unwrap();
                 let db_path = temp_dir.path().join("benchmark.db");
-                let native_config = NativeConfig::default();
-                let config = GraphConfig::native_with_config(native_config);
+                let config = GraphConfig::native();
                 let graph = open_graph(db_path.to_str().unwrap(), &config).unwrap();
 
                 // Pre-populate graph
                 let edges = generate_dataset(42, num_nodes, edge_multiplier);
                 for i in 0..num_nodes {
-                    let node_spec = NodeSpec::new()
-                        .with_name(format!("node_{}", i))
-                        .with_kind("Node");
+                    let node_spec = NodeSpec {
+                        kind: "Node".to_string(),
+                        name: format!("node_{}", i),
+                        file_path: None,
+                        data: serde_json::Value::Null,
+                    };
                     let _ = graph.insert_node(node_spec).unwrap();
                 }
                 for (src, dst) in edges {
                     if src < num_nodes as u64 && dst < num_nodes as u64 {
-                        let edge_spec = EdgeSpec::new(src, dst)
-                            .with_kind("Connects")
-                            .with_weight(1.0);
-                        let _ = graph.insert_edge_directed(edge_spec).unwrap();
+                        let edge_spec = EdgeSpec {
+                            from: src as i64,
+                            to: dst as i64,
+                            edge_type: "Connects".to_string(),
+                            data: serde_json::json!({"weight": 1.0}),
+                        };
+                        let _ = graph.insert_edge(edge_spec).unwrap();
                     }
                 }
 
                 b.iter(|| {
-                    let visited = graph.bfs(0, Some(5)).unwrap();
+                    let visited = graph.bfs(0, 5).unwrap();
                     black_box(visited);
                 });
             },
@@ -184,8 +201,7 @@ fn benchmark_dense_graphs(c: &mut Criterion) {
                 || {
                     let temp_dir = TempDir::new().unwrap();
                     let db_path = temp_dir.path().join("dense.db");
-                    let native_config = NativeConfig::default();
-                    let config = GraphConfig::native_with_config(native_config);
+                    let config = GraphConfig::native();
                     (db_path.to_str().unwrap().to_string(), config)
                 },
                 |(db_path, config)| {
@@ -193,18 +209,24 @@ fn benchmark_dense_graphs(c: &mut Criterion) {
                     let edges = generate_dataset(42, num_nodes, edge_multiplier);
 
                     for i in 0..num_nodes {
-                        let node_spec = NodeSpec::new()
-                            .with_name(format!("node_{}", i))
-                            .with_kind("Node");
+                        let node_spec = NodeSpec {
+                            kind: "Node".to_string(),
+                            name: format!("node_{}", i),
+                            file_path: None,
+                            data: serde_json::Value::Null,
+                        };
                         let _ = graph.insert_node(node_spec).unwrap();
                     }
 
                     for (src, dst) in edges {
                         if src < num_nodes as u64 && dst < num_nodes as u64 {
-                            let edge_spec = EdgeSpec::new(src, dst)
-                                .with_kind("Connects")
-                                .with_weight(1.0);
-                            let _ = graph.insert_edge_directed(edge_spec).unwrap();
+                            let edge_spec = EdgeSpec {
+                                from: src as i64,
+                                to: dst as i64,
+                                edge_type: "Connects".to_string(),
+                                data: serde_json::json!({"weight": 1.0}),
+                            };
+                            let _ = graph.insert_edge(edge_spec).unwrap();
                         }
                     }
                 },
