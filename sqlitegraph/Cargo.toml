@@ -1,13 +1,13 @@
 [package]
 name = "sqlitegraph"
-version = "0.1.1"
+version = "0.2.2"
 edition = "2024"
-description = "Deterministic, embedded graph database built on SQLite"
+description = "Deterministic, embedded graph database with SQLite and Native V2 backends"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/oldnordic/sqlitegraph"
 documentation = "https://docs.rs/sqlitegraph"
 readme = "README.md"
-keywords = ["graph", "database", "sqlite", "embedded", "deterministic"]
+keywords = ["graph", "database", "sqlite", "embedded"]
 categories = ["database", "data-structures"]
 
 [lib]
@@ -37,14 +37,19 @@ rand = "0.8"
 
 [features]
 default = ["sqlite-backend"]
-bench-ci = []
-sqlite-backend = []
-trace_v2_io = []  # STEP 1: Temporary instrumentation for Phase 66 debugging
-# Phase 63: V2 is now default behavior for Native backend (no experimental gate)
-v2_experimental = ["v2_io_exclusive_std"]  # Compatibility alias for existing code
-# Phase 41: Exclusive I/O modes for corruption isolation
-v2_io_exclusive_mmap = []
-v2_io_exclusive_std = []
+
+# Backend selection
+sqlite-backend = []          # SQLite backend (mature, ACID transactions)
+native-v2 = ["v2_io_exclusive_std"]  # Native V2 backend (high performance, production ready)
+
+# Development/debug features
+trace_v2_io = []             # Debug V2 I/O operations (development only)
+bench-ci = []                # CI benchmarking
+
+# Legacy compatibility
+v2_experimental = ["native-v2"]  # Alias for backwards compatibility
+v2_io_exclusive_mmap = []    # MMAP-based I/O (advanced users)
+v2_io_exclusive_std = []     # std::fs-based I/O (stable)
 
 # Phase 13 Step 5: Safe and portable optimization profiles
 [profile.release]
