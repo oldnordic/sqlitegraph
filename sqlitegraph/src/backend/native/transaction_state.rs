@@ -70,6 +70,16 @@ impl TransactionState {
         self.tx_prev_incoming_cluster_offset = 0;
         self.tx_prev_free_space_offset = 0;
     }
+
+    /// Get current transaction ID (alias for compatibility)
+    pub fn current_transaction_id(&self) -> u64 {
+        self.tx_id
+    }
+
+    /// Check if transaction is active (alias for is_in_progress)
+    pub fn is_active(&self) -> bool {
+        self.is_in_progress()
+    }
 }
 
 impl Default for TransactionState {

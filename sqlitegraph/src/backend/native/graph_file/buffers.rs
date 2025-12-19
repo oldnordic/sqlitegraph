@@ -56,6 +56,11 @@ impl ReadBuffer {
             false
         }
     }
+
+    /// Get the current buffer size (capacity)
+    pub fn len(&self) -> usize {
+        self.capacity
+    }
 }
 
 /// Simple write-behind buffer for batched writes
@@ -89,5 +94,10 @@ impl WriteBuffer {
 
     pub fn flush(&mut self) -> Vec<(u64, Vec<u8>)> {
         std::mem::take(&mut self.operations)
+    }
+
+    /// Get the current number of pending operations
+    pub fn len(&self) -> usize {
+        self.operations.len()
     }
 }

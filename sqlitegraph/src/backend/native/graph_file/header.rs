@@ -225,6 +225,30 @@ impl HeaderManager {
             total_node_region_size: reserved_node_region_bytes,
         }
     }
+
+    /// Get node statistics from persistent header
+    pub fn get_node_statistics(
+        header: &PersistentHeaderV2,
+    ) -> NativeResult<ClusterUtilization> {
+        Ok(ClusterUtilization {
+            outgoing_cluster_start: header.outgoing_cluster_offset,
+            incoming_cluster_start: header.incoming_cluster_offset,
+            outgoing_region_size: header.incoming_cluster_offset - header.outgoing_cluster_offset,
+            free_space_start: header.free_space_offset,
+        })
+    }
+
+    /// Get edge statistics from persistent header
+    pub fn get_edge_statistics(
+        header: &PersistentHeaderV2,
+    ) -> NativeResult<ClusterUtilization> {
+        Ok(ClusterUtilization {
+            outgoing_cluster_start: header.outgoing_cluster_offset,
+            incoming_cluster_start: header.incoming_cluster_offset,
+            outgoing_region_size: header.incoming_cluster_offset - header.outgoing_cluster_offset,
+            free_space_start: header.free_space_offset,
+        })
+    }
 }
 
 /// Header statistics for debugging and monitoring

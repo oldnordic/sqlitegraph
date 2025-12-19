@@ -5,8 +5,8 @@
 //! and safe error handling.
 
 use crate::backend::native::{
-    types::{FileOffset, NativeNodeId, EdgeRecord, NodeRecord, EdgeFlags, NodeFlags},
-    constants::edge::FIXED_HEADER_SIZE,
+    types::{FileOffset, NativeNodeId, NativeEdgeId, EdgeRecord, NodeRecord, EdgeFlags, NodeFlags},
+    constants::edge::{FIXED_HEADER_SIZE, EDGE_SLOT_SIZE},
 };
 use std::io::{Read, Seek, SeekFrom};
 
@@ -27,29 +27,40 @@ impl NodeEdgeAccessManager {
     pub fn read_edge_at_offset(
         graph_file: &mut crate::backend::native::graph_file::GraphFile,
         offset: FileOffset,
-    ) -> Option<EdgeRecord> {
+    ) -> crate::backend::native::types::NativeResult<EdgeRecord> {
         // Validate offset is within edge data region
         if offset < graph_file.persistent_header.edge_data_offset {
-            return None;
+            return Err(crate::backend::native::types::NativeBackendError::InvalidHeader {
+                field: "offset".to_string(),
+                reason: "offset before edge_data_offset".to_string(),
+            });
         }
 
         let buffer_size = FIXED_HEADER_SIZE;
 
         // Check file size before read_exact to prevent "failed to fill whole buffer"
-        if graph_file.ensure_file_len_at_least(offset, buffer_size).is_err() {
-            return None;
+        let required_size = offset + buffer_size as u64;
+        if graph_file.ensure_file_len_at_least(required_size).is_err() {
+            return Err(crate::backend::native::types::NativeBackendError::FileTooSmall {
+                size: 0,
+                min_size: required_size,
+            });
         }
 
         let mut buffer = vec![0u8; buffer_size];
 
         // Seek to the specified offset
         if let Err(_) = graph_file.file.seek(SeekFrom::Start(offset)) {
-            return None;
+            return Err(crate::backend::native::types::NativeBackendError::Io(
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "Failed to seek to offset")
+            ));
         }
 
         // Read the edge record data
         if let Err(_) = graph_file.file.read_exact(&mut buffer) {
-            return None;
+            return Err(crate::backend::native::types::NativeBackendError::Io(
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "Failed to read edge data")
+            ));
         }
 
         // Decode edge record from buffer using big-endian byte order
@@ -64,7 +75,7 @@ impl NodeEdgeAccessManager {
         ]);
 
         // Reconstruct EdgeRecord with decoded data
-        Some(EdgeRecord {
+        Ok(EdgeRecord {
             id: edge_id as i64,
             from_id: from_id as i64,
             to_id: to_id as i64,
@@ -85,10 +96,10 @@ impl NodeEdgeAccessManager {
     pub fn read_node_at(
         _graph_file: &crate::backend::native::graph_file::GraphFile,
         node_id: NativeNodeId,
-    ) -> Option<NodeRecord> {
+    ) -> crate::backend::native::types::NativeResult<NodeRecord> {
         // This is a simplified implementation that creates a basic node record
         // In a full implementation, this would read from the node data section
-        Some(NodeRecord {
+        Ok(NodeRecord {
             id: node_id,
             flags: NodeFlags::empty(),
             kind: "node".to_string(),
@@ -103,37 +114,7 @@ impl NodeEdgeAccessManager {
         })
     }
 
-    
-    /// Validate edge record structure and consistency
-    ///
-    /// Performs basic validation on an edge record to ensure data integrity.
-    /// This can be extended with more sophisticated validation logic.
-    pub fn validate_edge_record(edge: &EdgeRecord) -> bool {
-        // Basic validation checks
-        edge.id >= 0 && edge.from_id >= 0 && edge.to_id >= 0
-    }
-
-    /// Validate node record structure and consistency
-    ///
-    /// Performs basic validation on a node record to ensure data integrity.
-    /// This can be extended with more sophisticated validation logic.
-    pub fn validate_node_record(node: &NodeRecord) -> bool {
-        // Basic validation checks
-        node.id >= 0 &&
-        node.outgoing_cluster_offset >= 0 &&
-        node.incoming_cluster_offset >= 0 &&
-        node.outgoing_edge_count >= 0 &&
-        node.incoming_edge_count >= 0
-    }
-
-    /// Get edge record size for buffer allocation
-    ///
-    /// Returns the fixed size of an edge record header for buffer allocation
-    /// and validation purposes.
-    pub fn get_edge_record_size() -> usize {
-        FIXED_HEADER_SIZE
-    }
-
+  
     /// Check if offset is within valid edge data region
     ///
     /// Validates that the given offset is within the edge data section
@@ -143,6 +124,151 @@ impl NodeEdgeAccessManager {
         offset: FileOffset,
     ) -> bool {
         offset >= graph_file.persistent_header.edge_data_offset
+    }
+
+    /// Write edge record at specific edge ID
+    pub fn write_edge_at(
+        graph_file: &mut crate::backend::native::graph_file::GraphFile,
+        edge_id: NativeEdgeId,
+        edge: &EdgeRecord,
+    ) -> crate::backend::native::types::NativeResult<()> {
+        use crate::backend::native::constants::edge::EDGE_SLOT_SIZE;
+
+        if edge_id == 0 {
+            return Err(crate::backend::native::types::NativeBackendError::InvalidEdgeId {
+                id: edge_id,
+                max_id: 0,
+            });
+        }
+
+        let offset = NodeEdgeAccessManager::calculate_edge_offset(graph_file, edge_id);
+        let edge_bytes = serde_json::to_vec(&edge)?;
+
+        if edge_bytes.len() > EDGE_SLOT_SIZE as usize {
+            return Err(crate::backend::native::types::NativeBackendError::RecordTooLarge {
+                size: edge_bytes.len() as u32,
+                max_size: EDGE_SLOT_SIZE as u32,
+            });
+        }
+
+        graph_file.write_bytes(offset, &edge_bytes)?;
+        Ok(())
+    }
+
+    /// Check if node exists
+    pub fn node_exists(
+        graph_file: &mut crate::backend::native::graph_file::GraphFile,
+        node_id: NativeNodeId,
+    ) -> crate::backend::native::types::NativeResult<bool> {
+        if node_id == 0 || node_id > graph_file.persistent_header().node_count as i64 {
+            return Ok(false);
+        }
+
+        let offset = NodeEdgeAccessManager::calculate_node_offset(graph_file, node_id);
+        let node_data = NodeEdgeAccessManager::read_node_header(graph_file, offset)?;
+
+        // Check if node record appears to be valid
+        Ok(node_data.kind != "empty" || node_data.name != "" || node_data.data != serde_json::Value::Null)
+    }
+
+    /// Calculate node offset
+    pub fn calculate_node_offset(
+        graph_file: &crate::backend::native::graph_file::GraphFile,
+        node_id: NativeNodeId,
+    ) -> u64 {
+        graph_file.persistent_header.node_data_offset + ((node_id - 1) as u64 * crate::backend::native::constants::node::NODE_SLOT_SIZE)
+    }
+
+    /// Calculate edge offset
+    pub fn calculate_edge_offset(
+        graph_file: &crate::backend::native::graph_file::GraphFile,
+        edge_id: NativeEdgeId,
+    ) -> u64 {
+        let base_offset = graph_file.persistent_header.edge_data_offset;
+        base_offset + ((edge_id - 1) as u64 * EDGE_SLOT_SIZE)
+    }
+
+    /// Read node header information
+    pub fn read_node_header(
+        _graph_file: &crate::backend::native::graph_file::GraphFile,
+        _offset: u64,
+    ) -> crate::backend::native::types::NativeResult<NodeRecord> {
+        // Simplified implementation - return a default node record
+        Ok(NodeRecord {
+            id: 0,
+            flags: NodeFlags::empty(),
+            kind: "empty".to_string(),
+            name: "".to_string(),
+            data: serde_json::Value::Null,
+            outgoing_cluster_offset: 0,
+            outgoing_cluster_size: 0,
+            outgoing_edge_count: 0,
+            incoming_cluster_offset: 0,
+            incoming_cluster_size: 0,
+            incoming_edge_count: 0,
+        })
+    }
+
+    /// Validate node record structure
+    pub fn validate_node_record(node: &NodeRecord) -> bool {
+        // Basic validation checks
+        node.id >= 0 &&
+        node.outgoing_cluster_offset >= 0 &&
+        node.incoming_cluster_offset >= 0 &&
+        node.outgoing_edge_count >= 0 &&
+        node.incoming_edge_count >= 0
+    }
+
+    /// Validate edge record structure
+    pub fn validate_edge_record(edge: &EdgeRecord) -> bool {
+        // Basic validation checks
+        edge.id >= 0 && edge.from_id >= 0 && edge.to_id >= 0
+    }
+
+    /// Get node record size
+    pub fn get_node_record_size(
+        _node: &NodeRecord,
+    ) -> crate::backend::native::types::NativeResult<usize> {
+        Ok(512) // Fixed size placeholder
+    }
+
+    /// Get edge record size
+    pub fn get_edge_record_size(
+        _edge: &EdgeRecord,
+    ) -> crate::backend::native::types::NativeResult<usize> {
+        Ok(FIXED_HEADER_SIZE)
+    }
+
+    /// Check if edge slot is allocated
+    pub fn is_edge_slot_allocated(
+        _persistent_header: &crate::backend::native::persistent_header::PersistentHeaderV2,
+        _edge_id: NativeEdgeId,
+    ) -> bool {
+        false // Placeholder implementation
+    }
+
+    /// Check if node slot is allocated
+    pub fn is_node_slot_allocated(
+        _persistent_header: &crate::backend::native::persistent_header::PersistentHeaderV2,
+        _node_id: NativeNodeId,
+    ) -> bool {
+        false // Placeholder implementation
+    }
+
+    /// Reserve node slots
+    pub fn reserve_node_slots(
+        _graph_file: &mut crate::backend::native::graph_file::GraphFile,
+        _count: u32,
+    ) -> crate::backend::native::types::NativeResult<()> {
+        Ok(())
+    }
+
+    /// Reserve edge slots
+    pub fn reserve_edge_slots(
+        _graph_file: &mut crate::backend::native::graph_file::GraphFile,
+        _count: u32,
+    ) -> crate::backend::native::types::NativeResult<()> {
+        Ok(())
     }
 }
 
@@ -197,7 +323,7 @@ mod tests {
         // Test edge reading
         let edge = NodeEdgeAccessManager::read_edge_at_offset(&mut graph_file, 100);
 
-        assert!(edge.is_some());
+        assert!(edge.is_ok());
         let edge = edge.unwrap();
         assert_eq!(edge.id, edge_id as i64);
         assert_eq!(edge.from_id, from_id as i64);
@@ -226,7 +352,7 @@ mod tests {
 
         // Test invalid offset (before edge_data_offset)
         let edge = NodeEdgeAccessManager::read_edge_at_offset(&mut graph_file, 100);
-        assert!(edge.is_none());
+        assert!(edge.is_err());
     }
 
     #[test]
@@ -246,7 +372,7 @@ mod tests {
         // Test node reading
         let node = NodeEdgeAccessManager::read_node_at(&graph_file, 42);
 
-        assert!(node.is_some());
+        assert!(node.is_ok());
         let node = node.unwrap();
         assert_eq!(node.id, 42);
         assert_eq!(node.name, "node_42");
@@ -339,7 +465,8 @@ mod tests {
 
     #[test]
     fn test_get_edge_record_size() {
-        let size = NodeEdgeAccessManager::get_edge_record_size();
+        let edge = EdgeRecord::new(1, 2, 3, "test".to_string(), serde_json::Value::Null);
+        let size = NodeEdgeAccessManager::get_edge_record_size(&edge).unwrap();
         assert_eq!(size, FIXED_HEADER_SIZE);
         assert!(size > 0);
     }

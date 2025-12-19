@@ -27,10 +27,6 @@ pub mod graph_validation;
 // V2 clustered edge kernel (Phase 14)
 pub mod v2;
 
-// Phase 3: V1 Legacy Prevention - Permanent V1 ban
-#[path = "v1_prevention.rs"]
-pub mod v1_prevention;
-
 // Re-export public types for external use
 pub use types::{
     CpuProfile, EdgeFlags, EdgeRecord, FileHeader, FileOffset, NativeBackendError, NativeEdgeId,

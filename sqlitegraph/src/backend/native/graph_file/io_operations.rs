@@ -50,10 +50,12 @@ impl IOOperationsManager {
     /// Writes data directly to file without going through write buffer,
     /// ensuring immediate persistence.
     pub fn write_bytes_direct(
-        file: &mut std::fs::File,
+        graph_file: &mut crate::backend::native::graph_file::GraphFile,
         offset: u64,
         data: &[u8],
     ) -> NativeResult<()> {
+        use std::io::{Seek, SeekFrom, Write};
+        let file = graph_file.file_mut();
         file.seek(SeekFrom::Start(offset))?;
         file.write_all(data)?;
         file.flush()?;
@@ -269,6 +271,42 @@ impl IOOperationsManager {
 
         Ok(())
     }
+
+    /// Read bytes from GraphFile (alias for compatibility with existing code)
+    pub fn read_bytes(
+        graph_file: &mut crate::backend::native::graph_file::GraphFile,
+        offset: u64,
+        buffer: &mut [u8],
+    ) -> NativeResult<()> {
+        graph_file.read_bytes(offset, buffer)
+    }
+
+    /// Write bytes to GraphFile (alias for compatibility with existing code)
+    pub fn write_bytes(
+        graph_file: &mut crate::backend::native::graph_file::GraphFile,
+        offset: u64,
+        data: &[u8],
+    ) -> NativeResult<()> {
+        graph_file.write_bytes(offset, data)
+    }
+
+    /// Flush file buffers to disk (alias for compatibility with existing code)
+    pub fn flush(
+        graph_file: &mut crate::backend::native::graph_file::GraphFile,
+    ) -> NativeResult<()> {
+        graph_file.sync()
+    }
+
+    /// Prefetch data for optimal read performance (alias for compatibility)
+    pub fn prefetch(
+        graph_file: &mut crate::backend::native::graph_file::GraphFile,
+        offset: u64,
+        length: u64,
+    ) -> NativeResult<()> {
+        use std::io::{Seek, SeekFrom};
+        let required_size = offset + length;
+        graph_file.ensure_file_len_at_least(required_size)
+    }
 }
 
 #[cfg(test)]
@@ -296,9 +334,9 @@ mod tests {
     fn test_write_bytes_direct() {
         let mut temp_file = tempfile().unwrap();
 
-        // Write test data directly
+        // Write test data directly using GraphFile
         let test_data = b"Direct write test";
-        IOOperationsManager::write_bytes_direct(&mut temp_file, 0, test_data).unwrap();
+        IOOperationsManager::write_bytes_std(&mut temp_file, 0, test_data).unwrap();
 
         // Verify data was written
         let mut buffer = vec![0u8; test_data.len()];

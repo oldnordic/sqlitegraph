@@ -86,6 +86,9 @@ pub mod edge {
     /// Maximum allowed string lengths as u32 for compatibility with error types
     pub const MAX_STRING_LENGTH_U32: u32 = 65535;
     pub const MAX_DATA_LENGTH: u32 = 1_000_000; // 1MB per edge max
+
+    /// Size of each edge slot in bytes (fixed 256 bytes for V2 format)
+    pub const EDGE_SLOT_SIZE: u64 = 256;
 }
 
 /// Header feature flags
