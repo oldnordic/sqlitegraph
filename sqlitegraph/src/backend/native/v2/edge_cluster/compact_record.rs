@@ -1,6 +1,6 @@
 //! Compact on-disk representation for edges inside a cluster.
 
-use super::cluster::Direction;
+use super::cluster_trace::Direction;
 use crate::backend::native::v2::string_table::StringTable;
 use crate::backend::native::{EdgeRecord, NativeBackendError, NativeResult};
 

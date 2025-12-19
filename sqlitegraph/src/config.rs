@@ -9,7 +9,8 @@ use std::path::Path;
 
 use crate::SqliteGraphError;
 use crate::backend::native::CpuProfile;
-use crate::backend::{GraphBackend, NativeGraphBackend, SqliteGraphBackend};
+use crate::backend::{GraphBackend, SqliteGraphBackend};
+use crate::backend::native::graph_backend::NativeGraphBackend;
 
 /// Backend selection enum for choosing between storage implementations.
 ///

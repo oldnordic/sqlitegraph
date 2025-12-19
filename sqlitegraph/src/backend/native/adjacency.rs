@@ -251,59 +251,24 @@ impl<'a> AdjacencyIterator<'a> {
                                     };
 
                                     // Phase 69: Use V2 clustered neighbors with strict framed mode
-                                    match edge_store.iter_neighbors(
-                                        cluster_offset,
-                                        cluster_size,
-                                        cluster_direction,
+                                    let neighbors = edge_store.iter_neighbors(
                                         self.node_id,
-                                    ) {
-                                        Ok(neighbors) => {
-                                            // Phase 69: V2 clustered adjacency success
-                                            #[cfg(debug_assertions)]
-                                            {
-                                                println!(
-                                                    "DEBUG: V2 clustered adjacency SUCCESS for node {} (direction: {:?}, {} neighbors)",
-                                                    self.node_id,
-                                                    self.direction,
-                                                    neighbors.len()
-                                                );
-                                            }
-                                            self.cached_clustered_neighbors = Some(neighbors);
-                                            self.total_count = edge_count;
-                                            return Ok(());
-                                        }
-                                        Err(NativeBackendError::CorruptEdgeRecord {
-                                            reason,
-                                            ..
-                                        }) => {
-                                            // Phase 69: In strict mode, error when V2 framed cluster corruption is detected
-                                            #[cfg(debug_assertions)]
-                                            {
-                                                println!(
-                                                    "DEBUG: V2 framed cluster corruption for node {} (direction: {:?}): {}",
-                                                    self.node_id, self.direction, reason
-                                                );
-                                            }
-                                            return Err(NativeBackendError::CorruptEdgeRecord {
-                                                edge_id: self.node_id as i64,
-                                                reason: format!(
-                                                    "V2 FRAMED: Cluster corruption detected for node {} (direction: {:?}): {}",
-                                                    self.node_id, self.direction, reason
-                                                ),
-                                            });
-                                        }
-                                        Err(e) => {
-                                            // Phase 69: Propagate unexpected errors
-                                            #[cfg(debug_assertions)]
-                                            {
-                                                println!(
-                                                    "DEBUG: Unexpected error during V2 clustered adjacency for node {}: {}",
-                                                    self.node_id, e
-                                                );
-                                            }
-                                            return Err(e);
-                                        }
+                                        self.direction,
+                                    ).collect::<Vec<_>>();
+
+                                    // Phase 69: V2 clustered adjacency success
+                                    #[cfg(debug_assertions)]
+                                    {
+                                        println!(
+                                            "DEBUG: V2 clustered adjacency SUCCESS for node {} (direction: {:?}, {} neighbors)",
+                                            self.node_id,
+                                            self.direction,
+                                            neighbors.len()
+                                        );
                                     }
+                                    self.cached_clustered_neighbors = Some(neighbors);
+                                    self.total_count = edge_count;
+                                    return Ok(());
                                 }
                             }
                             Err(NativeBackendError::InvalidNodeId { .. }) => {

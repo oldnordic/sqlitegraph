@@ -5,9 +5,12 @@
 //! items from this `mod.rs` re-export rather than submodules directly.
 
 mod cluster;
+mod cluster_trace;
+mod cluster_serialization;
 mod compact_record;
 mod record_ext;
 
-pub use cluster::{Direction, EdgeCluster, StrictModeGuard, TraceContext, TraceGuard};
+pub use cluster::EdgeCluster;
+pub use cluster_trace::{Direction, StrictModeGuard, TraceContext, TraceGuard};
 pub use compact_record::CompactEdgeRecord;
 pub use record_ext::EdgeRecordCompactExt;
