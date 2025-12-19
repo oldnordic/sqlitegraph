@@ -40,7 +40,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sqlitegraph = "0.2.2"
+sqlitegraph = "0.2.3"
 ```
 
 ### SQLite Backend (Default)
@@ -148,7 +148,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```toml
 # Default - SQLite backend only
-sqlitegraph = "0.2.2"
+sqlitegraph = "0.2.3"
 
 # Native V2 backend (high performance)
 sqlitegraph = { version = "0.2.2", features = ["native-v2"] }
@@ -170,6 +170,9 @@ cargo run --example basic_functionality_test
 
 # Native V2 backend demonstration
 cargo run --example native_v2_test --features native-v2
+
+# Performance characterization (advanced)
+cargo run --example phase55_v2_performance_characterization --features native-v2
 ```
 
 ## Current Capabilities

@@ -239,6 +239,10 @@ impl TransactionManager {
             tx_id: tx_state.tx_id,
             is_active: tx_state.is_in_progress(),
             state: if tx_state.is_in_progress() { "InProgress".to_string() } else { "Inactive".to_string() },
+            // Additional fields - initialize with defaults for now
+            node_count: 0,
+            edge_count: 0,
+            free_space_offset: 0,
         }
     }
 }
@@ -249,6 +253,10 @@ pub struct TransactionStatistics {
     pub tx_id: u64,
     pub is_active: bool,
     pub state: String,
+    // Additional fields needed by graph_file_core.rs
+    pub node_count: u64,
+    pub edge_count: u64,
+    pub free_space_offset: u64,
 }
 
 impl TransactionStatistics {

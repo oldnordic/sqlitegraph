@@ -1,6 +1,6 @@
 [package]
 name = "sqlitegraph"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 description = "Deterministic, embedded graph database with SQLite and Native V2 backends"
 license = "GPL-3.0-or-later"
@@ -27,6 +27,7 @@ arc-swap = "1"
 bytemuck = { version = "1.13", features = ["derive"] }
 binrw = "0.13"
 memmap2 = "0.9"
+log = "0.4"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
