@@ -65,6 +65,12 @@ impl GraphFile {
         IOOperationsManager::invalidate_read_buffer(&mut self.read_buffer)
     }
 
+    /// Flush write buffer specifically
+    pub fn flush_write_buffer(&mut self) -> crate::backend::native::types::NativeResult<()> {
+        IOOperationsManager::flush_write_buffer(&mut self.file, &mut self.write_buffer)?;
+        Ok(())
+    }
+
     /// Get current memory usage statistics
     pub fn get_memory_usage(&self) -> crate::backend::native::graph_file::memory_resource_manager::MemoryManagementStatistics {
         // This would typically be delegated to a memory manager

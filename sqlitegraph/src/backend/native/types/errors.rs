@@ -108,4 +108,105 @@ pub enum NativeBackendError {
         node_id: NativeNodeId,
         operation: String,
     },
+
+    #[error("Invalid parameter: {context}")]
+    InvalidParameter {
+        context: String,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
+
+    #[error("Invalid state: {context}")]
+    InvalidState {
+        context: String,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
+
+    #[error("Corruption detected: {context}")]
+    CorruptionDetected {
+        context: String,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
+
+    #[error("Invalid configuration for {parameter}: {reason}")]
+    InvalidConfiguration {
+        parameter: String,
+        reason: String,
+    },
+
+    #[error("Version mismatch: expected {expected}, found {found}")]
+    VersionMismatch {
+        expected: String,
+        found: String,
+        source: Option<Box<dyn std::error::Error + Send + Sync>>,
+    },
+
+    #[error("Invalid transaction {tx_id}: {reason}")]
+    InvalidTransaction {
+        tx_id: u64,
+        reason: String,
+    },
+
+    #[error("I/O error during {context}: {source}")]
+    IoError {
+        context: String,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("Node {node_id} already exists")]
+    NodeExists {
+        node_id: NativeNodeId,
+    },
+
+    #[error("Edge {edge_id} already exists")]
+    EdgeExists {
+        edge_id: NativeEdgeId,
+    },
+
+    #[error("Edge {edge_id} not found")]
+    EdgeNotFound {
+        edge_id: NativeEdgeId,
+    },
+
+    #[error("Transaction {tx_id} not found")]
+    TransactionNotFound {
+        tx_id: u64,
+    },
+
+    #[error("Savepoint {savepoint_id} not found")]
+    SavepointNotFound {
+        savepoint_id: String,
+    },
+
+    #[error("Deadlock detected involving transaction {tx_id}")]
+    DeadlockDetected {
+        tx_id: u64,
+        conflicting_resources: Vec<i64>,
+    },
+
+    #[error("Invalid transaction state: {state}")]
+    InvalidTransactionState {
+        tx_id: u64,
+        state: String,
+    },
+}
+
+// Add conversion from SystemTimeError
+impl From<std::time::SystemTimeError> for NativeBackendError {
+    fn from(error: std::time::SystemTimeError) -> Self {
+        Self::InvalidHeader {
+            field: "system_time".to_string(),
+            reason: format!("System time error: {}", error),
+        }
+    }
+}
+
+// Add conversion from CheckpointError
+impl From<crate::backend::native::v2::wal::checkpoint::errors::CheckpointError> for NativeBackendError {
+    fn from(error: crate::backend::native::v2::wal::checkpoint::errors::CheckpointError) -> Self {
+        Self::InvalidState {
+            context: format!("Checkpoint error: {:?}", error),
+            source: None,
+        }
+    }
 }

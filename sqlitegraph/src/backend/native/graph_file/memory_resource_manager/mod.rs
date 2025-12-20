@@ -8,7 +8,7 @@ use crate::backend::native::{
     graph_file::buffers::{ReadBuffer, WriteBuffer},
 };
 
-#[cfg(feature = "v2")]
+#[cfg(feature = "native-v2")]
 use memmap2::MmapMut;
 
 // Public exports
@@ -77,13 +77,13 @@ mod tests {
     fn test_memory_manager_creation() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
@@ -96,13 +96,13 @@ mod tests {
     fn test_io_mode_detection() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
@@ -114,13 +114,13 @@ mod tests {
     fn test_buffer_optimization() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let mut manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
@@ -139,13 +139,13 @@ mod tests {
     fn test_header_region_protection() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let mut manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
@@ -158,13 +158,13 @@ mod tests {
     fn test_write_buffer_management() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let mut manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
@@ -191,13 +191,13 @@ mod tests {
     fn test_node_slot_detection() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let mut manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 

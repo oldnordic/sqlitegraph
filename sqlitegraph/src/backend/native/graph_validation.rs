@@ -94,6 +94,49 @@ pub fn map_to_graph_error(err: NativeBackendError) -> SqliteGraphError {
         NativeBackendError::NodeNotFound { node_id, operation } => {
             SqliteGraphError::query(format!("Node {} not found during {}", node_id, operation))
         }
+        NativeBackendError::InvalidParameter { context, .. } => {
+            SqliteGraphError::query(format!("Invalid parameter: {}", context))
+        }
+        NativeBackendError::InvalidState { context, .. } => {
+            SqliteGraphError::connection(format!("Invalid state: {}", context))
+        }
+        NativeBackendError::CorruptionDetected { context, .. } => {
+            SqliteGraphError::connection(format!("Corruption detected: {}", context))
+        }
+        NativeBackendError::InvalidConfiguration { parameter, reason } => {
+            SqliteGraphError::InvalidInput(format!("Invalid {}: {}", parameter, reason))
+        }
+        NativeBackendError::VersionMismatch { expected, found, .. } => {
+            SqliteGraphError::connection(format!("Version mismatch: expected {}, found {}", expected, found))
+        }
+        // New V2 WAL error variants
+        NativeBackendError::NodeExists { node_id } => {
+            SqliteGraphError::query(format!("Node {} already exists", node_id))
+        }
+        NativeBackendError::EdgeExists { edge_id } => {
+            SqliteGraphError::query(format!("Edge {} already exists", edge_id))
+        }
+        NativeBackendError::EdgeNotFound { edge_id } => {
+            SqliteGraphError::query(format!("Edge {} not found", edge_id))
+        }
+        NativeBackendError::TransactionNotFound { tx_id } => {
+            SqliteGraphError::connection(format!("Transaction {} not found", tx_id))
+        }
+        NativeBackendError::SavepointNotFound { savepoint_id } => {
+            SqliteGraphError::connection(format!("Savepoint {} not found", savepoint_id))
+        }
+        NativeBackendError::DeadlockDetected { tx_id, .. } => {
+            SqliteGraphError::connection(format!("Deadlock detected for transaction {}", tx_id))
+        }
+        NativeBackendError::InvalidTransaction { tx_id, reason } => {
+            SqliteGraphError::connection(format!("Invalid transaction {}: {}", tx_id, reason))
+        }
+        NativeBackendError::IoError { context, .. } => {
+            SqliteGraphError::connection(format!("I/O error: {}", context))
+        }
+        NativeBackendError::InvalidTransactionState { tx_id, state } => {
+            SqliteGraphError::connection(format!("Invalid transaction {} state: {}", tx_id, state))
+        }
     }
 }
 

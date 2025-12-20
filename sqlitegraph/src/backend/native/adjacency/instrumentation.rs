@@ -62,7 +62,7 @@ impl AdjacencyMetrics {
     }
 
     /// Record a V2 node read operation
-    pub fn record_v2_read(&self, node_id: u32) {
+    pub fn record_v2_read(&self, _node_id: u32) {
         let count = self.total_v2_reads.fetch_add(1, Ordering::SeqCst);
 
         // Log V2 read patterns
@@ -77,7 +77,7 @@ impl AdjacencyMetrics {
     }
 
     /// Start timing an operation
-    pub fn start_timing(&self, operation: &str) -> TimingGuard {
+    pub fn start_timing(&self, operation: &str) -> TimingGuard<'_> {
         TimingGuard::new(operation, self)
     }
 
@@ -287,7 +287,7 @@ pub mod convenience {
     use super::*;
 
     /// Record an iteration with loop detection
-    pub fn track_iteration(node_id: u32) -> bool {
+    pub fn track_iteration(_node_id: u32) -> bool {
         get_global_metrics().record_iteration()
     }
 
@@ -297,7 +297,7 @@ pub mod convenience {
     }
 
     /// Start timing an operation
-    pub fn start_timing(operation: &str) -> TimingGuard {
+    pub fn start_timing(operation: &str) -> TimingGuard<'_> {
         get_global_metrics().start_timing(operation)
     }
 

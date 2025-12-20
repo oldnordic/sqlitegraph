@@ -243,7 +243,7 @@ pub mod convenience {
     /// EDGE_CLUSTER_DEBUG wrapper for node state inspection
     pub fn debug_edge_cluster_state(
         enabled: bool,
-        file_path: &std::path::Path,
+        _file_path: &std::path::Path,
         operation: &str,
         read_bytes_fn: &mut dyn FnMut(u64, &mut [u8]) -> NativeResult<()>,
         file_size_fn: &dyn Fn() -> NativeResult<u64>,
