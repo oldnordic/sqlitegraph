@@ -3,7 +3,6 @@
 use crate::backend::native::edge_store::EdgeStore;
 use crate::backend::native::node_store::NodeStore;
 use crate::backend::native::types::*;
-use crate::backend::native::v2::edge_cluster::Direction as V2Direction;
 use crate::backend::native::v2::node_record_v2::NodeRecordV2Ext;
 
 use super::Direction;

@@ -107,7 +107,7 @@ impl IOOperationsManager {
     /// Clears any cached read data to ensure fresh reads
     /// from disk for subsequent operations.
     pub fn invalidate_read_buffer(
-        read_buffer: &mut crate::backend::native::graph_file::buffers::ReadBuffer,
+        _read_buffer: &mut crate::backend::native::graph_file::buffers::ReadBuffer,
     ) {
         // Implementation depends on ReadBuffer structure
         // This is a placeholder for the actual buffer invalidation logic

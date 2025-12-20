@@ -61,7 +61,7 @@ impl TransactionManager {
     ///
     /// Phase 70: Initialize transaction with comprehensive debugging and state tracking.
     pub fn begin_transaction(
-        file: &mut std::fs::File,
+        _file: &mut std::fs::File,
         tx_state: &mut TransactionState,
         file_path: &str,
         node_data_offset: u64,

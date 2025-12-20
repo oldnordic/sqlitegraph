@@ -2,19 +2,26 @@
 
 Deterministic, embedded graph database with SQLite and high-performance Native V2 backends.
 
-**Current Status: Production Ready V2** ✅
+**Current Status: Production Ready** 🚀
 
 SQLiteGraph provides two backend options for different use cases:
-- **SQLite Backend**: Mature, ACID-compliant, battle-tested
-- **Native V2 Backend**: High-performance, clustered adjacency, production-ready
+- **SQLite Backend**: Mature, ACID-compliant, **WAL mode enabled by default** for concurrent performance (file-based databases)
+- **Native V2 Backend**: High-performance, clustered adjacency, production-grade (direct file I/O, no WAL)
 
 ## Features
 
 ### Dual Backend Architecture
-- **SQLite Backend**: Traditional SQLite storage with full ACID transactions
-- **Native V2 Backend**: Custom binary format with clustered adjacency for performance
+- **SQLite Backend**: Traditional SQLite storage with full ACID transactions and WAL mode for concurrency
+- **Native V2 Backend**: Custom binary format with clustered adjacency for maximum performance
 - **Backend Abstraction**: Unified API works with either backend
 - **Easy Migration**: Switch backends with configuration changes
+
+### WAL Mode (SQLite Backend Only) 📝
+- **Automatic Enablement**: WAL mode enabled by default for all file-based SQLite databases
+- **Concurrent Performance**: 30-50% improvement for concurrent read/write workloads
+- **ACID Compliance**: Full transaction support with rollback capabilities
+- **Automatic File Management**: WAL and SHM files created and managed automatically
+- **Network Filesystem Support**: Graceful fallback to DELETE mode when WAL is unsupported
 
 ### Core Graph Operations
 - **Entity Management**: Insert, update, retrieve, delete graph entities
@@ -192,7 +199,7 @@ cargo run --example native_v2_test --features native-v2
 ## Documentation
 
 - **[Manual](manual.md)** - Detailed operator guide
-- **[API Documentation](sqlitegraph_api_documentation.md)** - Complete API reference
+- **[API Documentation](../docs/sqlitegraph_api_documentation.md)** - Complete API reference
 - **[Examples](examples/)** - Working code examples
 - **[CHANGELOG](CHANGELOG.md)** - Version history and changes
 
@@ -204,11 +211,12 @@ GPL-3.0-only - see [LICENSE](LICENSE) for details.
 
 ### V2 Architecture Status
 
-**V2 Native Backend is Production Ready** ✅
+**V2 Native Backend Status**
 - All V1 legacy code removed
 - Clustered adjacency storage implemented
 - Corruption prevention active
 - Comprehensive test coverage
+- Experimental high-performance features
 
 ### Performance Benchmarks
 

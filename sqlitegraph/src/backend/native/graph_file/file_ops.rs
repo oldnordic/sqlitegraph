@@ -165,14 +165,14 @@ pub enum IOMode {
 impl IOMode {
     /// Determine the current I/O mode based on feature flags
     pub fn current() -> Self {
-        #[cfg(all(feature = "v2_experimental", feature = "v2_io_exclusive_mmap"))]
+        #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_mmap"))]
         return IOMode::ExclusiveMmap;
 
-        #[cfg(all(feature = "v2_experimental", feature = "v2_io_exclusive_std"))]
+        #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_std"))]
         return IOMode::ExclusiveStd;
 
         #[cfg(not(any(
-            feature = "v2_experimental",
+            feature = "native-v2",
             feature = "v2_io_exclusive_mmap",
             feature = "v2_io_exclusive_std"
         )))]

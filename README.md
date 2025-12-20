@@ -2,11 +2,11 @@
 
 Deterministic, embedded graph database with SQLite and high-performance Native V2 backends.
 
-**Current Status: Production Ready V2** ✅
+**Current Status: Active Development**
 
 SQLiteGraph provides two backend options for different use cases:
 - **SQLite Backend**: Mature, ACID-compliant, battle-tested
-- **Native V2 Backend**: High-performance, clustered adjacency, production-ready
+- **Native V2 Backend**: High-performance, clustered adjacency, experimental
 
 ## Features
 
@@ -229,7 +229,7 @@ cargo bench
 ## Documentation
 
 - **[Manual](manual.md)** - Detailed operator guide
-- **[API Documentation](sqlitegraph_api_documentation.md)** - Complete API reference
+- **[API Documentation](docs/sqlitegraph_api_documentation.md)** - Complete API reference
 - **[Examples](examples/)** - Working code examples
 - **[CHANGELOG](CHANGELOG.md)** - Version history and changes
 
@@ -237,11 +237,12 @@ cargo bench
 
 ### V2 Architecture Status
 
-**V2 Native Backend is Production Ready** ✅
+**V2 Native Backend Status**
 - All V1 legacy code removed
 - Clustered adjacency storage implemented
 - Corruption prevention active
 - Comprehensive test coverage
+- Experimental high-performance features
 
 ### Performance Benchmarks
 

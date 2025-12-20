@@ -1,6 +1,6 @@
 [package]
 name = "sqlitegraph"
-version = "0.2.3"
+version = "0.2.4"
 edition = "2024"
 description = "Deterministic, embedded graph database with SQLite and Native V2 backends"
 license = "GPL-3.0-or-later"
@@ -86,4 +86,8 @@ harness = false
 
 [[bench]]
 name = "insert"
+harness = false
+
+[[bench]]
+name = "hnsw"
 harness = false

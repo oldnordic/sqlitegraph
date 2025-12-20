@@ -9,8 +9,9 @@ use crate::backend::native::{
     graph_file::file_ops::FileOperations,
 };
 use super::manager::MemoryResourceManager;
+use super::types::MemoryIOMode;
 
-#[cfg(feature = "v2")]
+#[cfg(feature = "native-v2")]
 use memmap2::MmapMut;
 
 impl<'a> MemoryResourceManager<'a> {
@@ -34,13 +35,13 @@ impl<'a> MemoryResourceManager<'a> {
         F: FnOnce() -> NativeResult<u64>,
     {
         match self.current_io_mode() {
-            #[cfg(all(feature = "v2", feature = "v2_io_exclusive_mmap"))]
+            #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_mmap"))]
             MemoryIOMode::MemoryMapped => {
                 self.read_from_mmap(offset, buffer)?;
             }
-            #[cfg(all(feature = "v2", feature = "v2_io_exclusive_std"))]
+            #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_std"))]
             MemoryIOMode::ExclusiveStd => {
-                self.clear_write_buffer_safely()?;
+                self.clear_write_buffer_safely();
                 self.direct_read_with_sync(file, offset, buffer)?;
             }
             _ => {
@@ -74,11 +75,11 @@ impl<'a> MemoryResourceManager<'a> {
         self.validate_header_region_protection(offset)?;
 
         match self.current_io_mode() {
-            #[cfg(all(feature = "v2", feature = "v2_io_exclusive_mmap"))]
+            #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_mmap"))]
             MemoryIOMode::MemoryMapped => {
                 self.write_to_mmap(offset, data, file_size_fn)?;
             }
-            #[cfg(all(feature = "v2", feature = "v2_io_exclusive_std"))]
+            #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_std"))]
             MemoryIOMode::ExclusiveStd => {
                 self.clear_write_buffer_safely();
                 self.direct_write_with_sync(file, offset, data)?;
@@ -92,7 +93,7 @@ impl<'a> MemoryResourceManager<'a> {
     }
 
     /// Read from memory-mapped region
-    #[cfg(all(feature = "v2", feature = "v2_io_exclusive_mmap"))]
+    #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_mmap"))]
     fn read_from_mmap(&self, offset: u64, buffer: &mut [u8]) -> NativeResult<()> {
         let mmap = self
             .mmap
@@ -121,7 +122,7 @@ impl<'a> MemoryResourceManager<'a> {
     }
 
     /// Write to memory-mapped region
-    #[cfg(all(feature = "v2", feature = "v2_io_exclusive_mmap"))]
+    #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_mmap"))]
     fn write_to_mmap<F>(&mut self, offset: u64, data: &[u8], file_size_fn: F) -> NativeResult<()>
     where
         F: FnOnce() -> NativeResult<u64>,
@@ -163,7 +164,7 @@ impl<'a> MemoryResourceManager<'a> {
     }
 
     /// Ensure memory mapping covers the required range
-    #[cfg(feature = "v2")]
+    #[cfg(feature = "native-v2")]
     fn ensure_mmap_covers(&self, required_offset: u64) -> NativeResult<()> {
         if let Some(mmap) = &self.mmap {
             if required_offset as usize > mmap.len() {

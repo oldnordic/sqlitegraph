@@ -7,12 +7,18 @@ pub mod edge_cluster;
 pub mod free_space;
 pub mod node_record_v2;
 pub mod string_table;
+pub mod wal;
 
 // Re-export V2 types
 pub use edge_cluster::{CompactEdgeRecord, Direction, EdgeCluster, EdgeRecordCompactExt};
 pub use free_space::FreeSpaceManager;
 pub use node_record_v2::{NodeRecordV2, NodeRecordV2Ext};
 pub use string_table::StringTable;
+pub use wal::{
+    V2WALManager, V2WALConfig, V2WALHeader, V2WALRecord, V2WALRecordType,
+    V2GraphWALIntegrator, GraphWALIntegrationConfig, GraphOperationResult,
+    OperationMetrics, NodeRecordV2WALExt, WALManagerMetrics, TransactionIsolation,
+};
 
 use crate::backend::native::{NativeBackendError, NativeResult};
 
