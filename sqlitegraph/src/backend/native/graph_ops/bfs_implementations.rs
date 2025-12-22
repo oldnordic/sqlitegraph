@@ -1,10 +1,10 @@
 //! Multiple BFS implementations with CPU-specific optimizations
 
-use crate::backend::native::adjacency::{AdjacencyHelpers, Direction};
+use crate::backend::native::NativeBackendError;
+use crate::backend::native::adjacency::AdjacencyHelpers;
 use crate::backend::native::graph_file::GraphFile;
 use crate::backend::native::optimizations;
 use crate::backend::native::types::*;
-use crate::backend::native::NativeBackendError;
 
 /// Generic scalar BFS implementation (baseline for all CPUs/large graphs)
 pub fn bfs_generic_scalar(

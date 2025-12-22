@@ -207,7 +207,10 @@ impl RecoveryError {
 
     /// Check if error is recoverable
     pub fn is_recoverable(&self) -> bool {
-        !matches!(self.kind, RecoveryErrorKind::Corruption | RecoveryErrorKind::V2Integration)
+        !matches!(
+            self.kind,
+            RecoveryErrorKind::Corruption | RecoveryErrorKind::V2Integration
+        )
     }
 
     /// Get suggested retry delay in milliseconds
@@ -241,7 +244,10 @@ impl RecoveryError {
 
         report.push_str(&format!("Timestamp: {:?}\n", self.timestamp));
         report.push_str(&format!("Recoverable: {}\n", self.is_recoverable()));
-        report.push_str(&format!("Requires Manual Intervention: {}\n", self.requires_manual_intervention()));
+        report.push_str(&format!(
+            "Requires Manual Intervention: {}\n",
+            self.requires_manual_intervention()
+        ));
 
         if let Some((start_lsn, end_lsn)) = self.context.lsn_range {
             report.push_str(&format!("LSN Range: {}-{}\n", start_lsn, end_lsn));
@@ -292,15 +298,21 @@ impl RecoveryError {
         }
 
         if let Some((node_a, node_b)) = cluster_key {
-            self.context.metadata.insert("cluster_key".to_string(), format!("{}-{}", node_a, node_b));
+            self.context
+                .metadata
+                .insert("cluster_key".to_string(), format!("{}-{}", node_a, node_b));
         }
 
         if let Some(nodes) = node_count {
-            self.context.metadata.insert("node_count".to_string(), nodes.to_string());
+            self.context
+                .metadata
+                .insert("node_count".to_string(), nodes.to_string());
         }
 
         if let Some(edges) = edge_count {
-            self.context.metadata.insert("edge_count".to_string(), edges.to_string());
+            self.context
+                .metadata
+                .insert("edge_count".to_string(), edges.to_string());
         }
 
         self
@@ -317,7 +329,9 @@ impl RecoveryError {
         context.lsn_range = Some((lsn, lsn));
 
         if let Some(record_type) = record_type {
-            context.metadata.insert("record_type".to_string(), format!("{:?}", record_type));
+            context
+                .metadata
+                .insert("record_type".to_string(), format!("{:?}", record_type));
         }
 
         Self::new(RecoveryErrorKind::WalFile, message)
@@ -336,8 +350,7 @@ impl RecoveryError {
         context.transaction_id = Some(transaction_id);
         context.lsn_range = Some((start_lsn, end_lsn));
 
-        Self::new(RecoveryErrorKind::Transaction, error)
-            .with_context(context)
+        Self::new(RecoveryErrorKind::Transaction, error).with_context(context)
     }
 
     /// Create unknown error
@@ -345,25 +358,26 @@ impl RecoveryError {
         Self::new(RecoveryErrorKind::Unknown, message)
     }
 
-  /// Create state transition error
+    /// Create state transition error
     pub fn state_transition(message: impl Into<String>) -> Self {
-        Self::new(RecoveryErrorKind::State, message)
-            .with_recovery(RecoverySuggestion::Restart)
+        Self::new(RecoveryErrorKind::State, message).with_recovery(RecoverySuggestion::Restart)
     }
 
-  /// Create I/O error
+    /// Create I/O error
     pub fn io_error(message: impl Into<String>) -> Self {
-        Self::new(RecoveryErrorKind::Io, message)
-            .with_recovery(RecoverySuggestion::Retry { max_attempts: 3, backoff_ms: 100 })
+        Self::new(RecoveryErrorKind::Io, message).with_recovery(RecoverySuggestion::Retry {
+            max_attempts: 3,
+            backoff_ms: 100,
+        })
     }
 
-  /// Create replay failure error
+    /// Create replay failure error
     pub fn replay_failure(message: impl Into<String>) -> Self {
         Self::new(RecoveryErrorKind::Transaction, message)
             .with_recovery(RecoverySuggestion::Restart)
     }
 
-  /// Create rollback failure error
+    /// Create rollback failure error
     pub fn rollback_failure(message: impl Into<String>) -> Self {
         Self::new(RecoveryErrorKind::Transaction, message)
             .with_recovery(RecoverySuggestion::RestoreFromBackup)
@@ -389,36 +403,54 @@ impl From<NativeBackendError> for RecoveryError {
         let message = error.to_string();
 
         match error {
-            NativeBackendError::Io(_) => {
-                Self::new(RecoveryErrorKind::Io, &message).with_source(format!("NativeBackendError: {}", message))
-            }
+            NativeBackendError::Io(_) => Self::new(RecoveryErrorKind::Io, &message)
+                .with_source(format!("NativeBackendError: {}", message)),
             NativeBackendError::InvalidHeader { field, reason, .. } => {
-                Self::new(RecoveryErrorKind::Configuration, message).with_source(format!("NativeBackendError: Invalid header {}: {}", field, reason))
+                Self::new(RecoveryErrorKind::Configuration, message).with_source(format!(
+                    "NativeBackendError: Invalid header {}: {}",
+                    field, reason
+                ))
             }
-            NativeBackendError::CorruptNodeRecord { node_id, reason, .. } => {
-                Self::new(RecoveryErrorKind::Corruption, message).with_source(format!("NativeBackendError: Corrupt node {}: {}", node_id, reason))
-            }
-            NativeBackendError::CorruptEdgeRecord { edge_id, reason, .. } => {
-                Self::new(RecoveryErrorKind::Corruption, message).with_source(format!("NativeBackendError: Corrupt edge {}: {}", edge_id, reason))
-            }
-            NativeBackendError::InvalidMagic { expected, found, .. } => {
-                Self::new(RecoveryErrorKind::Corruption, message).with_source(format!("NativeBackendError: Invalid magic expected {:x}, found {:x}", expected, found))
-            }
-            NativeBackendError::ValidationFailed { metric, expected, actual, .. } => {
-                Self::new(RecoveryErrorKind::Validation, message).with_source(format!("NativeBackendError: Validation failed for {}: expected {}, found {}", metric, expected, actual))
-            }
+            NativeBackendError::CorruptNodeRecord {
+                node_id, reason, ..
+            } => Self::new(RecoveryErrorKind::Corruption, message).with_source(format!(
+                "NativeBackendError: Corrupt node {}: {}",
+                node_id, reason
+            )),
+            NativeBackendError::CorruptEdgeRecord {
+                edge_id, reason, ..
+            } => Self::new(RecoveryErrorKind::Corruption, message).with_source(format!(
+                "NativeBackendError: Corrupt edge {}: {}",
+                edge_id, reason
+            )),
+            NativeBackendError::InvalidMagic {
+                expected, found, ..
+            } => Self::new(RecoveryErrorKind::Corruption, message).with_source(format!(
+                "NativeBackendError: Invalid magic expected {:x}, found {:x}",
+                expected, found
+            )),
+            NativeBackendError::ValidationFailed {
+                metric,
+                expected,
+                actual,
+                ..
+            } => Self::new(RecoveryErrorKind::Validation, message).with_source(format!(
+                "NativeBackendError: Validation failed for {}: expected {}, found {}",
+                metric, expected, actual
+            )),
             NativeBackendError::InvalidParameter { context, .. } => {
-                Self::new(RecoveryErrorKind::Configuration, message).with_source(format!("NativeBackendError: {}", context))
+                Self::new(RecoveryErrorKind::Configuration, message)
+                    .with_source(format!("NativeBackendError: {}", context))
             }
             NativeBackendError::InvalidState { context, .. } => {
-                Self::new(RecoveryErrorKind::State, message).with_source(format!("NativeBackendError: {}", context))
+                Self::new(RecoveryErrorKind::State, message)
+                    .with_source(format!("NativeBackendError: {}", context))
             }
             NativeBackendError::CorruptionDetected { context, .. } => {
-                Self::new(RecoveryErrorKind::Corruption, message).with_source(format!("NativeBackendError: {}", context))
+                Self::new(RecoveryErrorKind::Corruption, message)
+                    .with_source(format!("NativeBackendError: {}", context))
             }
-            _ => {
-                Self::unknown(message).with_source("NativeBackendError".to_string())
-            }
+            _ => Self::unknown(message).with_source("NativeBackendError".to_string()),
         }
     }
 }
@@ -430,15 +462,42 @@ impl From<io::Error> for RecoveryError {
         let kind = error.kind();
 
         let mut recovery_error = match kind {
-            io::ErrorKind::NotFound => Self::new(RecoveryErrorKind::WalFile, format!("File not found: {}", message)),
-            io::ErrorKind::PermissionDenied => Self::new(RecoveryErrorKind::Io, format!("Permission denied: {}", message)),
-            io::ErrorKind::AlreadyExists => Self::new(RecoveryErrorKind::Configuration, format!("File already exists: {}", message)),
-            io::ErrorKind::InvalidInput => Self::new(RecoveryErrorKind::Configuration, format!("Invalid input: {}", message)),
-            io::ErrorKind::InvalidData => Self::new(RecoveryErrorKind::Corruption, format!("Invalid data: {}", message)),
-            io::ErrorKind::TimedOut => Self::new(RecoveryErrorKind::Timeout, format!("Operation timed out: {}", message)),
-            io::ErrorKind::WriteZero => Self::new(RecoveryErrorKind::Io, format!("Write zero bytes: {}", message)),
-            io::ErrorKind::Interrupted => Self::new(RecoveryErrorKind::Io, format!("Operation interrupted: {}", message)),
-            io::ErrorKind::UnexpectedEof => Self::new(RecoveryErrorKind::Corruption, format!("Unexpected EOF: {}", message)),
+            io::ErrorKind::NotFound => Self::new(
+                RecoveryErrorKind::WalFile,
+                format!("File not found: {}", message),
+            ),
+            io::ErrorKind::PermissionDenied => Self::new(
+                RecoveryErrorKind::Io,
+                format!("Permission denied: {}", message),
+            ),
+            io::ErrorKind::AlreadyExists => Self::new(
+                RecoveryErrorKind::Configuration,
+                format!("File already exists: {}", message),
+            ),
+            io::ErrorKind::InvalidInput => Self::new(
+                RecoveryErrorKind::Configuration,
+                format!("Invalid input: {}", message),
+            ),
+            io::ErrorKind::InvalidData => Self::new(
+                RecoveryErrorKind::Corruption,
+                format!("Invalid data: {}", message),
+            ),
+            io::ErrorKind::TimedOut => Self::new(
+                RecoveryErrorKind::Timeout,
+                format!("Operation timed out: {}", message),
+            ),
+            io::ErrorKind::WriteZero => Self::new(
+                RecoveryErrorKind::Io,
+                format!("Write zero bytes: {}", message),
+            ),
+            io::ErrorKind::Interrupted => Self::new(
+                RecoveryErrorKind::Io,
+                format!("Operation interrupted: {}", message),
+            ),
+            io::ErrorKind::UnexpectedEof => Self::new(
+                RecoveryErrorKind::Corruption,
+                format!("Unexpected EOF: {}", message),
+            ),
             _ => Self::new(RecoveryErrorKind::Io, format!("I/O error: {}", message)),
         };
 
@@ -521,10 +580,7 @@ impl RecoveryErrorCollection {
 
     /// Get highest severity error
     pub fn highest_severity(&self) -> Option<ErrorSeverity> {
-        self.errors
-            .iter()
-            .map(|error| error.severity())
-            .max()
+        self.errors.iter().map(|error| error.severity()).max()
     }
 
     /// Get number of errors by severity
@@ -549,7 +605,9 @@ impl RecoveryErrorCollection {
 
     /// Check if any errors require manual intervention
     pub fn requires_manual_intervention(&self) -> bool {
-        self.errors.iter().any(|error| error.requires_manual_intervention())
+        self.errors
+            .iter()
+            .any(|error| error.requires_manual_intervention())
     }
 
     /// Generate summary report
@@ -576,7 +634,10 @@ impl RecoveryErrorCollection {
             error,
             critical,
             total - self.errors.iter().filter(|e| !e.is_recoverable()).count(),
-            self.errors.iter().filter(|e| e.requires_manual_intervention()).count(),
+            self.errors
+                .iter()
+                .filter(|e| e.requires_manual_intervention())
+                .count(),
             self.timestamp,
             self.final_result
         )
@@ -605,7 +666,9 @@ impl RecoveryErrorCollection {
     pub fn recommended_action(&self) -> RecoveryAction {
         if !self.has_errors() {
             RecoveryAction::Continue
-        } else if self.has_unrecoverable_errors() || self.highest_severity() == Some(ErrorSeverity::Critical) {
+        } else if self.has_unrecoverable_errors()
+            || self.highest_severity() == Some(ErrorSeverity::Critical)
+        {
             RecoveryAction::ManualIntervention
         } else if self.requires_manual_intervention() {
             RecoveryAction::ManualIntervention
@@ -626,8 +689,7 @@ impl Default for RecoveryErrorCollection {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::SystemTime;
-
+    
     #[test]
     fn test_recovery_error_creation() {
         let error = RecoveryError::new(RecoveryErrorKind::Configuration, "Invalid path");
@@ -646,8 +708,8 @@ mod tests {
             ..Default::default()
         };
 
-        let error = RecoveryError::new(RecoveryErrorKind::Io, "File write failed")
-            .with_context(context);
+        let error =
+            RecoveryError::new(RecoveryErrorKind::Io, "File write failed").with_context(context);
 
         assert_eq!(error.context.lsn_range, Some((1000, 2000)));
         assert_eq!(error.context.transaction_id, Some(123));
@@ -669,9 +731,15 @@ mod tests {
     fn test_error_collection() {
         let mut collection = RecoveryErrorCollection::new();
 
-        collection.add_error(RecoveryError::new(RecoveryErrorKind::Configuration, "Bad config"));
+        collection.add_error(RecoveryError::new(
+            RecoveryErrorKind::Configuration,
+            "Bad config",
+        ));
         collection.add_error(RecoveryError::new(RecoveryErrorKind::Io, "Disk error"));
-        collection.add_error(RecoveryError::new(RecoveryErrorKind::Corruption, "Data corrupted"));
+        collection.add_error(RecoveryError::new(
+            RecoveryErrorKind::Corruption,
+            "Data corrupted",
+        ));
 
         assert!(collection.has_errors());
         assert!(collection.has_unrecoverable_errors());
@@ -694,7 +762,10 @@ mod tests {
 
         let error = RecoveryError::new(RecoveryErrorKind::Io, "Test error")
             .with_context(context)
-            .with_recovery(RecoverySuggestion::Retry { max_attempts: 1, backoff_ms: 50 });
+            .with_recovery(RecoverySuggestion::Retry {
+                max_attempts: 1,
+                backoff_ms: 50,
+            });
 
         let report = error.diagnostic_report();
         assert!(report.contains("Test error"));

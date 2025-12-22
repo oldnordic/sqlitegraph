@@ -4,10 +4,10 @@
 //! It validates V2 graph file format invariants, cluster alignment, block sizes,
 //! and other V2-specific requirements to ensure compatibility and correctness.
 
-use crate::backend::native::v2::wal::checkpoint::constants::*;
-use crate::backend::native::v2::wal::checkpoint::errors::{CheckpointError, CheckpointResult};
-use crate::backend::native::v2::wal::checkpoint::core::{DirtyBlockTracker, CheckpointState};
 use crate::backend::native::v2::wal::V2WALConfig;
+use crate::backend::native::v2::wal::checkpoint::constants::*;
+use crate::backend::native::v2::wal::checkpoint::core::{CheckpointState, DirtyBlockTracker};
+use crate::backend::native::v2::wal::checkpoint::errors::{CheckpointError, CheckpointResult};
 use std::fs;
 use std::time::SystemTime;
 
@@ -83,19 +83,22 @@ impl V2InvariantValidator {
         let mut violations = Vec::new();
         let start_time = SystemTime::now();
 
-        let mut file = fs::File::open(checkpoint_path)
-            .map_err(|e| CheckpointError::validation(format!("Failed to open checkpoint file: {}", e)))?;
+        let mut file = fs::File::open(checkpoint_path).map_err(|e| {
+            CheckpointError::validation(format!("Failed to open checkpoint file: {}", e))
+        })?;
 
         use std::io::{Read, Seek, SeekFrom};
 
         // Seek past LSN range (16 bytes) and timestamp (8 bytes) and block count (8 bytes)
-        file.seek(SeekFrom::Start(36))
-            .map_err(|e| CheckpointError::validation(format!("Failed to seek to V2 metadata: {}", e)))?;
+        file.seek(SeekFrom::Start(36)).map_err(|e| {
+            CheckpointError::validation(format!("Failed to seek to V2 metadata: {}", e))
+        })?;
 
         // Read and validate V2 version
         let mut v2_version_bytes = [0u8; 4];
-        file.read_exact(&mut v2_version_bytes)
-            .map_err(|e| CheckpointError::validation(format!("Failed to read V2 version: {}", e)))?;
+        file.read_exact(&mut v2_version_bytes).map_err(|e| {
+            CheckpointError::validation(format!("Failed to read V2 version: {}", e))
+        })?;
 
         let v2_version = u32::from_le_bytes(v2_version_bytes);
         if v2_version != 2 {
@@ -113,8 +116,9 @@ impl V2InvariantValidator {
 
         // Read and validate V2 block size
         let mut block_size_bytes = [0u8; 8];
-        file.read_exact(&mut block_size_bytes)
-            .map_err(|e| CheckpointError::validation(format!("Failed to read V2 block size: {}", e)))?;
+        file.read_exact(&mut block_size_bytes).map_err(|e| {
+            CheckpointError::validation(format!("Failed to read V2 block size: {}", e))
+        })?;
 
         let block_size = u64::from_le_bytes(block_size_bytes);
         if block_size != v2::V2_GRAPH_BLOCK_SIZE {
@@ -133,8 +137,9 @@ impl V2InvariantValidator {
 
         // Read and validate cluster alignment
         let mut alignment_bytes = [0u8; 8];
-        file.read_exact(&mut alignment_bytes)
-            .map_err(|e| CheckpointError::validation(format!("Failed to read V2 cluster alignment: {}", e)))?;
+        file.read_exact(&mut alignment_bytes).map_err(|e| {
+            CheckpointError::validation(format!("Failed to read V2 cluster alignment: {}", e))
+        })?;
 
         let alignment = u64::from_le_bytes(alignment_bytes);
         if alignment != v2::V2_CLUSTER_ALIGNMENT {
@@ -151,7 +156,9 @@ impl V2InvariantValidator {
             });
         }
 
-        let invariants_held = violations.iter().all(|v: &V2InvariantViolation| !v.critical);
+        let invariants_held = violations
+            .iter()
+            .all(|v: &V2InvariantViolation| !v.critical);
 
         Ok(V2InvariantResult {
             invariants_held,
@@ -164,13 +171,13 @@ impl V2InvariantValidator {
     /// Validate V2 cluster alignment invariants
     pub fn validate_cluster_alignment_invariants(
         &self,
-        dirty_blocks: &DirtyBlockTracker,
+        _dirty_blocks: &DirtyBlockTracker,
     ) -> CheckpointResult<V2InvariantResult> {
         let mut violations = Vec::new();
         let start_time = SystemTime::now();
 
         // Check that all dirty block offsets are properly aligned
-        let alignment = v2::V2_CLUSTER_ALIGNMENT;
+        let _alignment = v2::V2_CLUSTER_ALIGNMENT;
 
         // Block alignment checks commented out - no public API available for DirtyBlockTracker fields
         // for &block_offset in &dirty_blocks.global_dirty_blocks {
@@ -206,7 +213,9 @@ impl V2InvariantValidator {
         //     }
         // }
 
-        let invariants_held = violations.iter().all(|v: &V2InvariantViolation| !v.critical);
+        let invariants_held = violations
+            .iter()
+            .all(|v: &V2InvariantViolation| !v.critical);
 
         Ok(V2InvariantResult {
             invariants_held,
@@ -219,7 +228,7 @@ impl V2InvariantValidator {
     /// Validate V2 checkpoint state invariants
     pub fn validate_checkpoint_state_invariants(
         &self,
-        state: &CheckpointState,
+        _state: &CheckpointState,
     ) -> CheckpointResult<V2InvariantResult> {
         let mut violations = Vec::new();
         let start_time = SystemTime::now();
@@ -268,7 +277,9 @@ impl V2InvariantValidator {
         //     }
         // }
 
-        let invariants_held = violations.iter().all(|v: &V2InvariantViolation| !v.critical);
+        let invariants_held = violations
+            .iter()
+            .all(|v: &V2InvariantViolation| !v.critical);
 
         Ok(V2InvariantResult {
             invariants_held,
@@ -287,15 +298,17 @@ impl V2InvariantValidator {
         let start_time = SystemTime::now();
 
         // Read checkpoint file to validate format
-        let mut file = fs::File::open(checkpoint_path)
-            .map_err(|e| CheckpointError::validation(format!("Failed to open checkpoint file: {}", e)))?;
+        let mut file = fs::File::open(checkpoint_path).map_err(|e| {
+            CheckpointError::validation(format!("Failed to open checkpoint file: {}", e))
+        })?;
 
         use std::io::Read;
 
         // Read magic number
         let mut magic = [0u8; 4];
-        file.read_exact(&mut magic)
-            .map_err(|e| CheckpointError::validation(format!("Failed to read checkpoint magic: {}", e)))?;
+        file.read_exact(&mut magic).map_err(|e| {
+            CheckpointError::validation(format!("Failed to read checkpoint magic: {}", e))
+        })?;
 
         if magic != *CHECKPOINT_MAGIC {
             violations.push(V2InvariantViolation {
@@ -309,8 +322,9 @@ impl V2InvariantValidator {
 
         // Read version
         let mut version_bytes = [0u8; 4];
-        file.read_exact(&mut version_bytes)
-            .map_err(|e| CheckpointError::validation(format!("Failed to read checkpoint version: {}", e)))?;
+        file.read_exact(&mut version_bytes).map_err(|e| {
+            CheckpointError::validation(format!("Failed to read checkpoint version: {}", e))
+        })?;
 
         let version = u32::from_le_bytes(version_bytes);
         if version != CHECKPOINT_VERSION {
@@ -324,8 +338,9 @@ impl V2InvariantValidator {
         }
 
         // Verify file size is reasonable for V2 format
-        let metadata = fs::metadata(checkpoint_path)
-            .map_err(|e| CheckpointError::validation(format!("Failed to read checkpoint metadata: {}", e)))?;
+        let metadata = fs::metadata(checkpoint_path).map_err(|e| {
+            CheckpointError::validation(format!("Failed to read checkpoint metadata: {}", e))
+        })?;
 
         if metadata.len() < MIN_CHECKPOINT_SIZE {
             violations.push(V2InvariantViolation {
@@ -341,7 +356,9 @@ impl V2InvariantValidator {
             });
         }
 
-        let invariants_held = violations.iter().all(|v: &V2InvariantViolation| !v.critical);
+        let invariants_held = violations
+            .iter()
+            .all(|v: &V2InvariantViolation| !v.critical);
 
         Ok(V2InvariantResult {
             invariants_held,
@@ -356,7 +373,7 @@ impl V2InvariantValidator {
         &self,
         _graph_file_path: &std::path::Path,
     ) -> CheckpointResult<V2InvariantResult> {
-        let mut violations = Vec::new();
+        let violations = Vec::new();
         let start_time = SystemTime::now();
 
         // Note: This is a placeholder for V2 graph file invariant validation
@@ -422,14 +439,15 @@ pub struct V2InvariantUtils;
 impl V2InvariantUtils {
     /// Check if invariant violation is critical
     pub fn is_critical_violation(violation: &V2InvariantViolation) -> bool {
-        violation.critical || match violation.violation_type {
-            V2InvariantViolationType::InvalidV2Version => true,
-            V2InvariantViolationType::V2BlockSizeMismatch => true,
-            V2InvariantViolationType::V2ClusterAlignmentMismatch => true,
-            V2InvariantViolationType::V2MetadataCorruption => true,
-            V2InvariantViolationType::NodeRecordVersionMismatch => true,
-            _ => false,
-        }
+        violation.critical
+            || match violation.violation_type {
+                V2InvariantViolationType::InvalidV2Version => true,
+                V2InvariantViolationType::V2BlockSizeMismatch => true,
+                V2InvariantViolationType::V2ClusterAlignmentMismatch => true,
+                V2InvariantViolationType::V2MetadataCorruption => true,
+                V2InvariantViolationType::NodeRecordVersionMismatch => true,
+                _ => false,
+            }
     }
 
     /// Get invariant violation severity level
@@ -440,7 +458,9 @@ impl V2InvariantUtils {
             match violation.violation_type {
                 V2InvariantViolationType::ClusterBoundaryViolation => V2InvariantSeverity::Error,
                 V2InvariantViolationType::BlockAlignmentViolation => V2InvariantSeverity::Warning,
-                V2InvariantViolationType::ClusteredEdgeFormatViolation => V2InvariantSeverity::Error,
+                V2InvariantViolationType::ClusteredEdgeFormatViolation => {
+                    V2InvariantSeverity::Error
+                }
                 V2InvariantViolationType::V2StringTableViolation => V2InvariantSeverity::Warning,
                 V2InvariantViolationType::V2FreeSpaceViolation => V2InvariantSeverity::Warning,
                 _ => V2InvariantSeverity::Error,
@@ -454,7 +474,10 @@ impl V2InvariantUtils {
             return 1.0;
         }
 
-        let critical_count = violations.iter().filter(|v| Self::is_critical_violation(v)).count();
+        let critical_count = violations
+            .iter()
+            .filter(|v| Self::is_critical_violation(v))
+            .count();
         let total_count = violations.len();
 
         if critical_count > 0 {
@@ -603,30 +626,26 @@ mod tests {
 
     #[test]
     fn test_v2_invariant_utils_compliance_score() {
-        let violations = vec![
-            V2InvariantViolation {
-                violation_type: V2InvariantViolationType::BlockAlignmentViolation,
-                description: "Warning violation".to_string(),
-                expected: None,
-                actual: None,
-                critical: false,
-            },
-        ];
+        let violations = vec![V2InvariantViolation {
+            violation_type: V2InvariantViolationType::BlockAlignmentViolation,
+            description: "Warning violation".to_string(),
+            expected: None,
+            actual: None,
+            critical: false,
+        }];
 
         let score = V2InvariantUtils::calculate_compliance_score(&violations);
         assert!(score < 1.0);
         assert!(score > 0.0);
 
         // Critical violations should result in zero compliance
-        let critical_violations = vec![
-            V2InvariantViolation {
-                violation_type: V2InvariantViolationType::InvalidV2Version,
-                description: "Critical violation".to_string(),
-                expected: None,
-                actual: None,
-                critical: true,
-            },
-        ];
+        let critical_violations = vec![V2InvariantViolation {
+            violation_type: V2InvariantViolationType::InvalidV2Version,
+            description: "Critical violation".to_string(),
+            expected: None,
+            actual: None,
+            critical: true,
+        }];
 
         let critical_score = V2InvariantUtils::calculate_compliance_score(&critical_violations);
         assert_eq!(critical_score, 0.0);

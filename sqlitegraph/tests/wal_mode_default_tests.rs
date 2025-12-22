@@ -3,10 +3,10 @@
 //! This test suite validates that WAL mode is properly enabled by default
 //! for file-based databases in SQLiteGraph and tests all WAL-related functionality.
 
-use tempfile::TempDir;
 use rusqlite::Connection;
-use sqlitegraph::{SqliteGraph, GraphEntityCreate, graph_opt::bulk_insert_entities};
 use sqlitegraph::schema::ensure_schema;
+use sqlitegraph::{GraphEntityCreate, SqliteGraph, graph_opt::bulk_insert_entities};
+use tempfile::TempDir;
 
 /// Test that WAL mode is enabled by default for file-based databases
 #[test]
@@ -37,7 +37,10 @@ fn test_wal_mode_enabled_by_default_file_database() {
         .unwrap()
         .query_row([], |row| row.get(0))
         .unwrap();
-    assert_eq!(journal_mode, "wal", "WAL mode should be enabled by default for file-based databases");
+    assert_eq!(
+        journal_mode, "wal",
+        "WAL mode should be enabled by default for file-based databases"
+    );
 
     // Verify synchronous mode is set to NORMAL for balanced performance
     let synchronous: i64 = conn
@@ -45,7 +48,10 @@ fn test_wal_mode_enabled_by_default_file_database() {
         .unwrap()
         .query_row([], |row| row.get(0))
         .unwrap();
-    assert_eq!(synchronous, 1, "Synchronous mode should be NORMAL (1) for balanced performance");
+    assert_eq!(
+        synchronous, 1,
+        "Synchronous mode should be NORMAL (1) for balanced performance"
+    );
 
     // Verify cache size is set appropriately
     let cache_size: i64 = conn
@@ -53,7 +59,10 @@ fn test_wal_mode_enabled_by_default_file_database() {
         .unwrap()
         .query_row([], |row| row.get(0))
         .unwrap();
-    assert_eq!(cache_size, -64000, "Cache size should be 64MB for optimal performance");
+    assert_eq!(
+        cache_size, -64000,
+        "Cache size should be 64MB for optimal performance"
+    );
 
     // Verify temp store is in MEMORY for performance
     let temp_store: i64 = conn
@@ -69,7 +78,10 @@ fn test_wal_mode_enabled_by_default_file_database() {
         .unwrap()
         .query_row([], |row| row.get(0))
         .unwrap();
-    assert_eq!(mmap_size, 268435456, "MMap size should be 256MB for large I/O operations");
+    assert_eq!(
+        mmap_size, 268435456,
+        "MMap size should be 256MB for large I/O operations"
+    );
 }
 
 /// Test that in-memory databases don't use WAL mode (expected behavior)
@@ -88,7 +100,10 @@ fn test_in_memory_database_excludes_wal() {
         .unwrap()
         .query_row([], |row| row.get(0))
         .unwrap();
-    assert_eq!(journal_mode, "memory", "In-memory databases should use MEMORY journal mode");
+    assert_eq!(
+        journal_mode, "memory",
+        "In-memory databases should use MEMORY journal mode"
+    );
 }
 
 /// Test WAL mode performance characteristics with concurrent operations
@@ -114,7 +129,11 @@ fn test_wal_mode_concurrent_performance() {
 
     // Bulk insert should work efficiently with WAL mode
     let inserted_ids = bulk_insert_entities(&graph, &entities).unwrap();
-    assert_eq!(inserted_ids.len(), 100, "All entities should be inserted successfully");
+    assert_eq!(
+        inserted_ids.len(),
+        100,
+        "All entities should be inserted successfully"
+    );
 
     // Verify entities can be read back immediately (WAL allows concurrent reads during writes)
     for (i, &entity_id) in inserted_ids.iter().enumerate() {
@@ -204,7 +223,11 @@ fn test_wal_mode_large_volume_performance() {
 
     // This should succeed efficiently with WAL mode
     let inserted_ids = bulk_insert_entities(&graph, &large_entities).unwrap();
-    assert_eq!(inserted_ids.len(), 5000, "Large volume insert should succeed");
+    assert_eq!(
+        inserted_ids.len(),
+        5000,
+        "Large volume insert should succeed"
+    );
 
     // Verify data integrity
     assert_eq!(graph.list_entity_ids().unwrap().len(), 5000);
@@ -217,7 +240,10 @@ fn test_wal_mode_large_volume_performance() {
     let read_time = start_time.elapsed();
 
     // Large reads should be fast with WAL mode
-    assert!(read_time.as_millis() < 1000, "Large volume reads should complete quickly with WAL mode");
+    assert!(
+        read_time.as_millis() < 1000,
+        "Large volume reads should complete quickly with WAL mode"
+    );
 }
 
 /// Test WAL mode database file characteristics
@@ -249,7 +275,10 @@ fn test_wal_mode_database_file_characteristics() {
 
     // Files may or may not exist depending on SQLite's checkpointing behavior
     // This is normal behavior - we just verify the main database file exists
-    assert!(db_path.metadata().unwrap().len() > 0, "Database file should have content");
+    assert!(
+        db_path.metadata().unwrap().len() > 0,
+        "Database file should have content"
+    );
 }
 
 /// Test prepared statement caching with WAL mode
@@ -272,11 +301,16 @@ fn test_wal_mode_prepared_statement_caching() {
     let final_metrics = graph.metrics_snapshot();
 
     // Should have some prepared statement activity
-    assert!(final_metrics.prepare_count > 0, "Should have prepared statements");
+    assert!(
+        final_metrics.prepare_count > 0,
+        "Should have prepared statements"
+    );
 
     // Multiple similar queries should benefit from caching
-    assert!(final_metrics.prepare_cache_hits >= initial_metrics.prepare_cache_hits,
-           "Should benefit from prepared statement caching");
+    assert!(
+        final_metrics.prepare_cache_hits >= initial_metrics.prepare_cache_hits,
+        "Should benefit from prepared statement caching"
+    );
 }
 
 /// Test memory management with WAL mode
@@ -306,8 +340,10 @@ fn test_wal_mode_memory_management() {
     let final_metrics = graph.metrics_snapshot();
 
     // Should show reasonable memory usage patterns
-    assert!(final_metrics.prepare_count > initial_metrics.prepare_count,
-           "Should have increased prepared statement usage");
+    assert!(
+        final_metrics.prepare_count > initial_metrics.prepare_count,
+        "Should have increased prepared statement usage"
+    );
 
     // Clean shutdown should work properly (WAL checkpointing)
     drop(graph);

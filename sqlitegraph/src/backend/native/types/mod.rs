@@ -5,18 +5,18 @@
 
 // Public exports - maintain the same public API as before
 pub use aliases::*;
-pub use flags::*;
-pub use file_header::*;
-pub use records::*;
-pub use errors::*;
 pub use cpu_profile::*;
+pub use errors::*;
+pub use file_header::*;
+pub use flags::*;
+pub use records::*;
 pub use utils::*;
 
 // Module declarations
 mod aliases;
-mod flags;
-mod file_header;
-mod records;
-mod errors;
 mod cpu_profile;
+mod errors;
+mod file_header;
+mod flags;
+mod records;
 mod utils;

@@ -14,22 +14,23 @@ fn test_exact_80_bytes_causes_oob_panic() {
     // tries to access beyond index 79 (which would be index 80 == len)
 
     // Set some basic valid data
-    header_data[0..8].copy_from_slice(b"SQLTGRPH");  // magic
-    header_data[8..12].copy_from_slice(&2u32.to_be_bytes());  // version
+    header_data[0..8].copy_from_slice(b"SQLTGRPH"); // magic
+    header_data[8..12].copy_from_slice(&2u32.to_be_bytes()); // version
 
     println!("Created header buffer of {} bytes", header_data.len());
 
     // This should panic if the bug exists: "index out of bounds: (len=80, index=80)"
-    let result = std::panic::catch_unwind(|| {
-        decode_persistent_header(&header_data)
-    });
+    let result = std::panic::catch_unwind(|| decode_persistent_header(&header_data));
 
     match result {
         Ok(Ok(_header)) => {
             println!("SUCCESS: No panic occurred, header decoded successfully");
         }
         Ok(Err(e)) => {
-            println!("ERROR: Header decode failed with error (not panic): {:?}", e);
+            println!(
+                "ERROR: Header decode failed with error (not panic): {:?}",
+                e
+            );
             // This is acceptable - the function should return an error, not panic
         }
         Err(panic_info) => {
@@ -42,7 +43,10 @@ fn test_exact_80_bytes_causes_oob_panic() {
             };
 
             if panic_msg.contains("index out of bounds") && panic_msg.contains("len=80") {
-                panic!("CONFIRMED BUG: Found the exact panic we need to fix: {}", panic_msg);
+                panic!(
+                    "CONFIRMED BUG: Found the exact panic we need to fix: {}",
+                    panic_msg
+                );
             } else {
                 panic!("Different panic occurred: {}", panic_msg);
             }
@@ -55,9 +59,7 @@ fn test_79_bytes_should_not_panic() {
     // Test with 79 bytes - should return FileTooSmall error, not panic
     let header_data = vec![0u8; PERSISTENT_HEADER_SIZE - 1];
 
-    let result = std::panic::catch_unwind(|| {
-        decode_persistent_header(&header_data)
-    });
+    let result = std::panic::catch_unwind(|| decode_persistent_header(&header_data));
 
     assert!(result.is_ok(), "Should not panic with 79 bytes");
 

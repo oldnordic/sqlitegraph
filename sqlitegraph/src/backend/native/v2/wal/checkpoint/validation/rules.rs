@@ -4,9 +4,9 @@
 //! for V2 WAL checkpoint operations. It defines the rules for file integrity,
 //! format validation, and basic validation criteria.
 
+use crate::backend::native::v2::wal::V2WALConfig;
 use crate::backend::native::v2::wal::checkpoint::constants::*;
 use crate::backend::native::v2::wal::checkpoint::errors::{CheckpointError, CheckpointResult};
-use crate::backend::native::v2::wal::V2WALConfig;
 use std::fs;
 
 /// Validation rule severity levels
@@ -45,9 +45,7 @@ pub struct ValidationRuleEngine {
 impl ValidationRuleEngine {
     /// Create a new validation rule engine with default rules
     pub fn new() -> Self {
-        let mut engine = Self {
-            rules: Vec::new(),
-        };
+        let mut engine = Self { rules: Vec::new() };
         engine.register_default_rules();
         engine
     }
@@ -176,12 +174,15 @@ impl FileValidationRules {
 
     /// Validate file size constraints
     pub fn validate_file_size(checkpoint_path: &std::path::Path) -> CheckpointResult<()> {
-        let metadata = fs::metadata(checkpoint_path)
-            .map_err(|e| CheckpointError::validation(format!("Failed to read checkpoint metadata: {}", e)))?;
+        let metadata = fs::metadata(checkpoint_path).map_err(|e| {
+            CheckpointError::validation(format!("Failed to read checkpoint metadata: {}", e))
+        })?;
 
         // Check if file is empty
         if metadata.len() == 0 {
-            return Err(CheckpointError::validation("Checkpoint file is empty".to_string()));
+            return Err(CheckpointError::validation(
+                "Checkpoint file is empty".to_string(),
+            ));
         }
 
         // Check minimum size
@@ -210,14 +211,14 @@ impl FileValidationRules {
         use std::io::Read;
 
         let mut magic = [0u8; 4];
-        file.read_exact(&mut magic)
-            .map_err(|e| CheckpointError::validation(format!("Failed to read checkpoint magic: {}", e)))?;
+        file.read_exact(&mut magic).map_err(|e| {
+            CheckpointError::validation(format!("Failed to read checkpoint magic: {}", e))
+        })?;
 
         if magic != *CHECKPOINT_MAGIC {
             return Err(CheckpointError::validation(format!(
                 "Invalid checkpoint magic: expected {:?}, got {:?}",
-                CHECKPOINT_MAGIC,
-                magic
+                CHECKPOINT_MAGIC, magic
             )));
         }
 
@@ -229,15 +230,15 @@ impl FileValidationRules {
         use std::io::Read;
 
         let mut version_bytes = [0u8; 4];
-        file.read_exact(&mut version_bytes)
-            .map_err(|e| CheckpointError::validation(format!("Failed to read checkpoint version: {}", e)))?;
+        file.read_exact(&mut version_bytes).map_err(|e| {
+            CheckpointError::validation(format!("Failed to read checkpoint version: {}", e))
+        })?;
 
         let version = u32::from_le_bytes(version_bytes);
         if version != CHECKPOINT_VERSION {
             return Err(CheckpointError::validation(format!(
                 "Unsupported checkpoint version: {} (supported: {})",
-                version,
-                CHECKPOINT_VERSION
+                version, CHECKPOINT_VERSION
             )));
         }
 
@@ -338,14 +339,16 @@ impl<'a> ValidationContext<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
-    use std::io::Write;
+        use tempfile::tempdir;
 
     #[test]
     fn test_validation_rule_engine_creation() {
         let engine = ValidationRuleEngine::new();
         let rules = engine.get_all_rules();
-        assert!(!rules.is_empty(), "Engine should have default rules registered");
+        assert!(
+            !rules.is_empty(),
+            "Engine should have default rules registered"
+        );
 
         // Check for key default rules
         assert!(engine.get_rule("file_exists").is_some());
@@ -431,7 +434,10 @@ mod tests {
             validation_timeout: std::time::Duration::from_secs(60),
         };
         assert!(strict_config.strict_mode);
-        assert_eq!(strict_config.min_error_severity, ValidationSeverity::Warning);
+        assert_eq!(
+            strict_config.min_error_severity,
+            ValidationSeverity::Warning
+        );
         assert!(!strict_config.allow_warnings);
     }
 
@@ -456,7 +462,7 @@ mod tests {
             ValidationConfig {
                 strict_mode: true,
                 ..Default::default()
-            }
+            },
         );
         assert!(strict_context.validation_config.strict_mode);
     }

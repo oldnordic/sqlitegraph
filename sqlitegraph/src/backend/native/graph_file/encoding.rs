@@ -5,9 +5,9 @@
 //! and bounds-checked slice access.
 
 use crate::backend::native::{
-    types::NativeResult,
-    persistent_header::{PersistentHeaderV2, PERSISTENT_HEADER_SIZE},
     constants::HEADER_SIZE,
+    persistent_header::{PERSISTENT_HEADER_SIZE, PersistentHeaderV2},
+    types::NativeResult,
 };
 
 /// Encode a PersistentHeaderV2 into binary format
@@ -66,10 +66,12 @@ pub fn encode_persistent_header(header: &PersistentHeaderV2) -> NativeResult<Vec
 /// Returns error if the data is too small or contains invalid offsets.
 pub fn decode_persistent_header(bytes: &[u8]) -> NativeResult<PersistentHeaderV2> {
     if bytes.len() < PERSISTENT_HEADER_SIZE {
-        return Err(crate::backend::native::types::NativeBackendError::FileTooSmall {
-            size: bytes.len() as u64,
-            min_size: PERSISTENT_HEADER_SIZE as u64,
-        });
+        return Err(
+            crate::backend::native::types::NativeBackendError::FileTooSmall {
+                size: bytes.len() as u64,
+                min_size: PERSISTENT_HEADER_SIZE as u64,
+            },
+        );
     }
 
     let mut offset = 0;
@@ -129,7 +131,7 @@ pub fn decode_persistent_header(bytes: &[u8]) -> NativeResult<PersistentHeaderV2
     offset += 8;
 
     // Read schema version
-    let schema_version_slice = get_slice_safe(bytes, offset, 8)?;  // TODO: This should probably be 4 bytes, not 8
+    let schema_version_slice = get_slice_safe(bytes, offset, 8)?; // TODO: This should probably be 4 bytes, not 8
     let schema_version = u64::from_be_bytes([
         schema_version_slice[0],
         schema_version_slice[1],
@@ -238,7 +240,6 @@ pub fn decode_persistent_header(bytes: &[u8]) -> NativeResult<PersistentHeaderV2
             free_space_slice[6],
             free_space_slice[7],
         ]);
-        offset += 8;
     }
 
     Ok(PersistentHeaderV2 {
@@ -262,11 +263,17 @@ pub fn decode_persistent_header(bytes: &[u8]) -> NativeResult<PersistentHeaderV2
 /// to prevent buffer overflows and invalid memory access.
 pub fn get_slice_safe(data: &[u8], start: usize, len: usize) -> NativeResult<&[u8]> {
     if start.checked_add(len).map_or(true, |end| end > data.len()) {
-        return Err(crate::backend::native::types::NativeBackendError::InvalidHeader {
-            field: "header_data".to_string(),
-            reason: format!("slice access out of bounds: start={}, len={}, data_len={}",
-                          start, len, data.len()),
-        });
+        return Err(
+            crate::backend::native::types::NativeBackendError::InvalidHeader {
+                field: "header_data".to_string(),
+                reason: format!(
+                    "slice access out of bounds: start={}, len={}, data_len={}",
+                    start,
+                    len,
+                    data.len()
+                ),
+            },
+        );
     }
     // This is safe now because we checked the bounds above
     Ok(&data[start..start + len])

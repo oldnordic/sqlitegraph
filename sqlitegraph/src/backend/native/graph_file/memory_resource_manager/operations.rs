@@ -3,13 +3,16 @@
 //! This module provides the core read/write operations with intelligent
 //! routing based on I/O mode and buffer state.
 
+use super::manager::MemoryResourceManager;
+
+#[cfg(any(feature = "v2_io_exclusive_mmap", feature = "v2_io_exclusive_std"))]
+use super::types::MemoryIOMode;
 use crate::backend::native::{
-    types::{NativeResult, NativeBackendError},
     graph_file::buffers::ReadBuffer,
     graph_file::file_ops::FileOperations,
+    types::NativeResult,  // NativeBackendError removed - available via parent re-export
 };
-use super::manager::MemoryResourceManager;
-use super::types::MemoryIOMode;
+use std::io::{Read, Seek, SeekFrom};
 
 #[cfg(feature = "native-v2")]
 use memmap2::MmapMut;
@@ -61,6 +64,7 @@ impl<'a> MemoryResourceManager<'a> {
     /// * `file_size_fn` - Function to get current file size
     ///
     /// Routes write operations based on I/O mode and buffer considerations
+    #[allow(unused_variables)]  // Allow warnings for feature-conditional parameters
     pub fn memory_aware_write<F>(
         &mut self,
         file: &mut std::fs::File,
@@ -243,7 +247,8 @@ impl<'a> MemoryResourceManager<'a> {
         data: &[u8],
     ) -> NativeResult<()> {
         // Special handling for node slots (must not be buffered)
-        let is_node_slot = (offset >= 0x400) && ((offset - 0x400) % 4096 == 0) && (data.len() == 4096);
+        let is_node_slot =
+            (offset >= 0x400) && ((offset - 0x400) % 4096 == 0) && (data.len() == 4096);
 
         // Try to buffer small writes (except node slots)
         if !is_node_slot && data.len() <= 256 && self.write_buffer.add(offset, data.to_vec()) {
@@ -268,8 +273,9 @@ impl<'a> MemoryResourceManager<'a> {
     where
         F: FnOnce() -> NativeResult<u64>,
     {
-        use std::io::{Read, Seek, SeekFrom};
         use crate::backend::native::types::NativeBackendError;
+        // IO traits removed - Read, Seek, SeekFrom not needed for this function
+        // std::io::{Read, Seek, SeekFrom} removed - unused
 
         // Use adaptive sizing to minimize I/O amplification
         let optimal_capacity = ReadBuffer::adaptive_capacity(buffer.len());
@@ -309,7 +315,8 @@ impl<'a> MemoryResourceManager<'a> {
             buffer.copy_from_slice(&self.read_buffer.data[..buffer.len()]);
         } else {
             // Original request exceeds what we could read-ahead
-            buffer[..adjusted_read_size].copy_from_slice(&self.read_buffer.data[..adjusted_read_size]);
+            buffer[..adjusted_read_size]
+                .copy_from_slice(&self.read_buffer.data[..adjusted_read_size]);
         }
 
         Ok(())

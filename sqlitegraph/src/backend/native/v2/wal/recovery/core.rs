@@ -3,10 +3,10 @@
 //! Core recovery engine and lifecycle management for V2 clustered edge format.
 //! Focuses on recovery orchestration, state management, and phase coordination.
 
-use crate::backend::native::{NativeBackendError, NativeResult};
+use super::{constants::*, errors::RecoveryError};
 use crate::backend::native::v2::wal::{V2WALConfig, V2WALRecord};
-use super::{errors::RecoveryError, constants::*};
-use parking_lot::{Mutex, Condvar};
+use crate::backend::native::{NativeBackendError, NativeResult};
+use parking_lot::{Condvar, Mutex};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -20,7 +20,14 @@ macro_rules! error { ($($arg:tt)*) => { log::error!($($arg)*); }; }
 /// Recovery state machine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RecoveryState {
-    Idle, Initializing, Scanning, Validating, Replaying, Finalizing, Complete, Failed,
+    Idle,
+    Initializing,
+    Scanning,
+    Validating,
+    Replaying,
+    Finalizing,
+    Complete,
+    Failed,
 }
 
 /// Recovery configuration options
@@ -183,8 +190,7 @@ impl V2WALRecoveryEngine {
             std::fs::create_dir_all(parent).map_err(NativeBackendError::from)?;
         }
 
-        std::fs::copy(database_path, &backup_path)
-            .map_err(NativeBackendError::from)?;
+        std::fs::copy(database_path, &backup_path).map_err(NativeBackendError::from)?;
 
         Ok(backup_path)
     }
@@ -200,12 +206,19 @@ impl V2WALRecoveryEngine {
         let mut warnings = Vec::new();
 
         for attempt in 1..=self.options.max_recovery_attempts {
-            debug!("Recovery attempt {}/{}", attempt, self.options.max_recovery_attempts);
+            debug!(
+                "Recovery attempt {}/{}",
+                attempt, self.options.max_recovery_attempts
+            );
 
             match self.attempt_recovery(attempt) {
                 Ok(mut attempt_warnings) => {
                     warnings.append(&mut attempt_warnings);
-                    return self.finalize_successful_recovery(start_time, start_timestamp, warnings);
+                    return self.finalize_successful_recovery(
+                        start_time,
+                        start_timestamp,
+                        warnings,
+                    );
                 }
                 Err(e) => {
                     error!("Recovery attempt {} failed: {}", attempt, e);
@@ -213,20 +226,26 @@ impl V2WALRecoveryEngine {
                     if attempt == self.options.max_recovery_attempts {
                         if self.options.force_recovery {
                             warn!("Force recovery enabled");
-                            return self.finalize_successful_recovery(start_time, start_timestamp, warnings);
+                            return self.finalize_successful_recovery(
+                                start_time,
+                                start_timestamp,
+                                warnings,
+                            );
                         }
                         return self.finalize_failed_recovery(start_time, start_timestamp, e);
                     }
 
                     let backoff = Duration::from_millis(
-                        (RECOVERY_RETRY_BACKOFF_MULTIPLIER.powi(attempt as i32) * 1000.0) as u64
+                        (RECOVERY_RETRY_BACKOFF_MULTIPLIER.powi(attempt as i32) * 1000.0) as u64,
                     );
                     std::thread::sleep(backoff.min(Duration::from_secs(MAX_RETRY_DELAY_SECONDS)));
                 }
             }
         }
 
-        Err(RecoveryError::configuration("Unexpected recovery completion".to_string()))
+        Err(RecoveryError::configuration(
+            "Unexpected recovery completion".to_string(),
+        ))
     }
 
     /// Get current timestamp
@@ -238,7 +257,7 @@ impl V2WALRecoveryEngine {
     }
 
     /// Attempt single recovery operation
-    fn attempt_recovery(&self, attempt: u32) -> Result<Vec<String>, RecoveryError> {
+    fn attempt_recovery(&self, _attempt: u32) -> Result<Vec<String>, RecoveryError> {
         let mut warnings = Vec::new();
 
         self.set_recovery_state(RecoveryState::Initializing)?;
@@ -356,18 +375,11 @@ impl V2WALRecoveryEngine {
     fn update_transaction_metrics(&self, transactions: &[TransactionState]) {
         let mut metrics = self.metrics.lock();
         metrics.transactions_scanned = transactions.len() as u64;
-        metrics.committed_transactions_replayed = transactions
-            .iter()
-            .filter(|tx| tx.committed)
-            .count() as u64;
-        metrics.rolled_back_transactions = transactions
-            .iter()
-            .filter(|tx| !tx.committed)
-            .count() as u64;
-        metrics.records_processed = transactions
-            .iter()
-            .map(|tx| tx.records.len() as u64)
-            .sum();
+        metrics.committed_transactions_replayed =
+            transactions.iter().filter(|tx| tx.committed).count() as u64;
+        metrics.rolled_back_transactions =
+            transactions.iter().filter(|tx| !tx.committed).count() as u64;
+        metrics.records_processed = transactions.iter().map(|tx| tx.records.len() as u64).sum();
     }
 
     /// Get recovery progress
@@ -401,7 +413,9 @@ impl V2WALRecoveryEngine {
         let result = self.recovery_cv.wait_for(&mut state, timeout);
 
         if result.timed_out() {
-            return Err(RecoveryError::timeout("Recovery completion timeout".to_string()));
+            return Err(RecoveryError::timeout(
+                "Recovery completion timeout".to_string(),
+            ));
         }
 
         Ok(*state)
@@ -411,12 +425,12 @@ impl V2WALRecoveryEngine {
     pub fn cancel_recovery(&self) -> Result<(), RecoveryError> {
         let mut state = self.state.lock();
         match *state {
-            RecoveryState::Idle => {
-                Err(RecoveryError::configuration("No recovery in progress".to_string()))
-            }
-            RecoveryState::Complete | RecoveryState::Failed => {
-                Err(RecoveryError::configuration("Recovery already completed".to_string()))
-            }
+            RecoveryState::Idle => Err(RecoveryError::configuration(
+                "No recovery in progress".to_string(),
+            )),
+            RecoveryState::Complete | RecoveryState::Failed => Err(RecoveryError::configuration(
+                "Recovery already completed".to_string(),
+            )),
             _ => {
                 *state = RecoveryState::Failed;
                 self.recovery_cv.notify_all();
@@ -427,11 +441,13 @@ impl V2WALRecoveryEngine {
     }
 
     // Specialized module methods
-    fn scan_wal_for_transactions(&self) -> Result<(Vec<TransactionState>, Vec<String>), RecoveryError> {
+    fn scan_wal_for_transactions(
+        &self,
+    ) -> Result<(Vec<TransactionState>, Vec<String>), RecoveryError> {
         // Delegate to specialized scanner module
-        use super::scanner::{WALScanner, WALScanResult, ScanStatistics};
+        use super::scanner::{ScanStatistics, WALScanResult, WALScanner};
 
-        let scanner = WALScanner::new();
+        let _scanner = WALScanner::new();
         let mut active_tx = self.active_transactions.lock();
         active_tx.clear();
 
@@ -449,14 +465,20 @@ impl V2WALRecoveryEngine {
         Ok((scan_result.transactions, scan_result.warnings))
     }
 
-    fn validate_transactions(&self, transactions: &[TransactionState]) -> Result<Vec<String>, RecoveryError> {
+    fn validate_transactions(
+        &self,
+        transactions: &[TransactionState],
+    ) -> Result<Vec<String>, RecoveryError> {
         // Delegate to specialized validator module when implemented
         // For now, implement basic validation inline
         self.validate_transactions_basic(transactions)
     }
 
-    fn replay_transactions(&self, transactions: &[TransactionState]) -> Result<Vec<String>, RecoveryError> {
-        use super::replayer::{V2GraphFileReplayer, ReplayConfig};
+    fn replay_transactions(
+        &self,
+        transactions: &[TransactionState],
+    ) -> Result<Vec<String>, RecoveryError> {
+        use super::replayer::{ReplayConfig, V2GraphFileReplayer};
 
         // Create replayer with database path
         let config = ReplayConfig {
@@ -467,12 +489,15 @@ impl V2WALRecoveryEngine {
             progress_interval: RECOVERY_PROGRESS_INTERVAL,
         };
 
-        let mut replayer = V2GraphFileReplayer::create(self.database_path.clone(), config)
-            .map_err(|e| RecoveryError::configuration(format!("Failed to create replayer: {}", e)))?;
+        let replayer = V2GraphFileReplayer::create(self.database_path.clone(), config)
+            .map_err(|e| {
+                RecoveryError::configuration(format!("Failed to create replayer: {}", e))
+            })?;
 
         // Replay transactions using V2 integration
-        let replay_result = replayer.replay_transactions(transactions)
-            .map_err(|e| RecoveryError::replay_failure(format!("Transaction replay failed: {}", e)))?;
+        let replay_result = replayer.replay_transactions(transactions).map_err(|e| {
+            RecoveryError::replay_failure(format!("Transaction replay failed: {}", e))
+        })?;
 
         // Update recovery metrics
         {
@@ -489,7 +514,10 @@ impl V2WALRecoveryEngine {
     }
 
     /// Basic transaction validation (temporary until validator module is complete)
-    fn validate_transactions_basic(&self, transactions: &[TransactionState]) -> Result<Vec<String>, RecoveryError> {
+    fn validate_transactions_basic(
+        &self,
+        transactions: &[TransactionState],
+    ) -> Result<Vec<String>, RecoveryError> {
         let mut warnings = Vec::new();
         let mut tx_ids = std::collections::HashSet::new();
 
@@ -506,17 +534,26 @@ impl V2WALRecoveryEngine {
             }
 
             if tx.committed && tx.commit_lsn.is_none() {
-                warnings.push(format!("Committed transaction TX {} missing commit LSN", tx.tx_id));
+                warnings.push(format!(
+                    "Committed transaction TX {} missing commit LSN",
+                    tx.tx_id
+                ));
             }
 
             if !tx.committed && tx.commit_lsn.is_some() {
-                warnings.push(format!("Uncommitted transaction TX {} has commit LSN", tx.tx_id));
+                warnings.push(format!(
+                    "Uncommitted transaction TX {} has commit LSN",
+                    tx.tx_id
+                ));
             }
 
             // Validate record order
             if let Some(commit_lsn) = tx.commit_lsn {
                 if commit_lsn < tx.start_lsn {
-                    warnings.push(format!("Transaction TX {} commit LSN before start LSN", tx.tx_id));
+                    warnings.push(format!(
+                        "Transaction TX {} commit LSN before start LSN",
+                        tx.tx_id
+                    ));
                 }
             }
 
@@ -526,7 +563,10 @@ impl V2WALRecoveryEngine {
             }
         }
 
-        debug!("Transaction validation complete, {} warnings", warnings.len());
+        debug!(
+            "Transaction validation complete, {} warnings",
+            warnings.len()
+        );
         Ok(warnings)
     }
 
@@ -549,15 +589,39 @@ mod tests {
 
     #[test]
     fn test_recovery_state_transitions() {
-        assert!(is_valid_transition_static(RecoveryState::Idle, RecoveryState::Initializing));
-        assert!(is_valid_transition_static(RecoveryState::Initializing, RecoveryState::Scanning));
-        assert!(is_valid_transition_static(RecoveryState::Scanning, RecoveryState::Validating));
-        assert!(is_valid_transition_static(RecoveryState::Validating, RecoveryState::Replaying));
-        assert!(is_valid_transition_static(RecoveryState::Replaying, RecoveryState::Finalizing));
-        assert!(is_valid_transition_static(RecoveryState::Finalizing, RecoveryState::Complete));
+        assert!(is_valid_transition_static(
+            RecoveryState::Idle,
+            RecoveryState::Initializing
+        ));
+        assert!(is_valid_transition_static(
+            RecoveryState::Initializing,
+            RecoveryState::Scanning
+        ));
+        assert!(is_valid_transition_static(
+            RecoveryState::Scanning,
+            RecoveryState::Validating
+        ));
+        assert!(is_valid_transition_static(
+            RecoveryState::Validating,
+            RecoveryState::Replaying
+        ));
+        assert!(is_valid_transition_static(
+            RecoveryState::Replaying,
+            RecoveryState::Finalizing
+        ));
+        assert!(is_valid_transition_static(
+            RecoveryState::Finalizing,
+            RecoveryState::Complete
+        ));
 
-        assert!(!is_valid_transition_static(RecoveryState::Complete, RecoveryState::Scanning));
-        assert!(!is_valid_transition_static(RecoveryState::Idle, RecoveryState::Replaying));
+        assert!(!is_valid_transition_static(
+            RecoveryState::Complete,
+            RecoveryState::Scanning
+        ));
+        assert!(!is_valid_transition_static(
+            RecoveryState::Idle,
+            RecoveryState::Replaying
+        ));
     }
 
     #[test]
@@ -565,7 +629,10 @@ mod tests {
         let options = RecoveryOptions::default();
         assert!(!options.fast_recovery);
         assert_eq!(options.max_batch_size, DEFAULT_BATCH_SIZE);
-        assert_eq!(options.recovery_timeout, Duration::from_secs(DEFAULT_RECOVERY_TIMEOUT_SECONDS));
+        assert_eq!(
+            options.recovery_timeout,
+            Duration::from_secs(DEFAULT_RECOVERY_TIMEOUT_SECONDS)
+        );
         assert!(options.perform_consistency_checks);
         assert!(options.create_backup);
         assert_eq!(options.max_recovery_attempts, MAX_RECOVERY_ATTEMPTS);

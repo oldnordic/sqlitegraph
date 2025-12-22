@@ -283,7 +283,9 @@ mod tests {
     #[test]
     fn test_v2_constants() {
         assert!(v2::MAX_CLUSTER_OPERATIONS_PER_RECOVERY > 0);
-        assert!(v2::MAX_EDGE_CLUSTER_OPERATIONS_PER_RECOVERY >= v2::MAX_CLUSTER_OPERATIONS_PER_RECOVERY);
+        assert!(
+            v2::MAX_EDGE_CLUSTER_OPERATIONS_PER_RECOVERY >= v2::MAX_CLUSTER_OPERATIONS_PER_RECOVERY
+        );
         assert_eq!(v2::V2_GRAPH_RECOVERY_BLOCK_SIZE, 4096);
         assert_eq!(v2::V2_RECOVERY_CLUSTER_ALIGNMENT, 64 * 1024);
     }
@@ -303,26 +305,14 @@ mod tests {
     #[test]
     fn test_strategy_constants() {
         // Ensure strategies are ordered from conservative to aggressive
-        assert!(
-            strategies::CONSERVATIVE_BATCH_SIZE < strategies::BALANCED_BATCH_SIZE
-        );
-        assert!(
-            strategies::BALANCED_BATCH_SIZE < strategies::AGGRESSIVE_BATCH_SIZE
-        );
-        assert!(
-            strategies::AGGRESSIVE_BATCH_SIZE < strategies::EMERGENCY_BATCH_SIZE
-        );
+        assert!(strategies::CONSERVATIVE_BATCH_SIZE < strategies::BALANCED_BATCH_SIZE);
+        assert!(strategies::BALANCED_BATCH_SIZE < strategies::AGGRESSIVE_BATCH_SIZE);
+        assert!(strategies::AGGRESSIVE_BATCH_SIZE < strategies::EMERGENCY_BATCH_SIZE);
 
         // Ensure timeouts follow the same pattern
-        assert!(
-            strategies::CONSERVATIVE_TIMEOUT_SECONDS > strategies::BALANCED_TIMEOUT_SECONDS
-        );
-        assert!(
-            strategies::BALANCED_TIMEOUT_SECONDS > strategies::AGGRESSIVE_TIMEOUT_SECONDS
-        );
-        assert!(
-            strategies::AGGRESSIVE_TIMEOUT_SECONDS > strategies::EMERGENCY_TIMEOUT_SECONDS
-        );
+        assert!(strategies::CONSERVATIVE_TIMEOUT_SECONDS > strategies::BALANCED_TIMEOUT_SECONDS);
+        assert!(strategies::BALANCED_TIMEOUT_SECONDS > strategies::AGGRESSIVE_TIMEOUT_SECONDS);
+        assert!(strategies::AGGRESSIVE_TIMEOUT_SECONDS > strategies::EMERGENCY_TIMEOUT_SECONDS);
     }
 
     #[test]
@@ -352,7 +342,9 @@ mod tests {
         // Ensure constants are within reasonable bounds
         assert!(MAX_RECOVERY_ATTEMPTS > 0 && MAX_RECOVERY_ATTEMPTS < 20);
         assert!(DEFAULT_RECOVERY_TIMEOUT_SECONDS > 0 && DEFAULT_RECOVERY_TIMEOUT_SECONDS < 3600);
-        assert!(RECOVERY_RETRY_BACKOFF_MULTIPLIER > 1.0 && RECOVERY_RETRY_BACKOFF_MULTIPLIER < 10.0);
+        assert!(
+            RECOVERY_RETRY_BACKOFF_MULTIPLIER > 1.0 && RECOVERY_RETRY_BACKOFF_MULTIPLIER < 10.0
+        );
         assert!(MAX_RETRY_DELAY_SECONDS >= MIN_RETRY_DELAY_SECONDS);
     }
 }

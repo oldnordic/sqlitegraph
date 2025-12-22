@@ -31,12 +31,12 @@
 //! - AdjacencyHelpers: Orchestration functions with complex logic
 
 mod core_iterator;
-mod v2_clustered;
 mod iterator_impl;
+mod v2_clustered;
 
+mod helpers;
 #[cfg(debug_assertions)]
 mod instrumentation;
-mod helpers;
 
 #[cfg(test)]
 mod tests;

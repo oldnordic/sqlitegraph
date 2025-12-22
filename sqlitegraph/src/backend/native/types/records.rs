@@ -1,7 +1,7 @@
 //! Node and edge record structures for the native backend
 
+use super::{EdgeFlags, NativeBackendError, NativeEdgeId, NativeNodeId};
 use serde_json;
-use super::{NativeNodeId, NativeEdgeId, NativeBackendError, EdgeFlags};
 
 /// V2-only node record type alias for backward compatibility
 pub type NodeRecord = crate::backend::native::v2::node_record_v2::NodeRecordV2;

@@ -111,27 +111,31 @@
 //! ```
 
 // Re-export public API
-pub use config::{HnswConfig, hnsw_config};
 pub use builder::HnswConfigBuilder;
+pub use config::{HnswConfig, hnsw_config};
 pub use distance_metric::{DistanceMetric, compute_distance};
-pub use storage::{VectorStorage, VectorRecord, VectorBatch, InMemoryVectorStorage, VectorStorageStats};
-pub use errors::{HnswError, HnswConfigError, HnswIndexError, HnswStorageError, HnswMultiLayerError};
+pub use errors::{
+    HnswConfigError, HnswError, HnswIndexError, HnswMultiLayerError, HnswStorageError,
+};
 pub use index::{HnswIndex, HnswIndexStats};
+pub use storage::{
+    InMemoryVectorStorage, VectorBatch, VectorRecord, VectorStorage, VectorStorageStats,
+};
 
 // Multi-layer HNSW components
 pub use multilayer::{LayerMappings, LevelDistributor, MultiLayerNodeManager};
 
 // Module organization
-pub mod config;
 pub mod builder;
-pub mod distance_metric;
+pub mod config;
 pub mod distance_functions;
-pub mod layer;
-pub mod neighborhood;
-pub mod storage;
+pub mod distance_metric;
 pub mod errors;
 pub mod index;
+pub mod layer;
 pub mod multilayer;
+pub mod neighborhood;
+pub mod storage;
 
 #[cfg(test)]
 mod tests {
@@ -188,8 +192,7 @@ mod tests {
     #[test]
     fn test_error_handling() {
         // Test that the build() method catches validation errors
-        let result = HnswConfigBuilder::new()
-            .build(); // Default has dimension 768, so this should pass
+        let result = HnswConfigBuilder::new().build(); // Default has dimension 768, so this should pass
         assert!(result.is_ok());
 
         // Test dimension 0 should be caught by build() method
@@ -218,11 +221,11 @@ mod tests {
         let config = HnswConfig::default();
 
         // Verify reasonable defaults
-        assert_eq!(config.dimension, 768);        // Common embedding size
-        assert_eq!(config.m, 16);                 // Balanced connectivity
-        assert_eq!(config.ef_construction, 200);  // Good construction quality
-        assert_eq!(config.ef_search, 50);         // Balanced search speed/quality
-        assert_eq!(config.ml, 16);                // Reasonable depth
+        assert_eq!(config.dimension, 768); // Common embedding size
+        assert_eq!(config.m, 16); // Balanced connectivity
+        assert_eq!(config.ef_construction, 200); // Good construction quality
+        assert_eq!(config.ef_search, 50); // Balanced search speed/quality
+        assert_eq!(config.ml, 16); // Reasonable depth
         assert_eq!(config.distance_metric, DistanceMetric::Cosine);
     }
 

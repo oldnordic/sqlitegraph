@@ -4,21 +4,20 @@
 //! edge format, implementing transaction-aware V2 operations, cluster-affinity logging,
 //! and optimized batch operations for maximum performance.
 
-use crate::backend::native::{
-    NativeBackendError, NativeResult, NativeNodeId, NativeEdgeId,
-    graph_file::GraphFile,
+use crate::backend::native::v2::wal::{
+    TransactionId, V2TransactionCoordinator, V2WALManager, V2WALRecord,
 };
 use crate::backend::native::v2::{
-    NodeRecordV2, EdgeCluster, CompactEdgeRecord, StringTable, FreeSpaceManager,
+    CompactEdgeRecord, EdgeCluster, NodeRecordV2,
 };
-use crate::backend::native::v2::wal::{
-    V2WALManager, V2WALRecord, V2WALConfig, V2TransactionCoordinator, TransactionId,
+use crate::backend::native::{
+    NativeBackendError, NativeEdgeId, NativeNodeId, NativeResult, graph_file::GraphFile,
 };
 use parking_lot::{Mutex, RwLock};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
+#[allow(unused_imports)] // False positive: UNIX_EPOCH is used as SystemTime::UNIX_EPOCH on lines 140, 212
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::path::Path;
 
 /// V2 WAL integration coordinator
 pub struct V2WALIntegrator {
@@ -286,11 +285,13 @@ impl V2WALIntegrator {
         }
 
         // Acquire exclusive lock on node
-        self.tx_coordinator.acquire_lock(
-            tx_id,
-            crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Node(node_id),
-            crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
-        ).await?;
+        self.tx_coordinator
+            .acquire_lock(
+                tx_id,
+                crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Node(node_id),
+                crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
+            )
+            .await?;
 
         // Prepare node data for insertion
         node_data.prepare_for_insertion();
@@ -314,7 +315,9 @@ impl V2WALIntegrator {
         }
 
         // Apply to in-memory V2 structures
-        self.node_coordinator.apply_insert(node_id, node_data.clone()).await?;
+        self.node_coordinator
+            .apply_insert(node_id, node_data.clone())
+            .await?;
 
         // Write to graph file
         {
@@ -338,30 +341,42 @@ impl V2WALIntegrator {
         }
 
         // Determine target cluster based on strategy
-        let cluster_id = self.edge_coordinator.determine_target_cluster(&edge_data).await?;
+        let cluster_id = self
+            .edge_coordinator
+            .determine_target_cluster(&edge_data)
+            .await?;
 
         // Acquire locks on edge and cluster
-        self.tx_coordinator.acquire_lock(
-            tx_id,
-            crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Edge(edge_id),
-            crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
-        ).await?;
+        self.tx_coordinator
+            .acquire_lock(
+                tx_id,
+                crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Edge(edge_id),
+                crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
+            )
+            .await?;
 
-        self.tx_coordinator.acquire_lock(
-            tx_id,
-            crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Cluster(cluster_id),
-            crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
-        ).await?;
+        self.tx_coordinator
+            .acquire_lock(
+                tx_id,
+                crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Cluster(
+                    cluster_id,
+                ),
+                crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
+            )
+            .await?;
 
         // Prepare edge data
         edge_data.prepare_for_insertion();
 
         // Serialize edge data
-        let serialized_data = edge_data.serialize();
+        let _serialized_data = edge_data.serialize();
 
         // Generate cluster-aware WAL record
         let wal_record = V2WALRecord::EdgeInsert {
-            cluster_key: (cluster_id, crate::backend::native::v2::edge_cluster::Direction::Outgoing), // Default to outgoing
+            cluster_key: (
+                cluster_id,
+                crate::backend::native::v2::edge_cluster::Direction::Outgoing,
+            ), // Default to outgoing
             edge_record: edge_data.clone(),
             insertion_point: u32::MAX, // Insert at end
         };
@@ -376,11 +391,17 @@ impl V2WALIntegrator {
         }
 
         // Apply to in-memory structures
-        self.edge_coordinator.apply_insert(edge_id, edge_data.clone()).await?;
-        self.cluster_coordinator.apply_edge_insert(cluster_id, edge_data).await?;
+        self.edge_coordinator
+            .apply_insert(edge_id, edge_data.clone())
+            .await?;
+        self.cluster_coordinator
+            .apply_edge_insert(cluster_id, edge_data)
+            .await?;
 
         // Update cluster mapping
-        self.edge_coordinator.update_cluster_mapping(edge_id, cluster_id).await;
+        self.edge_coordinator
+            .update_cluster_mapping(edge_id, cluster_id)
+            .await;
 
         Ok(())
     }
@@ -400,21 +421,32 @@ impl V2WALIntegrator {
         }
 
         // Group edges by cluster for optimal I/O
-        let mut cluster_groups: HashMap<i64, Vec<(NativeEdgeId, CompactEdgeRecord)>> = HashMap::new();
+        let mut cluster_groups: HashMap<i64, Vec<(NativeEdgeId, CompactEdgeRecord)>> =
+            HashMap::new();
 
         for (edge_id, edge_data) in edges {
-            let cluster_id = self.edge_coordinator.determine_target_cluster(&edge_data).await?;
-            cluster_groups.entry(cluster_id).or_default().push((edge_id, edge_data));
+            let cluster_id = self
+                .edge_coordinator
+                .determine_target_cluster(&edge_data)
+                .await?;
+            cluster_groups
+                .entry(cluster_id)
+                .or_default()
+                .push((edge_id, edge_data));
         }
 
         // Acquire locks for all edges and clusters
         for (cluster_id, cluster_edges) in &cluster_groups {
             // Lock cluster
-            self.tx_coordinator.acquire_lock(
-                tx_id,
-                crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Cluster(*cluster_id),
-                crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
-            ).await?;
+            self.tx_coordinator
+                .acquire_lock(
+                    tx_id,
+                    crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Cluster(
+                        *cluster_id,
+                    ),
+                    crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
+                )
+                .await?;
 
             // Lock all edges in cluster
             for (edge_id, _) in cluster_edges {
@@ -432,9 +464,12 @@ impl V2WALIntegrator {
 
         for (cluster_id, cluster_edges) in cluster_groups {
             for (edge_id, edge_data) in cluster_edges {
-                let serialized_data = edge_data.serialize();
+                let _serialized_data = edge_data.serialize();
                 wal_records.push(V2WALRecord::EdgeInsert {
-                    cluster_key: (cluster_id, crate::backend::native::v2::edge_cluster::Direction::Outgoing), // Default to outgoing
+                    cluster_key: (
+                        cluster_id,
+                        crate::backend::native::v2::edge_cluster::Direction::Outgoing,
+                    ), // Default to outgoing
                     edge_record: edge_data.clone(),
                     insertion_point: u32::MAX, // Insert at end
                 });
@@ -454,9 +489,15 @@ impl V2WALIntegrator {
             }
 
             // Apply to in-memory structures
-            self.edge_coordinator.apply_insert(*edge_id, edge_data.clone()).await?;
-            self.cluster_coordinator.apply_edge_insert(*cluster_id, edge_data.clone()).await?;
-            self.edge_coordinator.update_cluster_mapping(*edge_id, *cluster_id).await;
+            self.edge_coordinator
+                .apply_insert(*edge_id, edge_data.clone())
+                .await?;
+            self.cluster_coordinator
+                .apply_edge_insert(*cluster_id, edge_data.clone())
+                .await?;
+            self.edge_coordinator
+                .update_cluster_mapping(*edge_id, *cluster_id)
+                .await;
         }
 
         Ok(lsns)
@@ -473,11 +514,13 @@ impl V2WALIntegrator {
         let current_node = self.node_coordinator.get_node(node_id).await?;
 
         // Acquire exclusive lock
-        self.tx_coordinator.acquire_lock(
-            tx_id,
-            crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Node(node_id),
-            crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
-        ).await?;
+        self.tx_coordinator
+            .acquire_lock(
+                tx_id,
+                crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Node(node_id),
+                crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
+            )
+            .await?;
 
         // Serialize current node before updating
         let old_data = current_node.serialize();
@@ -502,7 +545,9 @@ impl V2WALIntegrator {
         }
 
         // Apply to in-memory
-        self.node_coordinator.apply_update(node_id, updated_node.clone()).await?;
+        self.node_coordinator
+            .apply_update(node_id, updated_node.clone())
+            .await?;
 
         // Write to graph file
         {
@@ -524,21 +569,30 @@ impl V2WALIntegrator {
         let cluster_id = self.edge_coordinator.get_cluster_for_edge(edge_id).await?;
 
         // Acquire locks
-        self.tx_coordinator.acquire_lock(
-            tx_id,
-            crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Edge(edge_id),
-            crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
-        ).await?;
+        self.tx_coordinator
+            .acquire_lock(
+                tx_id,
+                crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Edge(edge_id),
+                crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
+            )
+            .await?;
 
-        self.tx_coordinator.acquire_lock(
-            tx_id,
-            crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Cluster(cluster_id),
-            crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
-        ).await?;
+        self.tx_coordinator
+            .acquire_lock(
+                tx_id,
+                crate::backend::native::v2::wal::transaction_coordinator::ResourceId::Cluster(
+                    cluster_id,
+                ),
+                crate::backend::native::v2::wal::transaction_coordinator::LockType::Exclusive,
+            )
+            .await?;
 
         // Generate WAL record
         let wal_record = V2WALRecord::EdgeDelete {
-            cluster_key: (cluster_id, crate::backend::native::v2::edge_cluster::Direction::Outgoing), // Default to outgoing
+            cluster_key: (
+                cluster_id,
+                crate::backend::native::v2::edge_cluster::Direction::Outgoing,
+            ), // Default to outgoing
             old_edge: edge_data,
             position: u32::MAX, // Will be determined during actual deletion
         };
@@ -554,7 +608,9 @@ impl V2WALIntegrator {
 
         // Apply to in-memory structures
         self.edge_coordinator.apply_delete(edge_id).await?;
-        self.cluster_coordinator.apply_edge_delete(cluster_id, edge_id).await?;
+        self.cluster_coordinator
+            .apply_edge_delete(cluster_id, edge_id)
+            .await?;
         self.edge_coordinator.remove_cluster_mapping(edge_id).await;
 
         Ok(())
@@ -566,7 +622,7 @@ impl V2WALIntegrator {
 
         if !buffer.pending_nodes.is_empty() {
             // Flush node inserts
-            for (node_id, node_data) in buffer.pending_nodes.drain(..) {
+            for (_node_id, _node_data) in buffer.pending_nodes.drain(..) {
                 // This would need a transaction context
                 // For now, we'll just clear the buffer
             }
@@ -725,7 +781,8 @@ impl ChangeTracker {
 
     /// Get nodes changed since LSN
     pub fn get_nodes_changed_since(&self, since_lsn: u64) -> Vec<NativeNodeId> {
-        self.node_changes.read()
+        self.node_changes
+            .read()
             .iter()
             .filter(|&(_, &lsn)| lsn > since_lsn)
             .map(|(&node_id, _)| node_id)
@@ -734,7 +791,8 @@ impl ChangeTracker {
 
     /// Get edges changed since LSN
     pub fn get_edges_changed_since(&self, since_lsn: u64) -> Vec<NativeEdgeId> {
-        self.edge_changes.read()
+        self.edge_changes
+            .read()
             .iter()
             .filter(|&(_, &lsn)| lsn > since_lsn)
             .map(|(&edge_id, _)| edge_id)
@@ -756,7 +814,8 @@ impl BatchBuffer {
     /// Get buffer utilization
     pub fn utilization(&self) -> f64 {
         let total_capacity = 10000; // Configurable
-        let total_items = self.pending_nodes.len() + self.pending_edges.len() + self.pending_updates.len();
+        let total_items =
+            self.pending_nodes.len() + self.pending_edges.len() + self.pending_updates.len();
         (total_items as f64 / total_capacity as f64) * 100.0
     }
 }
@@ -776,7 +835,11 @@ impl V2NodeCoordinator {
         Ok(false)
     }
 
-    pub async fn apply_insert(&self, node_id: NativeNodeId, node_data: NodeRecordV2) -> NativeResult<()> {
+    pub async fn apply_insert(
+        &self,
+        node_id: NativeNodeId,
+        node_data: NodeRecordV2,
+    ) -> NativeResult<()> {
         let mut cache = self.node_cache.write();
         cache.insert(node_id, node_data);
         Ok(())
@@ -784,15 +847,20 @@ impl V2NodeCoordinator {
 
     pub async fn get_node(&self, node_id: NativeNodeId) -> NativeResult<NodeRecordV2> {
         let cache = self.node_cache.read();
-        cache.get(&node_id)
+        cache
+            .get(&node_id)
             .cloned()
             .ok_or(NativeBackendError::NodeNotFound {
                 node_id,
-                operation: "get_node".to_string()
+                operation: "get_node".to_string(),
             })
     }
 
-    pub async fn apply_update(&self, node_id: NativeNodeId, node_data: NodeRecordV2) -> NativeResult<()> {
+    pub async fn apply_update(
+        &self,
+        node_id: NativeNodeId,
+        node_data: NodeRecordV2,
+    ) -> NativeResult<()> {
         let mut cache = self.node_cache.write();
         cache.insert(node_id, node_data);
         Ok(())
@@ -816,12 +884,19 @@ impl V2EdgeCoordinator {
         Ok(false)
     }
 
-    pub async fn determine_target_cluster(&self, _edge_data: &CompactEdgeRecord) -> NativeResult<i64> {
+    pub async fn determine_target_cluster(
+        &self,
+        _edge_data: &CompactEdgeRecord,
+    ) -> NativeResult<i64> {
         // Simple round-robin for now
         Ok(0)
     }
 
-    pub async fn apply_insert(&self, edge_id: NativeEdgeId, edge_data: CompactEdgeRecord) -> NativeResult<()> {
+    pub async fn apply_insert(
+        &self,
+        _edge_id: NativeEdgeId,
+        _edge_data: CompactEdgeRecord,
+    ) -> NativeResult<()> {
         // Implementation would add edge to appropriate cluster
         Ok(())
     }
@@ -831,7 +906,7 @@ impl V2EdgeCoordinator {
         Err(NativeBackendError::EdgeNotFound { edge_id })
     }
 
-    pub async fn apply_delete(&self, edge_id: NativeEdgeId) -> NativeResult<()> {
+    pub async fn apply_delete(&self, _edge_id: NativeEdgeId) -> NativeResult<()> {
         // Implementation would remove edge
         Ok(())
     }
@@ -862,19 +937,33 @@ impl V2ClusterCoordinator {
     pub fn new() -> Self {
         Self {
             cluster_manager: Arc::new(Mutex::new(
-                EdgeCluster::create_from_edges(&[], 0, crate::backend::native::v2::edge_cluster::Direction::Outgoing, &mut crate::backend::native::v2::string_table::StringTable::new()).expect("Failed to create empty cluster")
+                EdgeCluster::create_from_edges(
+                    &[],
+                    0,
+                    crate::backend::native::v2::edge_cluster::Direction::Outgoing,
+                    &mut crate::backend::native::v2::string_table::StringTable::new(),
+                )
+                .expect("Failed to create empty cluster"),
             )),
             cluster_hotness: Arc::new(RwLock::new(HashMap::new())),
             access_patterns: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
-    pub async fn apply_edge_insert(&self, _cluster_id: i64, _edge_data: CompactEdgeRecord) -> NativeResult<()> {
+    pub async fn apply_edge_insert(
+        &self,
+        _cluster_id: i64,
+        _edge_data: CompactEdgeRecord,
+    ) -> NativeResult<()> {
         // Stub implementation for now
         Ok(())
     }
 
-    pub async fn apply_edge_delete(&self, _cluster_id: i64, _edge_id: NativeEdgeId) -> NativeResult<()> {
+    pub async fn apply_edge_delete(
+        &self,
+        _cluster_id: i64,
+        _edge_id: NativeEdgeId,
+    ) -> NativeResult<()> {
         Ok(())
     }
 
@@ -906,7 +995,6 @@ impl CompactEdgeRecord {
         Ok(vec![])
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -18,30 +18,24 @@
 pub mod core;
 
 // Specialized error modules
-pub mod validation;
 pub mod replayer;
 pub mod scanner;
+pub mod validation;
 
 // Re-export all core types for backward compatibility
 pub use core::{
-    RecoveryError, RecoveryErrorKind, RecoveryResult, RecoveryErrorCollection,
-    RecoveryAction, RecoverySuggestion, ErrorSeverity, ErrorContext,
+    ErrorContext, ErrorSeverity, RecoveryAction, RecoveryError, RecoveryErrorCollection,
+    RecoveryErrorKind, RecoveryResult, RecoverySuggestion,
 };
 
 // Re-export validation-specific types and traits
-pub use validation::{
-    ValidationErrorContext, ValidationErrorFactory, ValidationErrorExt,
-};
+pub use validation::{ValidationErrorContext, ValidationErrorExt, ValidationErrorFactory};
 
 // Re-export replayer-specific types and traits
-pub use replayer::{
-    ReplayerErrorContext, ReplayerErrorFactory, ReplayerErrorExt,
-};
+pub use replayer::{ReplayerErrorContext, ReplayerErrorExt, ReplayerErrorFactory};
 
 // Re-export scanner-specific types and traits
-pub use scanner::{
-    ScannerErrorContext, ScannerErrorFactory, ScannerErrorExt,
-};
+pub use scanner::{ScannerErrorContext, ScannerErrorExt, ScannerErrorFactory};
 
 // RecoveryError convenience methods - these were in the original file
 // and need to be available for backward compatibility
@@ -54,8 +48,10 @@ impl RecoveryError {
 
     /// Create I/O error
     pub fn io(message: impl Into<String>) -> Self {
-        Self::new(RecoveryErrorKind::Io, message)
-            .with_recovery(RecoverySuggestion::Retry { max_attempts: 3, backoff_ms: 1000 })
+        Self::new(RecoveryErrorKind::Io, message).with_recovery(RecoverySuggestion::Retry {
+            max_attempts: 3,
+            backoff_ms: 1000,
+        })
     }
 
     /// Create V2 integration error
@@ -85,8 +81,7 @@ impl RecoveryError {
 
     /// Create state error
     pub fn state(message: impl Into<String>) -> Self {
-        Self::new(RecoveryErrorKind::State, message)
-            .with_recovery(RecoverySuggestion::Restart)
+        Self::new(RecoveryErrorKind::State, message).with_recovery(RecoverySuggestion::Restart)
     }
 
     /// Create resource error
@@ -98,8 +93,10 @@ impl RecoveryError {
 
     /// Create timeout error
     pub fn timeout(message: impl Into<String>) -> Self {
-        Self::new(RecoveryErrorKind::Timeout, message)
-            .with_recovery(RecoverySuggestion::Retry { max_attempts: 2, backoff_ms: 5000 })
+        Self::new(RecoveryErrorKind::Timeout, message).with_recovery(RecoverySuggestion::Retry {
+            max_attempts: 2,
+            backoff_ms: 5000,
+        })
     }
 
     /// Create corruption error
@@ -158,11 +155,18 @@ mod tests {
     fn test_convenience_methods() {
         let config_error = RecoveryError::configuration("test config");
         assert_eq!(config_error.kind, RecoveryErrorKind::Configuration);
-        assert!(matches!(config_error.recovery, RecoverySuggestion::CheckDiskSpace));
+        assert!(matches!(
+            config_error.recovery,
+            RecoverySuggestion::CheckDiskSpace
+        ));
 
         let io_error = RecoveryError::io("test io");
         assert_eq!(io_error.kind, RecoveryErrorKind::Io);
-        if let RecoverySuggestion::Retry { max_attempts, backoff_ms } = io_error.recovery {
+        if let RecoverySuggestion::Retry {
+            max_attempts,
+            backoff_ms,
+        } = io_error.recovery
+        {
             assert_eq!(max_attempts, 3);
             assert_eq!(backoff_ms, 1000);
         } else {
@@ -175,7 +179,10 @@ mod tests {
 
         let wal_error = RecoveryError::wal_file("test wal");
         assert_eq!(wal_error.kind, RecoveryErrorKind::WalFile);
-        assert!(matches!(wal_error.recovery, RecoverySuggestion::ValidateWalFile));
+        assert!(matches!(
+            wal_error.recovery,
+            RecoverySuggestion::ValidateWalFile
+        ));
 
         let tx_error = RecoveryError::transaction("test tx");
         assert_eq!(tx_error.kind, RecoveryErrorKind::Transaction);
@@ -183,7 +190,10 @@ mod tests {
 
         let validation_error = RecoveryError::validation("test validation");
         assert_eq!(validation_error.kind, RecoveryErrorKind::Validation);
-        assert!(matches!(validation_error.recovery, RecoverySuggestion::ForceRecovery));
+        assert!(matches!(
+            validation_error.recovery,
+            RecoverySuggestion::ForceRecovery
+        ));
 
         let state_error = RecoveryError::state("test state");
         assert_eq!(state_error.kind, RecoveryErrorKind::State);
@@ -192,11 +202,18 @@ mod tests {
         let resource_error = RecoveryError::resource("test resource");
         assert_eq!(resource_error.kind, RecoveryErrorKind::Resource);
         assert_eq!(resource_error.severity(), ErrorSeverity::Critical);
-        assert!(matches!(resource_error.recovery, RecoverySuggestion::CheckDiskSpace));
+        assert!(matches!(
+            resource_error.recovery,
+            RecoverySuggestion::CheckDiskSpace
+        ));
 
         let timeout_error = RecoveryError::timeout("test timeout");
         assert_eq!(timeout_error.kind, RecoveryErrorKind::Timeout);
-        if let RecoverySuggestion::Retry { max_attempts, backoff_ms } = timeout_error.recovery {
+        if let RecoverySuggestion::Retry {
+            max_attempts,
+            backoff_ms,
+        } = timeout_error.recovery
+        {
             assert_eq!(max_attempts, 2);
             assert_eq!(backoff_ms, 5000);
         } else {
@@ -206,20 +223,23 @@ mod tests {
         let corruption_error = RecoveryError::corruption("test corruption");
         assert_eq!(corruption_error.kind, RecoveryErrorKind::Corruption);
         assert_eq!(corruption_error.severity(), ErrorSeverity::Critical);
-        assert!(matches!(corruption_error.recovery, RecoverySuggestion::RestoreFromBackup));
+        assert!(matches!(
+            corruption_error.recovery,
+            RecoverySuggestion::RestoreFromBackup
+        ));
 
         let consistency_error = RecoveryError::consistency("test consistency");
         assert_eq!(consistency_error.kind, RecoveryErrorKind::Consistency);
-        assert!(matches!(consistency_error.recovery, RecoverySuggestion::ForceRecovery));
+        assert!(matches!(
+            consistency_error.recovery,
+            RecoverySuggestion::ForceRecovery
+        ));
     }
 
     #[test]
     fn test_macro_usage() {
         // Test basic macro usage
-        let error1 = recovery_error!(
-            RecoveryErrorKind::Io,
-            "Test error"
-        );
+        let error1 = recovery_error!(RecoveryErrorKind::Io, "Test error");
         assert_eq!(error1.kind, RecoveryErrorKind::Io);
         assert_eq!(error1.message, "Test error");
 
@@ -244,55 +264,75 @@ mod tests {
             recovery: RecoverySuggestion::Retry { max_attempts: 1, backoff_ms: 50 }
         );
         assert_eq!(error3.kind, RecoveryErrorKind::Timeout);
-        assert!(matches!(error3.recovery, RecoverySuggestion::Retry { max_attempts: 1, backoff_ms: 50 }));
+        assert!(matches!(
+            error3.recovery,
+            RecoverySuggestion::Retry {
+                max_attempts: 1,
+                backoff_ms: 50
+            }
+        ));
     }
 
     #[test]
     fn test_specialized_error_contexts() {
         // Test validation context
-        let validation_context = ValidationErrorContext::checksum_validation(
-            1234, 0xABCD, 0xDCBA, "CRC32"
+        let validation_context =
+            ValidationErrorContext::checksum_validation(1234, 0xABCD, 0xDCBA, "CRC32");
+        assert_eq!(
+            validation_context.recovery_state,
+            Some("Checksum Validation".to_string())
         );
-        assert_eq!(validation_context.recovery_state, Some("Checksum Validation".to_string()));
-        assert_eq!(validation_context.metadata.get("lsn"), Some(&"1234".to_string()));
+        assert_eq!(
+            validation_context.metadata.get("lsn"),
+            Some(&"1234".to_string())
+        );
 
         // Test replayer context
-        let replayer_context = ReplayerErrorContext::transaction_replay(
-            567, 2000, 3000, 10, Some(5)
-        );
+        let replayer_context =
+            ReplayerErrorContext::transaction_replay(567, 2000, 3000, 10, Some(5));
         assert_eq!(replayer_context.transaction_id, Some(567));
-        assert_eq!(replayer_context.recovery_state, Some("Transaction Replay".to_string()));
+        assert_eq!(
+            replayer_context.recovery_state,
+            Some("Transaction Replay".to_string())
+        );
 
         // Test scanner context
-        let scanner_context = ScannerErrorContext::wal_file_read(
-            "/test/wal.db", 1024, 512, Some(256)
-        );
+        let scanner_context =
+            ScannerErrorContext::wal_file_read("/test/wal.db", 1024, 512, Some(256));
         assert_eq!(scanner_context.wal_path, Some("/test/wal.db".to_string()));
-        assert_eq!(scanner_context.recovery_state, Some("WAL File Reading".to_string()));
+        assert_eq!(
+            scanner_context.recovery_state,
+            Some("WAL File Reading".to_string())
+        );
     }
 
     #[test]
     fn test_specialized_error_factories() {
         // Test validation error factory
-        let validation_error = ValidationErrorFactory::checksum_error(
-            1234, 0xABCD, 0xDCBA, "CRC32"
-        );
+        let validation_error =
+            ValidationErrorFactory::checksum_error(1234, 0xABCD, 0xDCBA, "CRC32");
         assert_eq!(validation_error.kind, RecoveryErrorKind::Validation);
         assert!(validation_error.message.contains("1234"));
 
         // Test replayer error factory
-        let replayer_error = ReplayerErrorFactory::transaction_replay_error(
-            567, 2000, 3000, "Transaction failed"
-        );
+        let replayer_error =
+            ReplayerErrorFactory::transaction_replay_error(567, 2000, 3000, "Transaction failed");
         assert_eq!(replayer_error.kind, RecoveryErrorKind::Transaction);
         assert_eq!(replayer_error.context.transaction_id, Some(567));
 
         // Test scanner error factory
         let scanner_error = ScannerErrorFactory::wal_read_error(
-            "/test/wal.db", 1024, 512, Some(256), "Read failed"
+            "/test/wal.db",
+            1024,
+            512,
+            Some(256),
+            "Read failed",
         );
         assert_eq!(scanner_error.kind, RecoveryErrorKind::Io);
-        assert_eq!(scanner_error.context.wal_path, Some("/test/wal.db".to_string()));
+        assert_eq!(
+            scanner_error.context.wal_path,
+            Some("/test/wal.db".to_string())
+        );
     }
 
     #[test]
@@ -301,17 +341,29 @@ mod tests {
 
         // Test validation extension
         let validation_error = base_error.clone().as_validation_error("Format Check");
-        assert_eq!(validation_error.context.recovery_state, Some("Validation: Format Check".to_string()));
+        assert_eq!(
+            validation_error.context.recovery_state,
+            Some("Validation: Format Check".to_string())
+        );
 
         // Test replayer extension
         let replayer_error = base_error.clone().as_replayer_error(123, "REPLAY");
         assert_eq!(replayer_error.context.transaction_id, Some(123));
-        assert_eq!(replayer_error.context.recovery_state, Some("Replayer: REPLAY".to_string()));
+        assert_eq!(
+            replayer_error.context.recovery_state,
+            Some("Replayer: REPLAY".to_string())
+        );
 
         // Test scanner extension
         let scanner_error = base_error.as_scanner_error("/test/wal.db", "SCAN");
-        assert_eq!(scanner_error.context.wal_path, Some("/test/wal.db".to_string()));
-        assert_eq!(scanner_error.context.recovery_state, Some("Scanner: SCAN".to_string()));
+        assert_eq!(
+            scanner_error.context.wal_path,
+            Some("/test/wal.db".to_string())
+        );
+        assert_eq!(
+            scanner_error.context.recovery_state,
+            Some("Scanner: SCAN".to_string())
+        );
     }
 
     #[test]
@@ -327,9 +379,9 @@ mod tests {
         assert!(collection.has_unrecoverable_errors());
 
         let (warning, error, critical) = collection.count_by_severity();
-        assert_eq!(warning, 0);  // none are warnings
-        assert_eq!(error, 2);    // configuration and io are errors by default
-        assert_eq!(critical, 1);  // corruption is critical
+        assert_eq!(warning, 0); // none are warnings
+        assert_eq!(error, 2); // configuration and io are errors by default
+        assert_eq!(critical, 1); // corruption is critical
 
         let action = collection.recommended_action();
         assert_eq!(action, RecoveryAction::ManualIntervention);

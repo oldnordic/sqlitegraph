@@ -3,13 +3,12 @@
 use crate::backend::native::edge_store::EdgeStore;
 use crate::backend::native::node_store::NodeStore;
 use crate::backend::native::types::*;
-use crate::backend::native::v2::node_record_v2::NodeRecordV2Ext;
 
 use super::Direction;
 
 // Import instrumentation when in debug mode
 #[cfg(debug_assertions)]
-use super::instrumentation::convenience::{track_v2_read, start_timing, get_metrics};
+use super::instrumentation::convenience::{get_metrics, start_timing, track_v2_read};
 
 impl super::AdjacencyIterator<'_> {
     // ========================================
@@ -64,18 +63,26 @@ impl super::AdjacencyIterator<'_> {
                                 // Phase 35: Only proceed if cluster metadata is complete
                                 if cluster_offset > 0 && cluster_size > 0 && edge_count > 0 {
                                     #[cfg(debug_assertions)]
-                                    let _cluster_timing = start_timing("v2_cluster_neighbor_iteration");
+                                    let _cluster_timing =
+                                        start_timing("v2_cluster_neighbor_iteration");
 
                                     // Phase 69: Read V2 edge cluster directly (avoid circular dependency)
-                                    let neighbors = match self.read_v2_edge_cluster_directly(&node_v2) {
+                                    let neighbors = match self
+                                        .read_v2_edge_cluster_directly(&node_v2)
+                                    {
                                         Ok(neighbors) => neighbors,
                                         Err(e) => {
                                             #[cfg(debug_assertions)]
-                                            println!("DEBUG: V2 cluster read failed for node {}: {}, falling back to edge store traversal", self.node_id, e);
+                                            println!(
+                                                "DEBUG: V2 cluster read failed for node {}: {}, falling back to edge store traversal",
+                                                self.node_id, e
+                                            );
 
                                             // Fallback: use edge store to traverse edges directly
                                             let mut edge_store = EdgeStore::new(self.graph_file);
-                                            edge_store.iter_neighbors(self.node_id, self.direction).collect::<Vec<_>>()
+                                            edge_store
+                                                .iter_neighbors(self.node_id, self.direction)
+                                                .collect::<Vec<_>>()
                                         }
                                     };
 
@@ -128,7 +135,10 @@ impl super::AdjacencyIterator<'_> {
                     // Node slot out of bounds - cache empty result and return error
                     self.cached_clustered_neighbors = Some(Vec::new());
                     self.total_count = 0; // CRITICAL: Update total_count to match empty result
-                    return Err(NativeBackendError::FileTooSmall { size: 0, min_size: 1 });
+                    return Err(NativeBackendError::FileTooSmall {
+                        size: 0,
+                        min_size: 1,
+                    });
                 }
                 Err(e) => {
                     // Phase 35: Propagate unexpected I/O errors, cache empty result
@@ -150,9 +160,7 @@ impl super::AdjacencyIterator<'_> {
             let metrics = get_metrics();
             println!(
                 "DEBUG: Final metrics - iterations: {}, v2_reads: {}, loop_detections: {}",
-                metrics.total_iterations,
-                metrics.total_v2_reads,
-                metrics.infinite_loop_detections
+                metrics.total_iterations, metrics.total_v2_reads, metrics.infinite_loop_detections
             );
         }
 
@@ -168,12 +176,21 @@ impl super::AdjacencyIterator<'_> {
     /// Read V2 edge cluster directly without going through AdjacencyIterator
     /// This avoids the circular dependency where AdjacencyIterator calls edge_store.iter_neighbors()
     /// which creates another AdjacencyIterator
-    fn read_v2_edge_cluster_directly(&mut self, node_v2: &crate::backend::native::v2::node_record_v2::NodeRecordV2) -> NativeResult<Vec<NativeNodeId>> {
+    fn read_v2_edge_cluster_directly(
+        &mut self,
+        node_v2: &crate::backend::native::v2::node_record_v2::NodeRecordV2,
+    ) -> NativeResult<Vec<NativeNodeId>> {
         use crate::backend::native::v2::edge_cluster::EdgeCluster;
 
         let (cluster_offset, cluster_size) = match self.direction {
-            Direction::Outgoing => (node_v2.outgoing_cluster_offset, node_v2.outgoing_cluster_size),
-            Direction::Incoming => (node_v2.incoming_cluster_offset, node_v2.incoming_cluster_size),
+            Direction::Outgoing => (
+                node_v2.outgoing_cluster_offset,
+                node_v2.outgoing_cluster_size,
+            ),
+            Direction::Incoming => (
+                node_v2.incoming_cluster_offset,
+                node_v2.incoming_cluster_size,
+            ),
         };
 
         // If no cluster metadata, return empty result
@@ -182,12 +199,15 @@ impl super::AdjacencyIterator<'_> {
         }
 
         #[cfg(debug_assertions)]
-        println!("DEBUG: Reading V2 cluster for node {} at offset {}, size {}",
-                 self.node_id, cluster_offset, cluster_size);
+        println!(
+            "DEBUG: Reading V2 cluster for node {} at offset {}, size {}",
+            self.node_id, cluster_offset, cluster_size
+        );
 
         // Read cluster data directly from file
         let mut cluster_data = vec![0u8; cluster_size as usize];
-        self.graph_file.read_bytes(cluster_offset, &mut cluster_data)?;
+        self.graph_file
+            .read_bytes(cluster_offset, &mut cluster_data)?;
 
         // Check if cluster data contains actual data (not all zeros)
         if cluster_data.iter().all(|&byte| byte == 0) {
@@ -199,21 +219,29 @@ impl super::AdjacencyIterator<'_> {
         // Try to deserialize the cluster
         match EdgeCluster::deserialize(&cluster_data) {
             Ok(cluster) => {
-                let neighbors: Vec<NativeNodeId> = cluster.iter_neighbors()
+                let neighbors: Vec<NativeNodeId> = cluster
+                    .iter_neighbors()
                     .map(|id| id as NativeNodeId)
                     .collect();
 
                 #[cfg(debug_assertions)]
                 {
-                    println!("DEBUG: Direct V2 cluster read for node {} (direction: {:?}) - found {} neighbors",
-                             self.node_id, self.direction, neighbors.len());
+                    println!(
+                        "DEBUG: Direct V2 cluster read for node {} (direction: {:?}) - found {} neighbors",
+                        self.node_id,
+                        self.direction,
+                        neighbors.len()
+                    );
                 }
 
                 Ok(neighbors)
             }
             Err(e) => {
                 #[cfg(debug_assertions)]
-                println!("DEBUG: Failed to deserialize V2 cluster for node {}: {}", self.node_id, e);
+                println!(
+                    "DEBUG: Failed to deserialize V2 cluster for node {}: {}",
+                    self.node_id, e
+                );
 
                 // This can happen if cluster metadata exists but no actual cluster was written
                 // Fall back to edge store traversal

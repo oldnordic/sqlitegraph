@@ -5,13 +5,11 @@
 //! of write operations, read operations, and error tracking with proper
 //! integration into the broader metrics system.
 
-use std::time::{SystemTime, UNIX_EPOCH};
 use std::sync::atomic::Ordering;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::core::{
-    V2WALMetrics, WALPerformanceCounters, ClusterOperationCounters,
-    EdgeOperationMetrics, NodeOperationMetrics, FreeSpaceOperationMetrics,
-    StringTableOperationMetrics
+    ClusterOperationCounters, V2WALMetrics, WALPerformanceCounters,
 };
 use crate::backend::native::v2::wal::metrics::reporting::ErrorEntry;
 
@@ -45,8 +43,12 @@ impl V2WALMetrics {
         operation_type: &str,
     ) {
         // Update global counters (atomic operations for performance)
-        self.global_counters.records_written.fetch_add(1, Ordering::Relaxed);
-        self.global_counters.bytes_written.fetch_add(record_size_bytes as u64, Ordering::Relaxed);
+        self.global_counters
+            .records_written
+            .fetch_add(1, Ordering::Relaxed);
+        self.global_counters
+            .bytes_written
+            .fetch_add(record_size_bytes as u64, Ordering::Relaxed);
 
         // Update performance counters
         {
@@ -57,20 +59,27 @@ impl V2WALMetrics {
 
             // Update cluster-specific metrics
             if let Some(cluster_id) = cluster_key {
-                let cluster_ops = counters.cluster_operations
+                let cluster_ops = counters
+                    .cluster_operations
                     .entry(cluster_id)
                     .or_insert_with(ClusterOperationCounters::default);
                 cluster_ops.bytes_processed += record_size_bytes as u64;
 
                 // Update average latency using exponential smoothing
                 const ALPHA: f64 = 0.1;
-                cluster_ops.avg_latency_us =
-                    ((cluster_ops.avg_latency_us as f64 * (1.0 - ALPHA)) +
-                     (latency_us as f64 * ALPHA)) as u64;
+                cluster_ops.avg_latency_us = ((cluster_ops.avg_latency_us as f64 * (1.0 - ALPHA))
+                    + (latency_us as f64 * ALPHA))
+                    as u64;
             }
 
             // Update operation-specific metrics
-            self.update_operation_metrics(&mut counters, operation_type, record_size_bytes, latency_us, cluster_key);
+            self.update_operation_metrics(
+                &mut counters,
+                operation_type,
+                record_size_bytes,
+                latency_us,
+                cluster_key,
+            );
         }
 
         // Update latency histogram
@@ -128,8 +137,12 @@ impl V2WALMetrics {
         operation_type: &str,
     ) {
         // Update global counters
-        self.global_counters.records_read.fetch_add(1, Ordering::Relaxed);
-        self.global_counters.bytes_read.fetch_add(record_size_bytes as u64, Ordering::Relaxed);
+        self.global_counters
+            .records_read
+            .fetch_add(1, Ordering::Relaxed);
+        self.global_counters
+            .bytes_read
+            .fetch_add(record_size_bytes as u64, Ordering::Relaxed);
 
         // Update performance counters
         {
@@ -139,20 +152,27 @@ impl V2WALMetrics {
 
             // Update cluster-specific metrics
             if let Some(cluster_id) = cluster_key {
-                let cluster_ops = counters.cluster_operations
+                let cluster_ops = counters
+                    .cluster_operations
                     .entry(cluster_id)
                     .or_insert_with(ClusterOperationCounters::default);
                 cluster_ops.bytes_processed += record_size_bytes as u64;
 
                 // Update average latency using exponential smoothing
                 const ALPHA: f64 = 0.1;
-                cluster_ops.avg_latency_us =
-                    ((cluster_ops.avg_latency_us as f64 * (1.0 - ALPHA)) +
-                     (latency_us as f64 * ALPHA)) as u64;
+                cluster_ops.avg_latency_us = ((cluster_ops.avg_latency_us as f64 * (1.0 - ALPHA))
+                    + (latency_us as f64 * ALPHA))
+                    as u64;
             }
 
             // Update operation-specific metrics
-            self.update_operation_metrics(&mut counters, operation_type, record_size_bytes, latency_us, cluster_key);
+            self.update_operation_metrics(
+                &mut counters,
+                operation_type,
+                record_size_bytes,
+                latency_us,
+                cluster_key,
+            );
         }
 
         // Update latency histogram
@@ -257,18 +277,16 @@ impl V2WALMetrics {
         match operation_type {
             "edge_insert" => {
                 counters.edge_operations.total_inserts += 1;
-                counters.edge_operations.avg_record_size =
-                    Self::update_running_average(
-                        counters.edge_operations.avg_record_size,
-                        record_size as f64,
-                        counters.edge_operations.total_inserts
-                    );
-                counters.edge_operations.avg_insertion_latency_us =
-                    Self::update_running_average(
-                        counters.edge_operations.avg_insertion_latency_us as f64,
-                        latency_us as f64,
-                        counters.edge_operations.total_inserts
-                    ) as u64;
+                counters.edge_operations.avg_record_size = Self::update_running_average(
+                    counters.edge_operations.avg_record_size,
+                    record_size as f64,
+                    counters.edge_operations.total_inserts,
+                );
+                counters.edge_operations.avg_insertion_latency_us = Self::update_running_average(
+                    counters.edge_operations.avg_insertion_latency_us as f64,
+                    latency_us as f64,
+                    counters.edge_operations.total_inserts,
+                ) as u64;
 
                 // Update cluster affinity hit rate
                 if cluster_key.is_some() {
@@ -279,78 +297,73 @@ impl V2WALMetrics {
 
             "edge_update" => {
                 counters.edge_operations.total_updates += 1;
-                counters.edge_operations.avg_record_size =
-                    Self::update_running_average(
-                        counters.edge_operations.avg_record_size,
-                        record_size as f64,
-                        counters.edge_operations.total_updates
-                    );
-                counters.edge_operations.avg_update_latency_us =
-                    Self::update_running_average(
-                        counters.edge_operations.avg_update_latency_us as f64,
-                        latency_us as f64,
-                        counters.edge_operations.total_updates
-                    ) as u64;
+                counters.edge_operations.avg_record_size = Self::update_running_average(
+                    counters.edge_operations.avg_record_size,
+                    record_size as f64,
+                    counters.edge_operations.total_updates,
+                );
+                counters.edge_operations.avg_update_latency_us = Self::update_running_average(
+                    counters.edge_operations.avg_update_latency_us as f64,
+                    latency_us as f64,
+                    counters.edge_operations.total_updates,
+                ) as u64;
             }
 
             "node_insert" => {
                 counters.node_operations.total_inserts += 1;
-                counters.node_operations.avg_record_size =
-                    Self::update_running_average(
-                        counters.node_operations.avg_record_size,
-                        record_size as f64,
-                        counters.node_operations.total_inserts
-                    );
-                counters.node_operations.avg_insertion_latency_us =
-                    Self::update_running_average(
-                        counters.node_operations.avg_insertion_latency_us as f64,
-                        latency_us as f64,
-                        counters.node_operations.total_inserts
-                    ) as u64;
+                counters.node_operations.avg_record_size = Self::update_running_average(
+                    counters.node_operations.avg_record_size,
+                    record_size as f64,
+                    counters.node_operations.total_inserts,
+                );
+                counters.node_operations.avg_insertion_latency_us = Self::update_running_average(
+                    counters.node_operations.avg_insertion_latency_us as f64,
+                    latency_us as f64,
+                    counters.node_operations.total_inserts,
+                ) as u64;
             }
 
             "node_update" => {
                 counters.node_operations.total_updates += 1;
-                counters.node_operations.avg_record_size =
-                    Self::update_running_average(
-                        counters.node_operations.avg_record_size,
-                        record_size as f64,
-                        counters.node_operations.total_updates
-                    );
-                counters.node_operations.avg_update_latency_us =
-                    Self::update_running_average(
-                        counters.node_operations.avg_update_latency_us as f64,
-                        latency_us as f64,
-                        counters.node_operations.total_updates
-                    ) as u64;
+                counters.node_operations.avg_record_size = Self::update_running_average(
+                    counters.node_operations.avg_record_size,
+                    record_size as f64,
+                    counters.node_operations.total_updates,
+                );
+                counters.node_operations.avg_update_latency_us = Self::update_running_average(
+                    counters.node_operations.avg_update_latency_us as f64,
+                    latency_us as f64,
+                    counters.node_operations.total_updates,
+                ) as u64;
             }
 
             "free_space_allocate" => {
                 counters.free_space_operations.total_allocations += 1;
                 counters.free_space_operations.avg_allocation_size =
-                    ((counters.free_space_operations.avg_allocation_size * (counters.free_space_operations.total_allocations - 1) as u64) +
-                     record_size as u64) / counters.free_space_operations.total_allocations;
+                    ((counters.free_space_operations.avg_allocation_size
+                        * (counters.free_space_operations.total_allocations - 1) as u64)
+                        + record_size as u64)
+                        / counters.free_space_operations.total_allocations;
                 counters.free_space_operations.avg_allocation_latency_us =
                     Self::update_running_average(
                         counters.free_space_operations.avg_allocation_latency_us as f64,
                         latency_us as f64,
-                        counters.free_space_operations.total_allocations
+                        counters.free_space_operations.total_allocations,
                     ) as u64;
             }
 
             "string_insert" => {
                 counters.string_table_operations.total_insertions += 1;
-                counters.string_table_operations.avg_string_length =
-                    Self::update_running_average(
-                        counters.string_table_operations.avg_string_length,
-                        record_size as f64,
-                        counters.string_table_operations.total_insertions
-                    );
+                counters.string_table_operations.avg_string_length = Self::update_running_average(
+                    counters.string_table_operations.avg_string_length,
+                    record_size as f64,
+                    counters.string_table_operations.total_insertions,
+                );
                 counters.string_table_operations.avg_insertion_latency_us =
                     Self::update_running_average(
                         counters.string_table_operations.avg_insertion_latency_us as f64,
                         latency_us as f64,
-                        counters.string_table_operations.total_insertions
+                        counters.string_table_operations.total_insertions,
                     ) as u64;
             }
 
@@ -412,8 +425,7 @@ impl V2WALMetrics {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::backend::native::v2::wal::metrics::core::V2WALMetrics;
+  use crate::backend::native::v2::wal::metrics::core::V2WALMetrics;
 
     #[test]
     fn test_record_write_operation() {
@@ -450,12 +462,7 @@ mod tests {
     fn test_record_error() {
         let metrics = V2WALMetrics::new();
 
-        metrics.record_error(
-            "TestError",
-            "Test message",
-            "Test context",
-            "Test recovery"
-        );
+        metrics.record_error("TestError", "Test message", "Test context", "Test recovery");
 
         let error_tracker = metrics.get_error_tracker();
         assert_eq!(error_tracker.error_counts.get("TestError"), Some(&1));

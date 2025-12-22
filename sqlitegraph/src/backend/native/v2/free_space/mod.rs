@@ -53,7 +53,6 @@ mod tests {
         assert_eq!(mgr.allocate(120).unwrap(), 3000);
     }
 
-    
     #[test]
     fn test_validation() {
         let mut mgr = manager();

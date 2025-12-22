@@ -12,7 +12,7 @@ fn test_wal_modules_compilation() {
 
     // Test that we can import basic types
     use sqlitegraph::backend::native::v2::wal::{
-        V2WALConfig, V2WALRecord, V2WALRecordType, V2WALHeader,
+        V2WALConfig, V2WALHeader, V2WALRecord, V2WALRecordType,
     };
 
     // Test basic record creation

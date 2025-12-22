@@ -14,7 +14,10 @@ fn test_edge_cases_around_80_bytes() {
 
     let result = decode_persistent_header(&header_80);
     match result {
-        Ok(header) => println!("✅ SUCCESS: 80 bytes decoded successfully - version: {}", header.version),
+        Ok(header) => println!(
+            "✅ SUCCESS: 80 bytes decoded successfully - version: {}",
+            header.version
+        ),
         Err(e) => println!("✅ EXPECTED: 80 bytes returned error (not panic): {:?}", e),
     }
 
@@ -30,7 +33,10 @@ fn test_edge_cases_around_80_bytes() {
     let header_81 = vec![0u8; 81];
     let result = decode_persistent_header(&header_81);
     match result {
-        Ok(header) => println!("✅ SUCCESS: 81 bytes decoded successfully - version: {}", header.version),
+        Ok(header) => println!(
+            "✅ SUCCESS: 81 bytes decoded successfully - version: {}",
+            header.version
+        ),
         Err(e) => println!("✅ EXPECTED: 81 bytes returned error: {:?}", e),
     }
 
@@ -39,7 +45,10 @@ fn test_edge_cases_around_80_bytes() {
     let header_200 = vec![0u8; 200];
     let result = decode_persistent_header(&header_200);
     match result {
-        Ok(header) => println!("✅ SUCCESS: 200 bytes decoded successfully - version: {}", header.version),
+        Ok(header) => println!(
+            "✅ SUCCESS: 200 bytes decoded successfully - version: {}",
+            header.version
+        ),
         Err(e) => println!("✅ EXPECTED: 200 bytes returned error: {:?}", e),
     }
 
@@ -100,20 +109,18 @@ fn test_no_panic_on_corrupted_headers() {
     // Test that we never panic even with completely corrupted data
 
     let corrupted_cases = vec![
-        vec![], // Empty
-        vec![0u8; 10], // Too small
-        vec![0xFF; 79], // One byte too small, corrupted
-        vec![0xFF; 80], // Exactly right size, corrupted
-        vec![0xFF; 81], // One byte too large, corrupted
+        vec![],          // Empty
+        vec![0u8; 10],   // Too small
+        vec![0xFF; 79],  // One byte too small, corrupted
+        vec![0xFF; 80],  // Exactly right size, corrupted
+        vec![0xFF; 81],  // One byte too large, corrupted
         vec![0xAA; 100], // Larger, corrupted
     ];
 
     for (i, test_data) in corrupted_cases.iter().enumerate() {
         println!("Testing case {} with {} bytes", i, test_data.len());
 
-        let result = std::panic::catch_unwind(|| {
-            decode_persistent_header(test_data)
-        });
+        let result = std::panic::catch_unwind(|| decode_persistent_header(test_data));
 
         match result {
             Ok(Ok(_header)) => {
@@ -131,8 +138,12 @@ fn test_no_panic_on_corrupted_headers() {
                     "Unknown panic".to_string()
                 };
 
-                panic!("❌ PANIC detected in case {} with {} bytes: {}",
-                       i, test_data.len(), panic_msg);
+                panic!(
+                    "❌ PANIC detected in case {} with {} bytes: {}",
+                    i,
+                    test_data.len(),
+                    panic_msg
+                );
             }
         }
     }

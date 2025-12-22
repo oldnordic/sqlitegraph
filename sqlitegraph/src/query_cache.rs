@@ -178,7 +178,18 @@ impl QueryCache {
     /// Get a cached result for a BFS query
     pub fn get_bfs(&self, start: i64, depth: u32) -> Option<Vec<i64>> {
         let key = QueryCacheKey::Bfs(BfsCacheKey { start, depth });
-        let cache = self.cache.read().unwrap();
+
+        // Handle potential RwLock poisoning gracefully
+        let cache = match self.cache.read() {
+            Ok(cache) => cache,
+            Err(poisoned) => {
+                // Log the poisoning error and treat as cache miss
+                eprintln!("WARNING: Query cache read lock poisoned in get_bfs operation (start={}, depth={}). Treating as cache miss.", start, depth);
+                // Return the inner HashMap from the poisoned lock
+                poisoned.into_inner()
+            }
+        };
+
         cache.get(&key).and_then(|entry| match &entry.result {
             QueryResult::Bfs(result) => Some(result.clone()),
             _ => None,
@@ -191,8 +202,19 @@ impl QueryCache {
         let entry = QueryCacheEntry {
             result: QueryResult::Bfs(result),
         };
-        let mut cache = self.cache.write().unwrap();
-        cache.insert(key, entry);
+
+        // Handle potential RwLock poisoning gracefully
+        match self.cache.write() {
+            Ok(mut cache) => {
+                cache.insert(key, entry);
+            }
+            Err(poisoned) => {
+                // Log the poisoning error and recover from poisoned lock
+                eprintln!("WARNING: Query cache write lock poisoned in put_bfs operation (start={}, depth={}). Recovering and continuing.", start, depth);
+                let mut cache = poisoned.into_inner();
+                cache.insert(key, entry);
+            }
+        }
     }
 
     /// Get a cached result for a k-hop query
@@ -207,7 +229,17 @@ impl QueryCache {
             depth,
             direction,
         });
-        let cache = self.cache.read().unwrap();
+
+        // Handle potential RwLock poisoning gracefully
+        let cache = match self.cache.read() {
+            Ok(cache) => cache,
+            Err(poisoned) => {
+                // Log the poisoning error and treat as cache miss
+                eprintln!("WARNING: Query cache read lock poisoned in get_k_hop operation (start={}, depth={}, direction={:?}). Treating as cache miss.", start, depth, direction);
+                poisoned.into_inner()
+            }
+        };
+
         cache.get(&key).and_then(|entry| match &entry.result {
             QueryResult::KHop(result) => Some(result.clone()),
             _ => None,
@@ -224,8 +256,19 @@ impl QueryCache {
         let entry = QueryCacheEntry {
             result: QueryResult::KHop(result),
         };
-        let mut cache = self.cache.write().unwrap();
-        cache.insert(key, entry);
+
+        // Handle potential RwLock poisoning gracefully
+        match self.cache.write() {
+            Ok(mut cache) => {
+                cache.insert(key, entry);
+            }
+            Err(poisoned) => {
+                // Log the poisoning error and recover from poisoned lock
+                eprintln!("WARNING: Query cache write lock poisoned in put_k_hop operation (start={}, depth={}, direction={:?}). Recovering and continuing.", start, depth, direction);
+                let mut cache = poisoned.into_inner();
+                cache.insert(key, entry);
+            }
+        }
     }
 
     /// Get a cached result for a filtered k-hop query
@@ -243,7 +286,17 @@ impl QueryCache {
             direction,
             allowed_edge_types: edge_types,
         });
-        let cache = self.cache.read().unwrap();
+
+        // Handle potential RwLock poisoning gracefully
+        let cache = match self.cache.read() {
+            Ok(cache) => cache,
+            Err(poisoned) => {
+                // Log the poisoning error and treat as cache miss
+                eprintln!("WARNING: Query cache read lock poisoned in get_k_hop_filtered operation (start={}, depth={}, direction={:?}, edge_types={:?}). Treating as cache miss.", start, depth, direction, allowed_edge_types);
+                poisoned.into_inner()
+            }
+        };
+
         cache.get(&key).and_then(|entry| match &entry.result {
             QueryResult::KHop(result) => Some(result.clone()),
             _ => None,
@@ -269,14 +322,35 @@ impl QueryCache {
         let entry = QueryCacheEntry {
             result: QueryResult::KHop(result),
         };
-        let mut cache = self.cache.write().unwrap();
-        cache.insert(key, entry);
+
+        // Handle potential RwLock poisoning gracefully
+        match self.cache.write() {
+            Ok(mut cache) => {
+                cache.insert(key, entry);
+            }
+            Err(poisoned) => {
+                // Log the poisoning error and recover from poisoned lock
+                eprintln!("WARNING: Query cache write lock poisoned in put_k_hop_filtered operation (start={}, depth={}, direction={:?}, edge_types={:?}). Recovering and continuing.", start, depth, direction, allowed_edge_types);
+                let mut cache = poisoned.into_inner();
+                cache.insert(key, entry);
+            }
+        }
     }
 
     /// Get a cached result for a shortest path query
     pub fn get_shortest_path(&self, start: i64, end: i64) -> Option<Option<Vec<i64>>> {
         let key = QueryCacheKey::ShortestPath(ShortestPathCacheKey { start, end });
-        let cache = self.cache.read().unwrap();
+
+        // Handle potential RwLock poisoning gracefully
+        let cache = match self.cache.read() {
+            Ok(cache) => cache,
+            Err(poisoned) => {
+                // Log the poisoning error and treat as cache miss
+                eprintln!("WARNING: Query cache read lock poisoned in get_shortest_path operation (start={}, end={}). Treating as cache miss.", start, end);
+                poisoned.into_inner()
+            }
+        };
+
         cache.get(&key).and_then(|entry| match &entry.result {
             QueryResult::ShortestPath(result) => Some(result.clone()),
             _ => None,
@@ -289,26 +363,61 @@ impl QueryCache {
         let entry = QueryCacheEntry {
             result: QueryResult::ShortestPath(result),
         };
-        let mut cache = self.cache.write().unwrap();
-        cache.insert(key, entry);
+
+        // Handle potential RwLock poisoning gracefully
+        match self.cache.write() {
+            Ok(mut cache) => {
+                cache.insert(key, entry);
+            }
+            Err(poisoned) => {
+                // Log the poisoning error and recover from poisoned lock
+                eprintln!("WARNING: Query cache write lock poisoned in put_shortest_path operation (start={}, end={}). Recovering and continuing.", start, end);
+                let mut cache = poisoned.into_inner();
+                cache.insert(key, entry);
+            }
+        }
     }
 
     /// Clear all cached queries (MVCC invalidation)
     pub fn invalidate_all(&self) {
-        let mut cache = self.cache.write().unwrap();
-        cache.clear();
+        // Handle potential RwLock poisoning gracefully
+        match self.cache.write() {
+            Ok(mut cache) => {
+                cache.clear();
+            }
+            Err(poisoned) => {
+                // Log the poisoning error and recover from poisoned lock
+                eprintln!("WARNING: Query cache write lock poisoned in invalidate_all operation. Recovering and continuing.");
+                let mut cache = poisoned.into_inner();
+                cache.clear();
+            }
+        }
     }
 
     /// Get cache statistics for monitoring
     pub fn size(&self) -> usize {
-        let cache = self.cache.read().unwrap();
-        cache.len()
+        // Handle potential RwLock poisoning gracefully
+        match self.cache.read() {
+            Ok(cache) => cache.len(),
+            Err(poisoned) => {
+                // Log the poisoning error and treat as empty cache
+                eprintln!("WARNING: Query cache read lock poisoned in size operation. Treating as empty cache.");
+                poisoned.into_inner().len()
+            }
+        }
     }
 
     /// Check if the cache is empty
     pub fn is_empty(&self) -> bool {
-        let cache = self.cache.read().unwrap();
-        cache.is_empty()
+        // Handle potential RwLock poisoning gracefully
+        match self.cache.read() {
+            Ok(cache) => cache.is_empty(),
+            Err(poisoned) => {
+                // Log the poisoning error and treat as empty cache
+                eprintln!("WARNING: Query cache read lock poisoned in is_empty operation. Treating as empty cache.");
+                poisoned.into_inner().is_empty()
+            }
+        }
     }
 }
 

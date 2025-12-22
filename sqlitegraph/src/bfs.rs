@@ -72,7 +72,7 @@ pub fn shortest_path(
         }
         current = parent;
     }
-    if *path.last().unwrap() != start {
+    if path.last().map(|last| *last != start).unwrap_or(true) {
         return Ok(None);
     }
     path.reverse();

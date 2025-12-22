@@ -4,8 +4,8 @@
 //! detecting corruption, and verifying commit markers in graph files.
 
 use crate::backend::native::{
-    types::{NativeResult, NativeBackendError},
     constants::HEADER_SIZE,
+    types::{NativeBackendError, NativeResult},
 };
 
 /// Graph file validation utilities
@@ -125,7 +125,8 @@ mod tests {
 
     #[test]
     fn test_verify_commit_marker_clean() {
-        let result = GraphFileValidator::verify_commit_marker(GraphFileValidator::clean_commit_marker());
+        let result =
+            GraphFileValidator::verify_commit_marker(GraphFileValidator::clean_commit_marker());
         assert!(result.is_ok());
     }
 

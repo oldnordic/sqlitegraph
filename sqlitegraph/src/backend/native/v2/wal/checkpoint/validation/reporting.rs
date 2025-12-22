@@ -4,15 +4,14 @@
 //! It generates detailed validation reports, performance reports, and analysis summaries
 //! for checkpoint operations and consistency checks.
 
-use crate::backend::native::v2::wal::checkpoint::constants::*;
+use super::consistency::{
+    ConsistencyResult, ConsistencySeverity,
+};
+use super::invariants::V2InvariantResult;
+use crate::backend::native::v2::wal::V2WALConfig;
 use crate::backend::native::v2::wal::checkpoint::constants::performance;
 use crate::backend::native::v2::wal::checkpoint::errors::{CheckpointError, CheckpointResult};
-use crate::backend::native::v2::wal::checkpoint::core::{CheckpointProgress};
-use crate::backend::native::v2::wal::V2WALConfig;
-use super::consistency::{ConsistencyResult, ConsistencyViolation, ConsistencySeverity, ConsistencyViolationType};
-use super::invariants::{V2InvariantResult, V2InvariantViolation, V2InvariantViolationType};
-use std::time::{SystemTime, Instant};
-use std::collections::HashMap;
+use std::time::SystemTime;
 
 /// Checkpoint validation report
 #[derive(Debug, Clone, serde::Serialize)]
@@ -123,10 +122,8 @@ impl CheckpointValidationReporter {
             .unwrap_or(0);
 
         // Determine overall validation status
-        let validation_status = self.determine_validation_status(
-            &consistency_result,
-            &v2_invariant_result,
-        );
+        let validation_status =
+            self.determine_validation_status(&consistency_result, &v2_invariant_result);
 
         // Generate validation summary
         let summary = self.generate_validation_summary(
@@ -240,10 +237,10 @@ impl CheckpointValidationReporter {
             let warning_weight = 1.0;
             let info_weight = 0.1;
 
-            let total_score = (summary.critical_violations as f64 * critical_weight +
-                              summary.error_violations as f64 * error_weight +
-                              summary.warning_violations as f64 * warning_weight +
-                              summary.info_violations as f64 * info_weight);
+            let total_score = summary.critical_violations as f64 * critical_weight
+                + summary.error_violations as f64 * error_weight
+                + summary.warning_violations as f64 * warning_weight
+                + summary.info_violations as f64 * info_weight;
 
             let max_possible_score = summary.total_violations as f64 * critical_weight;
             summary.validation_score = (1.0 - (total_score / max_possible_score)).max(0.0);
@@ -259,23 +256,41 @@ impl CheckpointValidationReporter {
         report.push_str("=====================================\n\n");
 
         report.push_str("Performance Metrics:\n");
-        report.push_str(&format!("  Total Checkpoints: {}\n", metrics.total_checkpoints));
-        report.push_str(&format!("  Average Duration: {} ms\n", metrics.avg_checkpoint_duration_ms));
-        report.push_str(&format!("  Average Throughput: {:.2} MB/s\n", metrics.checkpoint_throughput_mbps));
-        report.push_str(&format!("  Average Blocks per Checkpoint: {}\n", metrics.avg_blocks_per_checkpoint));
-        report.push_str(&format!("  Average Records per Checkpoint: {}\n", metrics.avg_records_per_checkpoint));
+        report.push_str(&format!(
+            "  Total Checkpoints: {}\n",
+            metrics.total_checkpoints
+        ));
+        report.push_str(&format!(
+            "  Average Duration: {} ms\n",
+            metrics.avg_checkpoint_duration_ms
+        ));
+        report.push_str(&format!(
+            "  Average Throughput: {:.2} MB/s\n",
+            metrics.checkpoint_throughput_mbps
+        ));
+        report.push_str(&format!(
+            "  Average Blocks per Checkpoint: {}\n",
+            metrics.avg_blocks_per_checkpoint
+        ));
+        report.push_str(&format!(
+            "  Average Records per Checkpoint: {}\n",
+            metrics.avg_records_per_checkpoint
+        ));
 
         if metrics.total_checkpoints > 0 {
             report.push_str("\nAnomaly Detection:\n");
-            report.push_str(&format!("  Duration Anomalies: {} ({:.1}%)\n",
+            report.push_str(&format!(
+                "  Duration Anomalies: {} ({:.1}%)\n",
                 metrics.anomaly_summary.duration_anomalies,
                 metrics.anomaly_summary.anomaly_percentage
             ));
-            report.push_str(&format!("  Throughput Anomalies: {} ({:.1}%)\n",
+            report.push_str(&format!(
+                "  Throughput Anomalies: {} ({:.1}%)\n",
                 metrics.anomaly_summary.throughput_anomalies,
                 metrics.anomaly_summary.anomaly_percentage
             ));
-            report.push_str(&format!("  Block Count Anomalies: {} ({:.1}%)\n",
+            report.push_str(&format!(
+                "  Block Count Anomalies: {} ({:.1}%)\n",
                 metrics.anomaly_summary.block_count_anomalies,
                 metrics.anomaly_summary.anomaly_percentage
             ));
@@ -308,31 +323,72 @@ impl CheckpointValidationReporter {
         output.push_str("===================================\n\n");
 
         output.push_str(&format!("Checkpoint File: {}\n", report.checkpoint_path));
-        output.push_str(&format!("Report Generated: {:?}\n", report.report_timestamp));
-        output.push_str(&format!("Validation Status: {:?}\n\n", report.validation_status));
+        output.push_str(&format!(
+            "Report Generated: {:?}\n",
+            report.report_timestamp
+        ));
+        output.push_str(&format!(
+            "Validation Status: {:?}\n\n",
+            report.validation_status
+        ));
 
         // Validation Summary
         output.push_str("Validation Summary:\n");
-        output.push_str(&format!("  Total Violations: {}\n", report.summary.total_violations));
-        output.push_str(&format!("  Critical Violations: {}\n", report.summary.critical_violations));
-        output.push_str(&format!("  Error Violations: {}\n", report.summary.error_violations));
-        output.push_str(&format!("  Warning Violations: {}\n", report.summary.warning_violations));
-        output.push_str(&format!("  Info Violations: {}\n", report.summary.info_violations));
-        output.push_str(&format!("  Validation Score: {:.2}/1.00\n", report.summary.validation_score));
-        output.push_str(&format!("  Validation Duration: {} ms\n\n", report.summary.validation_duration_ms));
+        output.push_str(&format!(
+            "  Total Violations: {}\n",
+            report.summary.total_violations
+        ));
+        output.push_str(&format!(
+            "  Critical Violations: {}\n",
+            report.summary.critical_violations
+        ));
+        output.push_str(&format!(
+            "  Error Violations: {}\n",
+            report.summary.error_violations
+        ));
+        output.push_str(&format!(
+            "  Warning Violations: {}\n",
+            report.summary.warning_violations
+        ));
+        output.push_str(&format!(
+            "  Info Violations: {}\n",
+            report.summary.info_violations
+        ));
+        output.push_str(&format!(
+            "  Validation Score: {:.2}/1.00\n",
+            report.summary.validation_score
+        ));
+        output.push_str(&format!(
+            "  Validation Duration: {} ms\n\n",
+            report.summary.validation_duration_ms
+        ));
 
         // Consistency Results
         if let Some(consistency) = &report.consistency_result {
             output.push_str("Consistency Validation:\n");
-            output.push_str(&format!("  Consistency Status: {}\n",
-                if consistency.is_consistent { "PASS" } else { "FAIL" }));
+            output.push_str(&format!(
+                "  Consistency Status: {}\n",
+                if consistency.is_consistent {
+                    "PASS"
+                } else {
+                    "FAIL"
+                }
+            ));
             output.push_str(&format!("  LSN Range: {:?}\n", consistency.lsn_range));
-            output.push_str(&format!("  Validation Time: {:?}\n", consistency.validation_timestamp));
+            output.push_str(&format!(
+                "  Validation Time: {:?}\n",
+                consistency.validation_timestamp
+            ));
 
             if !consistency.violations.is_empty() {
                 output.push_str("  Violations:\n");
                 for (i, violation) in consistency.violations.iter().enumerate() {
-                    output.push_str(&format!("    {}. [{:?}] {}\n", i + 1, violation.severity, violation.description));
+                    output.push_str(&format!(
+                        "    {}. [{:?}] {}\n",
+                        i + 1,
+                        violation.severity,
+                        violation.description
+                    ));
                 }
             }
             output.push_str("\n");
@@ -341,17 +397,31 @@ impl CheckpointValidationReporter {
         // V2 Invariant Results
         if let Some(invariants) = &report.v2_invariant_result {
             output.push_str("V2 Invariant Validation:\n");
-            output.push_str(&format!("  Invariant Status: {}\n",
-                if invariants.invariants_held { "PASS" } else { "FAIL" }));
+            output.push_str(&format!(
+                "  Invariant Status: {}\n",
+                if invariants.invariants_held {
+                    "PASS"
+                } else {
+                    "FAIL"
+                }
+            ));
             output.push_str(&format!("  V2 Version: {:?}\n", invariants.v2_version));
-            output.push_str(&format!("  Validation Time: {:?}\n", invariants.validation_timestamp));
+            output.push_str(&format!(
+                "  Validation Time: {:?}\n",
+                invariants.validation_timestamp
+            ));
 
             if !invariants.violations.is_empty() {
                 output.push_str("  Violations:\n");
                 for (i, violation) in invariants.violations.iter().enumerate() {
-                    output.push_str(&format!("    {}. [{}] {}\n",
+                    output.push_str(&format!(
+                        "    {}. [{}] {}\n",
                         i + 1,
-                        if violation.critical { "CRITICAL" } else { "ERROR" },
+                        if violation.critical {
+                            "CRITICAL"
+                        } else {
+                            "ERROR"
+                        },
                         violation.description
                     ));
                 }
@@ -362,11 +432,26 @@ impl CheckpointValidationReporter {
         // Performance Metrics
         if let Some(metrics) = &report.performance_metrics {
             output.push_str("Performance Metrics:\n");
-            output.push_str(&format!("  Total Checkpoints: {}\n", metrics.total_checkpoints));
-            output.push_str(&format!("  Average Duration: {} ms\n", metrics.avg_checkpoint_duration_ms));
-            output.push_str(&format!("  Throughput: {:.2} MB/s\n", metrics.checkpoint_throughput_mbps));
-            output.push_str(&format!("  Average Blocks: {}\n", metrics.avg_blocks_per_checkpoint));
-            output.push_str(&format!("  Average Records: {}\n", metrics.avg_records_per_checkpoint));
+            output.push_str(&format!(
+                "  Total Checkpoints: {}\n",
+                metrics.total_checkpoints
+            ));
+            output.push_str(&format!(
+                "  Average Duration: {} ms\n",
+                metrics.avg_checkpoint_duration_ms
+            ));
+            output.push_str(&format!(
+                "  Throughput: {:.2} MB/s\n",
+                metrics.checkpoint_throughput_mbps
+            ));
+            output.push_str(&format!(
+                "  Average Blocks: {}\n",
+                metrics.avg_blocks_per_checkpoint
+            ));
+            output.push_str(&format!(
+                "  Average Records: {}\n",
+                metrics.avg_records_per_checkpoint
+            ));
             output.push_str("\n");
         }
 
@@ -394,7 +479,8 @@ impl CheckpointValidationReporter {
         // Performance issues
         if let Some(metrics) = &report.performance_metrics {
             if metrics.checkpoint_throughput_mbps < performance::TARGET_CHECKPOINT_THROUGHPUT_MBPS {
-                recommendations.push("Consider optimizing checkpoint configuration for better throughput.");
+                recommendations
+                    .push("Consider optimizing checkpoint configuration for better throughput.");
             }
 
             if metrics.avg_checkpoint_duration_ms > performance::MAX_CHECKPOINT_DURATION_MS {
@@ -402,13 +488,15 @@ impl CheckpointValidationReporter {
             }
 
             if metrics.anomaly_summary.anomaly_percentage > 10.0 {
-                recommendations.push("High anomaly percentage detected. Investigate system performance.");
+                recommendations
+                    .push("High anomaly percentage detected. Investigate system performance.");
             }
         }
 
         // Low validation score
         if report.summary.validation_score < 0.8 {
-            recommendations.push("Validation score indicates multiple issues. Review and fix violations.");
+            recommendations
+                .push("Validation score indicates multiple issues. Review and fix violations.");
         }
 
         if recommendations.is_empty() {
@@ -431,14 +519,13 @@ impl ValidationReportUtils {
     pub fn export_to_json(report: &CheckpointValidationReport) -> CheckpointResult<String> {
         use serde_json;
 
-        serde_json::to_string_pretty(report)
-            .map_err(|e| CheckpointError::validation(format!("Failed to serialize report to JSON: {}", e)))
+        serde_json::to_string_pretty(report).map_err(|e| {
+            CheckpointError::validation(format!("Failed to serialize report to JSON: {}", e))
+        })
     }
 
     /// Calculate trend analysis from multiple reports
-    pub fn calculate_trend_analysis(
-        reports: &[CheckpointValidationReport],
-    ) -> TrendAnalysis {
+    pub fn calculate_trend_analysis(reports: &[CheckpointValidationReport]) -> TrendAnalysis {
         if reports.is_empty() {
             return TrendAnalysis::default();
         }
@@ -446,13 +533,11 @@ impl ValidationReportUtils {
         let mut analysis = TrendAnalysis::default();
 
         // Calculate validation score trend
-        let scores: Vec<f64> = reports.iter()
-            .map(|r| r.summary.validation_score)
-            .collect();
+        let scores: Vec<f64> = reports.iter().map(|r| r.summary.validation_score).collect();
 
         analysis.validation_score_trend = if scores.len() >= 2 {
-            let recent_avg = scores[scores.len().saturating_sub(5)..].iter().sum::<f64>() /
-                           scores[scores.len().saturating_sub(5)..].len() as f64;
+            let recent_avg = scores[scores.len().saturating_sub(5)..].iter().sum::<f64>()
+                / scores[scores.len().saturating_sub(5)..].len() as f64;
             let overall_avg = scores.iter().sum::<f64>() / scores.len() as f64;
             recent_avg - overall_avg
         } else {
@@ -460,13 +545,13 @@ impl ValidationReportUtils {
         };
 
         // Calculate violation count trend
-        let violations: Vec<usize> = reports.iter()
-            .map(|r| r.summary.total_violations)
-            .collect();
+        let violations: Vec<usize> = reports.iter().map(|r| r.summary.total_violations).collect();
 
         analysis.violation_count_trend = if violations.len() >= 2 {
-            let recent_avg = violations[violations.len().saturating_sub(5)..].iter().sum::<usize>() as f64 /
-                           violations[violations.len().saturating_sub(5)..].len() as f64;
+            let recent_avg = violations[violations.len().saturating_sub(5)..]
+                .iter()
+                .sum::<usize>() as f64
+                / violations[violations.len().saturating_sub(5)..].len() as f64;
             let overall_avg = violations.iter().sum::<usize>() as f64 / violations.len() as f64;
             recent_avg - overall_avg
         } else {
@@ -474,14 +559,17 @@ impl ValidationReportUtils {
         };
 
         // Calculate performance trend
-        let throughputs: Vec<f64> = reports.iter()
+        let throughputs: Vec<f64> = reports
+            .iter()
             .filter_map(|r| r.performance_metrics.as_ref())
             .map(|p| p.checkpoint_throughput_mbps)
             .collect();
 
         analysis.performance_trend = if throughputs.len() >= 2 {
-            let recent_avg = throughputs[throughputs.len().saturating_sub(5)..].iter().sum::<f64>() /
-                           throughputs[throughputs.len().saturating_sub(5)..].len() as f64;
+            let recent_avg = throughputs[throughputs.len().saturating_sub(5)..]
+                .iter()
+                .sum::<f64>()
+                / throughputs[throughputs.len().saturating_sub(5)..].len() as f64;
             let overall_avg = throughputs.iter().sum::<f64>() / throughputs.len() as f64;
             recent_avg - overall_avg
         } else {
@@ -508,8 +596,11 @@ use std::time::Duration;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::native::v2::wal::checkpoint::validation::{
+        ConsistencyViolation, ConsistencyViolationType, V2InvariantViolation, V2InvariantViolationType
+    };
+        use std::time::SystemTime;
     use tempfile::tempdir;
-    use std::time::SystemTime;
 
     fn create_test_performance_metrics() -> PerformanceMetrics {
         PerformanceMetrics {
@@ -578,7 +669,10 @@ mod tests {
         );
 
         assert_eq!(report.validation_status, ValidationStatus::Passed);
-        assert_eq!(report.checkpoint_path, checkpoint_path.to_string_lossy().to_string());
+        assert_eq!(
+            report.checkpoint_path,
+            checkpoint_path.to_string_lossy().to_string()
+        );
         assert_eq!(report.summary.total_violations, 0);
         assert_eq!(report.summary.validation_score, 1.0);
     }
@@ -597,14 +691,12 @@ mod tests {
 
         let consistency_result = Some(ConsistencyResult {
             is_consistent: false,
-            violations: vec![
-                ConsistencyViolation {
-                    violation_type: ConsistencyViolationType::InvalidLsnRange,
-                    description: "LSN range error".to_string(),
-                    severity: ConsistencySeverity::Error,
-                    entity_id: Some("test".to_string()),
-                }
-            ],
+            violations: vec![ConsistencyViolation {
+                violation_type: ConsistencyViolationType::InvalidLsnRange,
+                description: "LSN range error".to_string(),
+                severity: ConsistencySeverity::Error,
+                entity_id: Some("test".to_string()),
+            }],
             validation_timestamp: SystemTime::now(),
             lsn_range: Some((1000, 2000)),
         });
@@ -721,7 +813,8 @@ mod tests {
             lsn_range: None,
         });
 
-        let warning_status = reporter.determine_validation_status(&consistency_with_warnings, &None);
+        let warning_status =
+            reporter.determine_validation_status(&consistency_with_warnings, &None);
         assert_eq!(warning_status, ValidationStatus::PassedWithWarnings);
 
         // Test critical failure status
@@ -744,25 +837,23 @@ mod tests {
 
     #[test]
     fn test_trend_analysis() {
-        let reports = vec![
-            CheckpointValidationReport {
-                report_timestamp: SystemTime::now(),
-                checkpoint_path: "test1.checkpoint".to_string(),
-                consistency_result: None,
-                v2_invariant_result: None,
-                validation_status: ValidationStatus::Passed,
-                performance_metrics: Some(create_test_performance_metrics()),
-                summary: ValidationSummary {
-                    total_violations: 0,
-                    critical_violations: 0,
-                    error_violations: 0,
-                    warning_violations: 0,
-                    info_violations: 0,
-                    validation_score: 1.0,
-                    validation_duration_ms: 100,
-                },
+        let reports = vec![CheckpointValidationReport {
+            report_timestamp: SystemTime::now(),
+            checkpoint_path: "test1.checkpoint".to_string(),
+            consistency_result: None,
+            v2_invariant_result: None,
+            validation_status: ValidationStatus::Passed,
+            performance_metrics: Some(create_test_performance_metrics()),
+            summary: ValidationSummary {
+                total_violations: 0,
+                critical_violations: 0,
+                error_violations: 0,
+                warning_violations: 0,
+                info_violations: 0,
+                validation_score: 1.0,
+                validation_duration_ms: 100,
             },
-        ];
+        }];
 
         let analysis = ValidationReportUtils::calculate_trend_analysis(&reports);
         assert_eq!(analysis.validation_score_trend, 0.0);

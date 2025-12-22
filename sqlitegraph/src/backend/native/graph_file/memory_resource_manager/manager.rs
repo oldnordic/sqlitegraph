@@ -3,11 +3,11 @@
 //! This module provides the main coordination logic for memory resources
 //! including buffer management and I/O mode detection.
 
-use crate::backend::native::{
-    types::{NativeResult, NativeBackendError},
-    graph_file::buffers::{ReadBuffer, WriteBuffer},
-};
 use super::types::{MemoryIOMode, MemoryManagementStatistics};
+use crate::backend::native::{
+    graph_file::buffers::{ReadBuffer, WriteBuffer},
+    types::{NativeBackendError, NativeResult},
+};
 
 #[cfg(feature = "native-v2")]
 use memmap2::MmapMut;
@@ -127,7 +127,9 @@ impl<'a> MemoryResourceManager<'a> {
         use std::io::{Seek, SeekFrom, Write};
 
         // Sort operations by offset for optimal write patterns
-        self.write_buffer.operations.sort_by_key(|(offset, _data)| *offset);
+        self.write_buffer
+            .operations
+            .sort_by_key(|(offset, _data)| *offset);
 
         for (offset, data) in &self.write_buffer.operations {
             file.seek(SeekFrom::Start(*offset))?;

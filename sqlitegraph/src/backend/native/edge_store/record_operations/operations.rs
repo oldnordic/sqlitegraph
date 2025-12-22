@@ -4,10 +4,10 @@
 //! with proper validation, capacity management, and error handling.
 
 use crate::backend::native::graph_file::GraphFile;
-use crate::backend::native::types::{NativeResult, NativeEdgeId, EdgeRecord};
+use crate::backend::native::types::{EdgeRecord, NativeEdgeId, NativeResult};
 
-use super::validation::EdgeValidator;
 use super::serialization::EdgeSerializer;
+use super::validation::EdgeValidator;
 
 /// Edge record operations manager for CRUD operations
 pub struct EdgeRecordOperations<'a> {
@@ -49,10 +49,12 @@ impl<'a> EdgeRecordOperations<'a> {
         // Ensure buffer fits in fixed slot
         let fixed_slot_size = 256usize;
         if buffer.len() > fixed_slot_size {
-            return Err(crate::backend::native::types::NativeBackendError::RecordTooLarge {
-                size: buffer.len() as u32,
-                max_size: fixed_slot_size as u32,
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::RecordTooLarge {
+                    size: buffer.len() as u32,
+                    max_size: fixed_slot_size as u32,
+                },
+            );
         }
 
         self.graph_file.write_bytes(offset, &buffer)?;
@@ -77,10 +79,12 @@ impl<'a> EdgeRecordOperations<'a> {
         let header = self.graph_file.header();
 
         if edge_id <= 0 || edge_id > header.edge_count as NativeEdgeId {
-            return Err(crate::backend::native::types::NativeBackendError::InvalidEdgeId {
-                id: edge_id,
-                max_id: header.edge_count as NativeEdgeId,
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::InvalidEdgeId {
+                    id: edge_id,
+                    max_id: header.edge_count as NativeEdgeId,
+                },
+            );
         }
 
         // Calculate offset and read fixed slot
@@ -91,30 +95,37 @@ impl<'a> EdgeRecordOperations<'a> {
 
         // Find actual record size
         if buffer.len() < 33 {
-            return Err(crate::backend::native::types::NativeBackendError::CorruptEdgeRecord {
-                edge_id,
-                reason: "Edge record too short".to_string(),
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::CorruptEdgeRecord {
+                    edge_id,
+                    reason: "Edge record too short".to_string(),
+                },
+            );
         }
 
         // Check version
         if buffer[0] != 1 {
-            return Err(crate::backend::native::types::NativeBackendError::CorruptEdgeRecord {
-                edge_id,
-                reason: "Invalid edge record version".to_string(),
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::CorruptEdgeRecord {
+                    edge_id,
+                    reason: "Invalid edge record version".to_string(),
+                },
+            );
         }
 
         // Extract length fields
         let type_len = u16::from_be_bytes([buffer[27], buffer[28]]) as usize;
-        let data_len = u32::from_be_bytes([buffer[29], buffer[30], buffer[31], buffer[32]]) as usize;
+        let data_len =
+            u32::from_be_bytes([buffer[29], buffer[30], buffer[31], buffer[32]]) as usize;
         let actual_size = 1 + 2 + 8 + 8 + 8 + 2 + 4 + type_len + data_len;
 
         if actual_size > fixed_slot_size {
-            return Err(crate::backend::native::types::NativeBackendError::CorruptEdgeRecord {
-                edge_id,
-                reason: "Edge record too large for fixed slot".to_string(),
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::CorruptEdgeRecord {
+                    edge_id,
+                    reason: "Edge record too large for fixed slot".to_string(),
+                },
+            );
         }
 
         buffer.truncate(actual_size);
@@ -138,10 +149,12 @@ impl<'a> EdgeRecordOperations<'a> {
         // Validate the edge ID exists
         let header = self.graph_file.header();
         if edge.id <= 0 || edge.id > header.edge_count as NativeEdgeId {
-            return Err(crate::backend::native::types::NativeBackendError::InvalidEdgeId {
-                id: edge.id,
-                max_id: header.edge_count as NativeEdgeId,
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::InvalidEdgeId {
+                    id: edge.id,
+                    max_id: header.edge_count as NativeEdgeId,
+                },
+            );
         }
 
         // Validate and write the updated edge

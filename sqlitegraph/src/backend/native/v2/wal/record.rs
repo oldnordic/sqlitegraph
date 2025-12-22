@@ -6,10 +6,6 @@
 
 use crate::backend::native::{NativeBackendError, NativeResult};
 use crate::backend::native::v2::edge_cluster::{CompactEdgeRecord, Direction};
-use crate::backend::native::v2::node_record_v2::NodeRecordV2;
-use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
-
 /// V2 WAL record types for different operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(u8)]

@@ -38,28 +38,24 @@
 
 // Re-export core types for backward compatibility
 pub use self::core::{
-    V2WALMetrics, WALPerformanceCounters, ClusterOperationCounters,
-    EdgeOperationMetrics, NodeOperationMetrics, FreeSpaceOperationMetrics,
-    StringTableOperationMetrics, GlobalCounters,
+    ClusterOperationCounters, EdgeOperationMetrics, FreeSpaceOperationMetrics, GlobalCounters,
+    NodeOperationMetrics, StringTableOperationMetrics, V2WALMetrics, WALPerformanceCounters,
 };
 
 // Re-export aggregation types
-pub use self::aggregation::{
-    LatencyHistogram, ThroughputTracker,
-};
+pub use self::aggregation::{LatencyHistogram, ThroughputTracker};
 
 // Re-export reporting types
 pub use self::reporting::{
-    ResourceTracker, ClusterPerformanceMetrics, ClusterMetrics,
-    ClusterGlobalMetrics, ErrorTracker, ErrorEntry, MetricsReport,
+    ClusterGlobalMetrics, ClusterMetrics, ClusterPerformanceMetrics, ErrorEntry, ErrorTracker,
+    MetricsReport, ResourceTracker,
 };
 
 // Re-export analysis types
 pub use self::analysis::{
-    PerformanceAnalysis, PerformanceAnalyzer, PerformanceCategoryScores,
-    PerformanceIssue, OptimizationOpportunity, Recommendation,
-    PerformanceTrend, TrendDirection, IssueSeverity, ImplementationDifficulty,
-    RecommendationPriority,
+    ImplementationDifficulty, IssueSeverity, OptimizationOpportunity, PerformanceAnalysis,
+    PerformanceAnalyzer, PerformanceCategoryScores, PerformanceIssue, PerformanceTrend,
+    Recommendation, RecommendationPriority, TrendDirection,
 };
 
 // Core module - fundamental metrics structures
@@ -191,7 +187,8 @@ pub mod utils {
             0.0
         };
 
-        let buffer_healthy = counters.buffer_utilization_percent < defaults::DEFAULT_BUFFER_UTILIZATION_THRESHOLD;
+        let buffer_healthy =
+            counters.buffer_utilization_percent < defaults::DEFAULT_BUFFER_UTILIZATION_THRESHOLD;
         let memory_healthy = resource_tracker.memory_usage_bytes < 1024 * 1024 * 1024; // < 1GB
         // For small sample sizes (<100 operations), be more lenient with error rate
         let error_threshold = if counters.records_processed < 100 {
@@ -208,10 +205,16 @@ pub mod utils {
         } else {
             let mut issues = Vec::new();
             if !buffer_healthy {
-                issues.push(format!("High buffer utilization: {:.1}%", counters.buffer_utilization_percent));
+                issues.push(format!(
+                    "High buffer utilization: {:.1}%",
+                    counters.buffer_utilization_percent
+                ));
             }
             if !memory_healthy {
-                issues.push(format!("High memory usage: {} MB", resource_tracker.memory_usage_bytes / (1024 * 1024)));
+                issues.push(format!(
+                    "High memory usage: {} MB",
+                    resource_tracker.memory_usage_bytes / (1024 * 1024)
+                ));
             }
             if !error_healthy {
                 issues.push(format!("High error rate: {:.2}%", error_rate));
@@ -225,8 +228,8 @@ pub mod utils {
 
 #[cfg(test)]
 mod integration_tests {
-    use super::*;
     use super::core::V2WALMetrics;
+    use super::*;
 
     #[test]
     fn test_full_metrics_workflow() {
@@ -237,7 +240,12 @@ mod integration_tests {
         metrics.record_write_operation(100, 50, Some(42), "edge_insert");
         metrics.record_write_operation(150, 75, Some(43), "node_insert");
         metrics.record_read_operation(80, 25, Some(42), "edge_read");
-        metrics.record_error("TestError", "Test message", "test_operation", "test_recovery");
+        metrics.record_error(
+            "TestError",
+            "Test message",
+            "test_operation",
+            "test_recovery",
+        );
 
         // Get data from all modules
         let counters = metrics.get_counters();
@@ -302,9 +310,9 @@ mod integration_tests {
     #[test]
     fn test_modular_api_access() {
         // Test that new modular APIs are accessible
-        use super::analysis::{PerformanceAnalyzer, PerformanceAnalysis};
         use super::aggregation::{LatencyHistogram, ThroughputTracker};
-        use super::reporting::{ResourceTracker, ClusterPerformanceMetrics, ErrorTracker};
+        use super::analysis::{PerformanceAnalysis, PerformanceAnalyzer};
+        use super::reporting::{ClusterPerformanceMetrics, ErrorTracker, ResourceTracker};
 
         let metrics = V2WALMetrics::new();
         let analyzer = PerformanceAnalyzer::new();
@@ -359,7 +367,7 @@ mod integration_tests {
 
     #[test]
     fn test_analysis_integration() {
-        use super::analysis::{PerformanceAnalyzer, IssueSeverity, RecommendationPriority};
+        use super::analysis::{IssueSeverity, PerformanceAnalyzer, RecommendationPriority};
 
         let metrics = V2WALMetrics::new();
         let analyzer = PerformanceAnalyzer::new();
@@ -384,8 +392,8 @@ mod integration_tests {
 
     #[test]
     fn test_serde_compatibility() {
-        use super::reporting::{MetricsReport, ResourceTracker};
         use super::core::WALPerformanceCounters;
+        use super::reporting::{MetricsReport, ResourceTracker};
 
         // Test that key types implement Serialize/Deserialize
         let report = MetricsReport {

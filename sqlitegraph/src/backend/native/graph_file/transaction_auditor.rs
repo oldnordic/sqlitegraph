@@ -89,7 +89,11 @@ impl TransactionAuditor {
     /// # Arguments
     /// * `node_data_offset` - Offset to node data region
     /// * `read_bytes_fn` - Function to read bytes from file
-    pub fn audit_transaction_begin<F>(&self, node_data_offset: u64, read_bytes_fn: F) -> NativeResult<()>
+    pub fn audit_transaction_begin<F>(
+        &self,
+        node_data_offset: u64,
+        read_bytes_fn: F,
+    ) -> NativeResult<()>
     where
         F: FnOnce(u64, &mut [u8]) -> NativeResult<()>,
     {
@@ -124,7 +128,11 @@ impl TransactionAuditor {
     /// # Arguments
     /// * `file_path` - Path to the graph file
     /// * `file_size_fn` - Function to get current file size
-    pub fn debug_edge_cluster_before_transaction<F>(&self, file_path: &std::path::Path, file_size_fn: F) -> NativeResult<()>
+    pub fn debug_edge_cluster_before_transaction<F>(
+        &self,
+        file_path: &std::path::Path,
+        file_size_fn: F,
+    ) -> NativeResult<()>
     where
         F: FnOnce() -> NativeResult<u64>,
     {
@@ -136,7 +144,7 @@ impl TransactionAuditor {
         let mut disk_file = std::fs::File::open(file_path)?;
         let mut node1_bytes = vec![0u8; 32];
 
-        use std::io::{Seek, Read};
+        use std::io::{Read, Seek};
         disk_file.seek(std::io::SeekFrom::Start(NODE1_SLOT_OFFSET))?;
         disk_file.read_exact(&mut node1_bytes)?;
 
@@ -157,7 +165,9 @@ impl TransactionAuditor {
     pub fn clear_v2_cluster_metadata_on_rollback(&mut self) -> NativeResult<()> {
         #[cfg(feature = "trace_v2_io")]
         if self.phase75_instrumentation_enabled {
-            println!("[phase75] ROLLBACK_CLEANUP: SKIPPING V2 node slot rewrite to prevent corruption");
+            println!(
+                "[phase75] ROLLBACK_CLEANUP: SKIPPING V2 node slot rewrite to prevent corruption"
+            );
         }
 
         // CRITICAL FIX: Do NOT rewrite V2 node slots during rollback
@@ -196,9 +206,18 @@ impl TransactionAuditor {
             report.push('\n');
         }
 
-        report.push_str(&format!("TX_BEGIN_AUDIT enabled: {}\n", self.tx_begin_audit_enabled));
-        report.push_str(&format!("PHASE75_INSTRUMENTATION enabled: {}\n", self.phase75_instrumentation_enabled));
-        report.push_str(&format!("EDGE_CLUSTER_DEBUG enabled: {}\n", self.edge_cluster_debug_enabled));
+        report.push_str(&format!(
+            "TX_BEGIN_AUDIT enabled: {}\n",
+            self.tx_begin_audit_enabled
+        ));
+        report.push_str(&format!(
+            "PHASE75_INSTRUMENTATION enabled: {}\n",
+            self.phase75_instrumentation_enabled
+        ));
+        report.push_str(&format!(
+            "EDGE_CLUSTER_DEBUG enabled: {}\n",
+            self.edge_cluster_debug_enabled
+        ));
 
         report
     }
@@ -208,7 +227,9 @@ impl TransactionAuditor {
     /// # Returns
     /// `true` if any debugging features are enabled
     pub fn has_debugging_enabled(&self) -> bool {
-        self.tx_begin_audit_enabled || self.phase75_instrumentation_enabled || self.edge_cluster_debug_enabled
+        self.tx_begin_audit_enabled
+            || self.phase75_instrumentation_enabled
+            || self.edge_cluster_debug_enabled
     }
 
     /// Get transaction auditor statistics
@@ -330,8 +351,14 @@ mod tests {
         let stats = auditor.get_statistics();
         assert_eq!(stats.modified_node_count, 2);
         assert_eq!(stats.tx_begin_audit_enabled, auditor.tx_begin_audit_enabled);
-        assert_eq!(stats.phase75_instrumentation_enabled, auditor.phase75_instrumentation_enabled);
-        assert_eq!(stats.edge_cluster_debug_enabled, auditor.edge_cluster_debug_enabled);
+        assert_eq!(
+            stats.phase75_instrumentation_enabled,
+            auditor.phase75_instrumentation_enabled
+        );
+        assert_eq!(
+            stats.edge_cluster_debug_enabled,
+            auditor.edge_cluster_debug_enabled
+        );
     }
 
     #[test]

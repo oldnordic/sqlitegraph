@@ -47,17 +47,17 @@
 use serde_json::Value;
 
 use crate::{
+    SqliteGraph,
     errors::SqliteGraphError,
     hnsw::{
         config::HnswConfig,
-        hnsw_config,
-        distance_metric::{compute_distance, DistanceMetric},
+        distance_metric::DistanceMetric,
         errors::{HnswError, HnswIndexError},
+        hnsw_config,
         layer::HnswLayer,
-        neighborhood::{NeighborhoodSearch, SearchResult},
-        storage::{InMemoryVectorStorage, VectorRecord, VectorStorage, VectorStorageStats},
+        neighborhood::NeighborhoodSearch,
+        storage::{InMemoryVectorStorage, VectorStorage, VectorStorageStats},
     },
-    SqliteGraph,
 };
 
 /// Main HNSW vector search index
@@ -129,7 +129,10 @@ impl HnswIndex {
     /// # Returns
     ///
     /// Returns a new HnswIndex using the provided storage backend
-    pub fn with_storage(config: HnswConfig, storage: Box<dyn VectorStorage>) -> Result<Self, HnswError> {
+    pub fn with_storage(
+        config: HnswConfig,
+        storage: Box<dyn VectorStorage>,
+    ) -> Result<Self, HnswError> {
         // Validate configuration
         Self::validate_config(&config)?;
 
@@ -182,7 +185,11 @@ impl HnswIndex {
     /// println!("Inserted vector with ID: {}", vector_id);
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn insert_vector(&mut self, vector: &[f32], metadata: Option<Value>) -> Result<u64, HnswError> {
+    pub fn insert_vector(
+        &mut self,
+        vector: &[f32],
+        metadata: Option<Value>,
+    ) -> Result<u64, HnswError> {
         // Validate vector dimension
         if vector.len() != self.config.dimension {
             return Err(HnswError::Index(HnswIndexError::VectorDimensionMismatch {
@@ -240,8 +247,16 @@ impl HnswIndex {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn search(&self, query: &[f32], k: usize) -> Result<Vec<(u64, f32)>, HnswError> {
-        println!("search: Starting with query length {}, k={}", query.len(), k);
-        println!("search: vector_count={}, layers.len()={}", self.vector_count, self.layers.len());
+        println!(
+            "search: Starting with query length {}, k={}",
+            query.len(),
+            k
+        );
+        println!(
+            "search: vector_count={}, layers.len()={}",
+            self.vector_count,
+            self.layers.len()
+        );
 
         // Validate query vector dimension
         if query.len() != self.config.dimension {
@@ -289,7 +304,8 @@ impl HnswIndex {
             }
 
             // Convert entry points from 1-based vector IDs to 0-based node IDs
-            let entry_node_ids: Vec<u64> = layer_entry_points.iter()
+            let entry_node_ids: Vec<u64> = layer_entry_points
+                .iter()
                 .map(|&vector_id| vector_id - 1) // Convert to 0-based
                 .collect();
 
@@ -367,7 +383,9 @@ impl HnswIndex {
     /// ```
     pub fn statistics(&self) -> Result<HnswIndexStats, HnswError> {
         let storage_stats = self.storage.get_statistics()?;
-        let layer_stats: Vec<_> = self.layers.iter()
+        let layer_stats: Vec<_> = self
+            .layers
+            .iter()
             .map(|layer| layer.get_statistics())
             .collect();
 
@@ -413,7 +431,7 @@ impl HnswIndex {
     fn insert_into_layer(&mut self, vector_id: u64, level: usize) -> Result<(), HnswError> {
         // Convert 1-based vector ID to 0-based node ID for layer management
         let node_id = vector_id - 1;
-        
+
         // Ensure layer exists, create if necessary
         while level >= self.layers.len() {
             let new_level = self.layers.len() as u8;
@@ -433,7 +451,8 @@ impl HnswIndex {
         }
 
         // Find entry points after adding the node (convert to 0-based node IDs)
-        let entry_points: Vec<u64> = self.get_layer_entry_points(level)
+        let entry_points: Vec<u64> = self
+            .get_layer_entry_points(level)
             .into_iter()
             .map(|vector_id| vector_id - 1) // Convert to 0-based node IDs
             .collect();
@@ -531,7 +550,11 @@ impl SqliteGraph {
     /// let hnsw = graph.hnsw_index("embeddings", config)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn hnsw_index(&self, _name: &str, config: HnswConfig) -> Result<HnswIndex, SqliteGraphError> {
+    pub fn hnsw_index(
+        &self,
+        _name: &str,
+        config: HnswConfig,
+    ) -> Result<HnswIndex, SqliteGraphError> {
         // For now, create in-memory HNSW index
         // TODO: Integrate with SQLite storage for persistence
         HnswIndex::new(config).map_err(|e| SqliteGraphError::invalid_input(e.to_string()))
@@ -561,10 +584,7 @@ mod tests {
 
     #[test]
     fn test_vector_insertion() {
-        let config = hnsw_config()
-            .dimension(3)
-            .build()
-            .unwrap();
+        let config = hnsw_config().dimension(3).build().unwrap();
         let mut hnsw = HnswIndex::new(config).unwrap();
         let vector = vec![1.0, 0.0, 0.0];
         let metadata = serde_json::json!({"label": "test"});
@@ -587,7 +607,10 @@ mod tests {
         assert!(result.is_err());
 
         let error = result.unwrap_err();
-        assert!(matches!(error, HnswError::Index(HnswIndexError::VectorDimensionMismatch { .. })));
+        assert!(matches!(
+            error,
+            HnswError::Index(HnswIndexError::VectorDimensionMismatch { .. })
+        ));
     }
 
     #[test]
@@ -601,10 +624,7 @@ mod tests {
 
     #[test]
     fn test_vector_retrieval() {
-        let config = hnsw_config()
-            .dimension(3)
-            .build()
-            .unwrap();
+        let config = hnsw_config().dimension(3).build().unwrap();
         let mut hnsw = HnswIndex::new(config).unwrap();
         let vector = vec![1.0, 0.0, 0.0];
         let metadata = serde_json::json!({"label": "test"});
@@ -637,12 +657,15 @@ mod tests {
 
     #[test]
     fn test_basic_search_functionality() {
-        let mut hnsw = HnswIndex::new(HnswConfigBuilder::new()
-            .dimension(2)
-            .m_connections(4)
-            .distance_metric(DistanceMetric::Euclidean)
-            .build()
-            .unwrap()).unwrap();
+        let mut hnsw = HnswIndex::new(
+            HnswConfigBuilder::new()
+                .dimension(2)
+                .m_connections(4)
+                .distance_metric(DistanceMetric::Euclidean)
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
 
         // Insert some test vectors
         let vectors = vec![
@@ -673,11 +696,14 @@ mod tests {
 
     #[test]
     fn test_index_statistics() {
-        let mut hnsw = HnswIndex::new(HnswConfigBuilder::new()
-            .dimension(3)
-            .max_layers(3)
-            .build()
-            .unwrap()).unwrap();
+        let mut hnsw = HnswIndex::new(
+            HnswConfigBuilder::new()
+                .dimension(3)
+                .max_layers(3)
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
 
         // Insert some vectors
         for i in 0..5 {

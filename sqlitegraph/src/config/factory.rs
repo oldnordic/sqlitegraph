@@ -2,9 +2,9 @@
 
 use std::path::Path;
 
+use super::config::GraphConfig;
 use crate::SqliteGraphError;
 use crate::backend::{GraphBackend, SqliteGraphBackend};
-use super::config::GraphConfig;
 
 /// Open a graph with the specified configuration.
 ///

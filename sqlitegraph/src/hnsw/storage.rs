@@ -35,9 +35,9 @@
 //! - **Native Backend**: Stores vectors in binary format with clustering optimization
 //! - **HNSW Integration**: Seamless integration with similarity search capabilities
 
-use std::collections::HashMap;
-use serde_json::Value;
 use crate::hnsw::errors::{HnswError, HnswStorageError};
+use serde_json::Value;
+use std::collections::HashMap;
 
 /// Vector storage record with metadata
 ///
@@ -158,7 +158,9 @@ impl VectorRecord {
     pub fn validate(&self) -> Result<(), HnswError> {
         // Check dimension constraints
         if self.dimension == 0 {
-            return Err(HnswError::Storage(HnswStorageError::InvalidDimension(self.dimension)));
+            return Err(HnswError::Storage(HnswStorageError::InvalidDimension(
+                self.dimension,
+            )));
         }
 
         // Check data length matches dimension
@@ -185,7 +187,8 @@ impl VectorRecord {
     pub fn memory_usage(&self) -> usize {
         let base_overhead = std::mem::size_of::<Self>();
         let data_size = self.data.len() * std::mem::size_of::<f32>();
-        let metadata_size = self.metadata
+        let metadata_size = self
+            .metadata
             .as_ref()
             .map(|m| m.to_string().len())
             .unwrap_or(0);
@@ -215,10 +218,7 @@ impl VectorBatch {
     /// # Returns
     ///
     /// New VectorBatch or error if lengths don't match
-    pub fn new(
-        vectors: Vec<Vec<f32>>,
-        metadatas: Vec<Option<Value>>,
-    ) -> Result<Self, HnswError> {
+    pub fn new(vectors: Vec<Vec<f32>>, metadatas: Vec<Option<Value>>) -> Result<Self, HnswError> {
         if vectors.len() != metadatas.len() {
             return Err(HnswError::Storage(HnswStorageError::BatchSizeMismatch));
         }
@@ -238,7 +238,9 @@ impl VectorBatch {
                 for record in &validated_records {
                     record.validate()?;
                 }
-                Ok(Self { vectors: validated_records })
+                Ok(Self {
+                    vectors: validated_records,
+                })
             }
             Err(e) => Err(e),
         }
@@ -300,7 +302,12 @@ pub trait VectorStorage {
     /// # Returns
     ///
     /// Ok(()) if successful
-    fn store_vector_with_id(&mut self, id: u64, vector: Vec<f32>, metadata: Option<Value>) -> Result<(), HnswError>;
+    fn store_vector_with_id(
+        &mut self,
+        id: u64,
+        vector: Vec<f32>,
+        metadata: Option<Value>,
+    ) -> Result<(), HnswError>;
 
     /// Retrieve vector by ID
     ///
@@ -468,7 +475,12 @@ impl VectorStorage for InMemoryVectorStorage {
         Ok(id)
     }
 
-    fn store_vector_with_id(&mut self, id: u64, vector: Vec<f32>, metadata: Option<Value>) -> Result<(), HnswError> {
+    fn store_vector_with_id(
+        &mut self,
+        id: u64,
+        vector: Vec<f32>,
+        metadata: Option<Value>,
+    ) -> Result<(), HnswError> {
         let record = VectorRecord::new(id, vector, metadata);
 
         // Validate before storing
@@ -527,9 +539,7 @@ impl VectorStorage for InMemoryVectorStorage {
 
     fn get_statistics(&self) -> Result<VectorStorageStats, HnswError> {
         let vector_count = self.vectors.len();
-        let total_dimensions = self.vectors.values()
-            .map(|record| record.dimension)
-            .sum();
+        let total_dimensions = self.vectors.values().map(|record| record.dimension).sum();
 
         Ok(VectorStorageStats::new(
             vector_count,
@@ -606,14 +616,8 @@ mod tests {
 
     #[test]
     fn test_vector_batch_creation() {
-        let vectors = vec![
-            vec![1.0, 2.0],
-            vec![3.0, 4.0, 5.0],
-        ];
-        let metadatas = vec![
-            Some(json!({"batch": 1})),
-            Some(json!({"batch": 2})),
-        ];
+        let vectors = vec![vec![1.0, 2.0], vec![3.0, 4.0, 5.0]];
+        let metadatas = vec![Some(json!({"batch": 1})), Some(json!({"batch": 2}))];
 
         let batch = VectorBatch::new(vectors.clone(), metadatas).unwrap();
 
@@ -647,7 +651,8 @@ mod tests {
         assert_eq!(retrieved.unwrap(), vector);
 
         // Retrieve with metadata
-        let (retrieved_vector, retrieved_metadata) = storage.get_vector_with_metadata(id).unwrap().unwrap();
+        let (retrieved_vector, retrieved_metadata) =
+            storage.get_vector_with_metadata(id).unwrap().unwrap();
         assert_eq!(retrieved_vector, vector);
         assert_eq!(Some(retrieved_metadata), metadata);
 
@@ -662,7 +667,9 @@ mod tests {
         let metadata = Some(create_test_metadata());
 
         // Store with explicit ID
-        storage.store_vector_with_id(100, vector.clone(), metadata).unwrap();
+        storage
+            .store_vector_with_id(100, vector.clone(), metadata)
+            .unwrap();
 
         // Retrieve with correct ID
         let retrieved = storage.get_vector(100).unwrap();
@@ -674,14 +681,8 @@ mod tests {
     fn test_in_memory_batch_storage() {
         let mut storage = InMemoryVectorStorage::new();
 
-        let vectors = vec![
-            vec![1.0, 2.0],
-            vec![3.0, 4.0, 5.0],
-        ];
-        let metadatas = vec![
-            Some(json!({"batch": 1})),
-            Some(json!({"batch": 2})),
-        ];
+        let vectors = vec![vec![1.0, 2.0], vec![3.0, 4.0, 5.0]];
+        let metadatas = vec![Some(json!({"batch": 1})), Some(json!({"batch": 2}))];
 
         let batch = VectorBatch::new(vectors, metadatas).unwrap();
         let ids = storage.store_batch(batch).unwrap();
@@ -761,7 +762,8 @@ mod tests {
         let record = VectorRecord::new(42, vector, metadata);
         let usage = record.memory_usage();
 
-        let expected_min = std::mem::size_of::<VectorRecord>() + (1000 * std::mem::size_of::<f32>());
+        let expected_min =
+            std::mem::size_of::<VectorRecord>() + (1000 * std::mem::size_of::<f32>());
         assert!(usage >= expected_min);
     }
 }

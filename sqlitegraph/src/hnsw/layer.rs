@@ -20,8 +20,8 @@
 //! Layer N:           1 connection, top-level navigation
 //! ```
 
-use std::collections::HashSet;
 use crate::hnsw::errors::{HnswError, HnswIndexError};
+use std::collections::HashSet;
 
 /// HNSW layer containing nodes and their connections
 ///
@@ -282,14 +282,17 @@ impl HnswLayer {
         }
 
         // Simple strategy: keep nodes with highest connectivity
-        let mut candidates: Vec<(u64, usize)> = self.nodes.iter()
+        let mut candidates: Vec<(u64, usize)> = self
+            .nodes
+            .iter()
             .enumerate()
             .map(|(id, connections)| (id as u64, connections.len()))
             .collect();
 
         candidates.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
 
-        self.entry_points = candidates.iter()
+        self.entry_points = candidates
+            .iter()
             .take(self.max_connections)
             .map(|(id, _)| *id)
             .collect();
@@ -309,7 +312,9 @@ impl HnswLayer {
         // Base overhead + nodes + connections + entry_points
         let base_overhead = std::mem::size_of::<Self>();
         let nodes_size = self.nodes.len() * std::mem::size_of::<HashSet<u64>>();
-        let connections_size: usize = self.nodes.iter()
+        let connections_size: usize = self
+            .nodes
+            .iter()
             .map(|conns| conns.len() * std::mem::size_of::<u64>())
             .sum();
         let entry_points_size = self.entry_points.len() * std::mem::size_of::<u64>();
@@ -331,9 +336,7 @@ impl HnswLayer {
     /// Tuple of (node_count, total_connections, avg_connections_per_node)
     pub fn get_statistics(&self) -> (usize, usize, f32) {
         let node_count = self.nodes.len();
-        let total_connections: usize = self.nodes.iter()
-            .map(|conns| conns.len())
-            .sum();
+        let total_connections: usize = self.nodes.iter().map(|conns| conns.len()).sum();
 
         let avg_connections = if node_count > 0 {
             total_connections as f32 / node_count as f32

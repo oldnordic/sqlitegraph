@@ -4,11 +4,10 @@
 //! It validates data consistency across checkpoint components, LSN ranges, dirty block states,
 //! and ensures proper checkpoint-WAL alignment.
 
-use crate::backend::native::v2::wal::checkpoint::constants::*;
-use crate::backend::native::v2::wal::checkpoint::errors::{CheckpointError, CheckpointResult};
-use crate::backend::native::v2::wal::checkpoint::core::{DirtyBlockTracker, CheckpointProgress};
 use crate::backend::native::v2::wal::V2WALConfig;
-use std::time::{Duration, SystemTime, Instant};
+use crate::backend::native::v2::wal::checkpoint::constants::*;
+use crate::backend::native::v2::wal::checkpoint::core::{CheckpointProgress, DirtyBlockTracker};
+use std::time::{Duration, SystemTime};
 
 /// Consistency validation result details
 #[derive(Debug, Clone, serde::Serialize)]
@@ -112,11 +111,13 @@ impl CheckpointConsistencyValidator {
                 violation_type: ConsistencyViolationType::InvalidLsnRange,
                 description: format!(
                     "Invalid checkpoint range: start LSN {} > end LSN {}",
-                    checkpoint_lsn_range.0,
-                    checkpoint_lsn_range.1
+                    checkpoint_lsn_range.0, checkpoint_lsn_range.1
                 ),
                 severity: ConsistencySeverity::Critical,
-                entity_id: Some(format!("{}-{}", checkpoint_lsn_range.0, checkpoint_lsn_range.1)),
+                entity_id: Some(format!(
+                    "{}-{}",
+                    checkpoint_lsn_range.0, checkpoint_lsn_range.1
+                )),
             });
         }
 
@@ -130,7 +131,9 @@ impl CheckpointConsistencyValidator {
             });
         }
 
-        let is_consistent = violations.iter().all(|v| v.severity <= ConsistencySeverity::Warning);
+        let is_consistent = violations
+            .iter()
+            .all(|v| v.severity <= ConsistencySeverity::Warning);
 
         ConsistencyResult {
             is_consistent,
@@ -156,8 +159,7 @@ impl CheckpointConsistencyValidator {
                 violation_type: ConsistencyViolationType::GlobalDirtyBlockLimitExceeded,
                 description: format!(
                     "Too many global dirty blocks: {} (maximum: {})",
-                    global_count,
-                    MAX_GLOBAL_DIRTY_BLOCKS
+                    global_count, MAX_GLOBAL_DIRTY_BLOCKS
                 ),
                 severity: ConsistencySeverity::Error,
                 entity_id: Some("global".to_string()),
@@ -191,8 +193,7 @@ impl CheckpointConsistencyValidator {
                 violation_type: ConsistencyViolationType::ExcessDirtyBlocks,
                 description: format!(
                     "Too many pending dirty blocks: {} (maximum: {})",
-                    total_pending,
-                    max_pending_blocks
+                    total_pending, max_pending_blocks
                 ),
                 severity: ConsistencySeverity::Error,
                 entity_id: Some("total".to_string()),
@@ -200,7 +201,7 @@ impl CheckpointConsistencyValidator {
         }
 
         // Validate block timestamps consistency
-        let now = SystemTime::now()
+        let _now = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_secs();
@@ -221,7 +222,9 @@ impl CheckpointConsistencyValidator {
         //     }
         // }
 
-        let is_consistent = violations.iter().all(|v| v.severity <= ConsistencySeverity::Warning);
+        let is_consistent = violations
+            .iter()
+            .all(|v| v.severity <= ConsistencySeverity::Warning);
 
         ConsistencyResult {
             is_consistent,
@@ -246,8 +249,7 @@ impl CheckpointConsistencyValidator {
                 violation_type: ConsistencyViolationType::InvalidLsnRange,
                 description: format!(
                     "Invalid progress LSN range: start {} > end {}",
-                    progress.lsn_range.0,
-                    progress.lsn_range.1
+                    progress.lsn_range.0, progress.lsn_range.1
                 ),
                 severity: ConsistencySeverity::Error,
                 entity_id: Some(format!("{}-{}", progress.lsn_range.0, progress.lsn_range.1)),
@@ -260,8 +262,7 @@ impl CheckpointConsistencyValidator {
                 violation_type: ConsistencyViolationType::DirtyBlockTrackingInconsistency,
                 description: format!(
                     "Processed records ({}) exceeds total records ({})",
-                    progress.processed_records,
-                    progress.total_records
+                    progress.processed_records, progress.total_records
                 ),
                 severity: ConsistencySeverity::Error,
                 entity_id: Some("record_count".to_string()),
@@ -270,16 +271,17 @@ impl CheckpointConsistencyValidator {
 
         // Check completion percentage consistency
         if progress.total_records > 0 {
-            let actual_percentage = (progress.processed_records as f64 / progress.total_records as f64) * 100.0;
+            let actual_percentage =
+                (progress.processed_records as f64 / progress.total_records as f64) * 100.0;
             let percentage_diff = (actual_percentage - progress.completion_percentage).abs();
 
-            if percentage_diff > 1.0 { // Allow 1% tolerance
+            if percentage_diff > 1.0 {
+                // Allow 1% tolerance
                 violations.push(ConsistencyViolation {
                     violation_type: ConsistencyViolationType::DirtyBlockTrackingInconsistency,
                     description: format!(
                         "Completion percentage inconsistency: calculated {:.1}%, reported {:.1}%",
-                        actual_percentage,
-                        progress.completion_percentage
+                        actual_percentage, progress.completion_percentage
                     ),
                     severity: ConsistencySeverity::Warning,
                     entity_id: Some("completion_percentage".to_string()),
@@ -289,8 +291,10 @@ impl CheckpointConsistencyValidator {
 
         // Check for reasonable throughput
         if checkpoint_duration.as_secs() > 0 && progress.processed_records > 0 {
-            let records_per_second = progress.processed_records as f64 / checkpoint_duration.as_secs_f64();
-            if records_per_second < 10.0 { // Very low throughput might indicate issues
+            let records_per_second =
+                progress.processed_records as f64 / checkpoint_duration.as_secs_f64();
+            if records_per_second < 10.0 {
+                // Very low throughput might indicate issues
                 violations.push(ConsistencyViolation {
                     violation_type: ConsistencyViolationType::CheckpointWalSizeMismatch,
                     description: format!(
@@ -303,7 +307,9 @@ impl CheckpointConsistencyValidator {
             }
         }
 
-        let is_consistent = violations.iter().all(|v| v.severity <= ConsistencySeverity::Warning);
+        let is_consistent = violations
+            .iter()
+            .all(|v| v.severity <= ConsistencySeverity::Warning);
 
         ConsistencyResult {
             is_consistent,
@@ -328,8 +334,7 @@ impl CheckpointConsistencyValidator {
                 violation_type: ConsistencyViolationType::CheckpointWalSizeMismatch,
                 description: format!(
                     "Checkpoint size {} is significantly larger than WAL size {}",
-                    checkpoint_size,
-                    wal_size
+                    checkpoint_size, wal_size
                 ),
                 severity: ConsistencySeverity::Warning,
                 entity_id: Some("size_ratio".to_string()),
@@ -342,15 +347,16 @@ impl CheckpointConsistencyValidator {
                 violation_type: ConsistencyViolationType::EmptyLsnRange,
                 description: format!(
                     "Small checkpoint {} with large WAL {} may indicate incomplete checkpointing",
-                    checkpoint_size,
-                    wal_size
+                    checkpoint_size, wal_size
                 ),
                 severity: ConsistencySeverity::Error,
                 entity_id: Some("size_mismatch".to_string()),
             });
         }
 
-        let is_consistent = violations.iter().all(|v| v.severity <= ConsistencySeverity::Warning);
+        let is_consistent = violations
+            .iter()
+            .all(|v| v.severity <= ConsistencySeverity::Warning);
 
         ConsistencyResult {
             is_consistent,
@@ -373,21 +379,26 @@ impl CheckpointConsistencyValidator {
         let mut all_violations = Vec::new();
 
         // Validate checkpoint LSN consistency
-        let lsn_result = self.validate_checkpoint_consistency(checkpoint_lsn_range, last_checkpointed_lsn);
+        let lsn_result =
+            self.validate_checkpoint_consistency(checkpoint_lsn_range, last_checkpointed_lsn);
         all_violations.extend(lsn_result.violations);
 
         // Validate dirty block consistency
-        let dirty_blocks_result = self.validate_dirty_block_consistency(dirty_blocks, max_pending_blocks);
+        let dirty_blocks_result =
+            self.validate_dirty_block_consistency(dirty_blocks, max_pending_blocks);
         all_violations.extend(dirty_blocks_result.violations);
 
         // Validate progress consistency
-        let progress_result = self.validate_progress_consistency(checkpoint_progress, checkpoint_duration);
+        let progress_result =
+            self.validate_progress_consistency(checkpoint_progress, checkpoint_duration);
         all_violations.extend(progress_result.violations);
 
         // Sort violations by severity (most severe first)
         all_violations.sort_by(|a, b| b.severity.cmp(&a.severity));
 
-        let is_consistent = all_violations.iter().all(|v| v.severity <= ConsistencySeverity::Warning);
+        let is_consistent = all_violations
+            .iter()
+            .all(|v| v.severity <= ConsistencySeverity::Warning);
 
         ConsistencyResult {
             is_consistent,
@@ -428,16 +439,17 @@ impl ConsistencyUtils {
 
     /// Determine if consistency result requires action
     pub fn requires_action(result: &ConsistencyResult) -> bool {
-        result.violations
+        result
+            .violations
             .iter()
             .any(|v| v.severity >= ConsistencySeverity::Error)
     }
 
     /// Get most critical violation
-    pub fn get_most_critical_violation(result: &ConsistencyResult) -> Option<&ConsistencyViolation> {
-        result.violations
-            .iter()
-            .max_by_key(|v| v.severity)
+    pub fn get_most_critical_violation(
+        result: &ConsistencyResult,
+    ) -> Option<&ConsistencyViolation> {
+        result.violations.iter().max_by_key(|v| v.severity)
     }
 
     /// Filter violations by severity
@@ -457,7 +469,8 @@ impl ConsistencyUtils {
     ) -> std::collections::HashMap<ConsistencyViolationType, Vec<&ConsistencyViolation>> {
         use std::collections::HashMap;
 
-        let mut grouped: HashMap<ConsistencyViolationType, Vec<&ConsistencyViolation>> = HashMap::new();
+        let mut grouped: HashMap<ConsistencyViolationType, Vec<&ConsistencyViolation>> =
+            HashMap::new();
 
         for violation in violations {
             grouped
@@ -473,8 +486,8 @@ impl ConsistencyUtils {
 #[cfg(test)]
 mod tests {
     use super::*;
+        use std::time::Instant;
     use tempfile::tempdir;
-    use std::collections::{HashMap, HashSet};
 
     fn create_test_dirty_block_tracker() -> DirtyBlockTracker {
         let mut dirty_blocks = DirtyBlockTracker::new(10, 10); // Allow up to 10 blocks per category
@@ -485,12 +498,20 @@ mod tests {
             .unwrap()
             .as_secs();
 
-        dirty_blocks.mark_global_block_dirty(1000, timestamp).unwrap();
-        dirty_blocks.mark_global_block_dirty(2000, timestamp).unwrap();
+        dirty_blocks
+            .mark_global_block_dirty(1000, timestamp)
+            .unwrap();
+        dirty_blocks
+            .mark_global_block_dirty(2000, timestamp)
+            .unwrap();
 
         // Mark cluster-specific blocks as dirty
-        dirty_blocks.mark_cluster_block_dirty(1, 1000, timestamp).unwrap();
-        dirty_blocks.mark_cluster_block_dirty(1, 3000, timestamp).unwrap();
+        dirty_blocks
+            .mark_cluster_block_dirty(1, 1000, timestamp)
+            .unwrap();
+        dirty_blocks
+            .mark_cluster_block_dirty(1, 3000, timestamp)
+            .unwrap();
 
         // Update block access statistics
         dirty_blocks.update_block_access(1000, timestamp);
@@ -553,7 +574,10 @@ mod tests {
 
         assert!(!result.is_consistent);
         assert_eq!(result.violations.len(), 1);
-        assert!(matches!(result.violations[0].violation_type, ConsistencyViolationType::LsnRangeDiscontinuity));
+        assert!(matches!(
+            result.violations[0].violation_type,
+            ConsistencyViolationType::LsnRangeDiscontinuity
+        ));
         assert_eq!(result.violations[0].severity, ConsistencySeverity::Critical);
     }
 
@@ -571,7 +595,12 @@ mod tests {
 
         assert!(!result.is_consistent);
         assert!(!result.violations.is_empty());
-        assert!(result.violations.iter().any(|v| matches!(v.violation_type, ConsistencyViolationType::InvalidLsnRange)));
+        assert!(
+            result
+                .violations
+                .iter()
+                .any(|v| matches!(v.violation_type, ConsistencyViolationType::InvalidLsnRange))
+        );
     }
 
     #[test]
@@ -610,14 +639,12 @@ mod tests {
 
     #[test]
     fn test_consistency_utils_score_calculation() {
-        let violations = vec![
-            ConsistencyViolation {
-                violation_type: ConsistencyViolationType::InvalidLsnRange,
-                description: "Test violation".to_string(),
-                severity: ConsistencySeverity::Warning,
-                entity_id: None,
-            },
-        ];
+        let violations = vec![ConsistencyViolation {
+            violation_type: ConsistencyViolationType::InvalidLsnRange,
+            description: "Test violation".to_string(),
+            severity: ConsistencySeverity::Warning,
+            entity_id: None,
+        }];
 
         let score = ConsistencyUtils::calculate_consistency_score(&violations);
         assert!(score < 1.0);
@@ -683,8 +710,20 @@ mod tests {
         ];
 
         let grouped = ConsistencyUtils::group_violations_by_type(&violations);
-        assert_eq!(grouped.get(&ConsistencyViolationType::InvalidLsnRange).unwrap().len(), 2);
-        assert_eq!(grouped.get(&ConsistencyViolationType::InvalidTimestamp).unwrap().len(), 1);
+        assert_eq!(
+            grouped
+                .get(&ConsistencyViolationType::InvalidLsnRange)
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            grouped
+                .get(&ConsistencyViolationType::InvalidTimestamp)
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[test]

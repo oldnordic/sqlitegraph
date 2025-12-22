@@ -19,40 +19,42 @@
 //! - **Space Overhead**: <15% additional storage
 //! - **Read Overhead**: <5% performance impact
 
+pub mod bulk_ingest;
+#[cfg(test)]
+pub mod bulk_ingest_tests;
+pub mod checkpoint;
+pub mod graph_integration;
 pub mod manager;
+pub mod metrics;
+pub mod performance;
 pub mod reader;
 pub mod record;
-pub mod writer;
-pub mod checkpoint;
 pub mod recovery;
-pub mod metrics;
 pub mod transaction_coordinator;
 pub mod v2_integration;
-pub mod graph_integration;
-pub mod performance;
+pub mod writer;
 
 // Re-export core WAL types
-pub use manager::{V2WALManager, WALManagerMetrics, TransactionIsolation};
+pub use bulk_ingest::{BulkIngestConfig, BulkIngestExt, BulkIngestGuard, BulkIngestMetrics};
+pub use checkpoint::V2WALCheckpointManager;
+pub use graph_integration::{
+    GraphOperationResult, GraphWALIntegrationConfig, NodeRecordV2WALExt, OperationMetrics,
+    V2GraphWALIntegrator,
+};
+pub use manager::{TransactionIsolation, V2WALManager, WALManagerMetrics};
+pub use metrics::{V2WALMetrics, WALPerformanceCounters};
+pub use performance::{
+    AdaptivePerformanceTuner, ClusterAffinityOptimizer, ClusterAffinityStats, CompressionAlgorithm,
+    CompressionStats, IOBatcher, IOBatcherStats, PerformanceConfig, WALRecordCompressor,
+};
 pub use reader::V2WALReader;
 pub use record::{V2WALRecord, V2WALRecordType, WALSerializationError};
-pub use writer::V2WALWriter;
-pub use checkpoint::V2WALCheckpointManager;
 pub use recovery::V2WALRecoveryEngine;
-pub use metrics::{V2WALMetrics, WALPerformanceCounters};
 pub use transaction_coordinator::{
-    V2TransactionCoordinator, TransactionId, IsolationLevel, TransactionState,
-    ResourceId, LockType
+    IsolationLevel, LockType, ResourceId, TransactionId, TransactionState, V2TransactionCoordinator,
 };
-pub use v2_integration::{V2WALIntegrator, V2IntegrationConfig, ChangeTracker};
-pub use graph_integration::{
-    V2GraphWALIntegrator, GraphWALIntegrationConfig, GraphOperationResult,
-    OperationMetrics, NodeRecordV2WALExt,
-};
-pub use performance::{
-    PerformanceConfig, CompressionAlgorithm, WALRecordCompressor,
-    IOBatcher, ClusterAffinityOptimizer, AdaptivePerformanceTuner,
-    CompressionStats, IOBatcherStats, ClusterAffinityStats,
-};
+pub use v2_integration::{ChangeTracker, V2IntegrationConfig, V2WALIntegrator};
+pub use writer::V2WALWriter;
 
 use crate::backend::native::{NativeBackendError, NativeResult};
 use std::path::PathBuf;
@@ -94,7 +96,7 @@ impl Default for V2WALConfig {
             wal_path: PathBuf::from("v2_graph.wal"),
             checkpoint_path: PathBuf::from("v2_graph.checkpoint"),
             max_wal_size: 1024 * 1024 * 1024, // 1GB
-            buffer_size: 1024 * 1024, // 1MB
+            buffer_size: 1024 * 1024,         // 1MB
             checkpoint_interval: 1000,
             group_commit_timeout_ms: 10,
             max_group_commit_size: 100,
@@ -250,7 +252,8 @@ impl V2WALHeader {
 
         if self.checkpointed_lsn > self.committed_lsn {
             return Err(NativeBackendError::CorruptionDetected {
-                context: "WAL header: checkpointed_lsn cannot be greater than committed_lsn".to_string(),
+                context: "WAL header: checkpointed_lsn cannot be greater than committed_lsn"
+                    .to_string(),
                 source: None,
             });
         }
@@ -316,7 +319,10 @@ mod tests {
         let config = V2WALConfig::for_graph_file(graph_path);
 
         assert_eq!(config.wal_path, std::path::Path::new("/tmp/test.wal"));
-        assert_eq!(config.checkpoint_path, std::path::Path::new("/tmp/test.checkpoint"));
+        assert_eq!(
+            config.checkpoint_path,
+            std::path::Path::new("/tmp/test.checkpoint")
+        );
         assert!(config.validate().is_ok());
     }
 
@@ -357,4 +363,3 @@ mod tests {
         assert_eq!(lsn::distance(20, 15), 0); // Saturates at 0
     }
 }
-

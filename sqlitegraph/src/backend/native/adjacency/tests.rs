@@ -1,9 +1,9 @@
 //! Tests for adjacency iteration functionality
 
+use super::{AdjacencyHelpers, AdjacencyIterator};
 use crate::backend::native::graph_file::GraphFile;
 use crate::backend::native::node_store::NodeStore;
 use crate::backend::native::types::*;
-use super::{AdjacencyIterator, AdjacencyHelpers};
 
 #[cfg(test)]
 fn create_test_graph_file() -> (GraphFile, tempfile::NamedTempFile) {
@@ -39,7 +39,6 @@ fn test_adjacency_iterator_empty() {
     assert_eq!(iterator.total_count(), 0);
     assert!(iterator.is_complete());
 }
-
 
 #[test]
 fn test_adjacency_validation() {

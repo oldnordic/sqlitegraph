@@ -99,7 +99,10 @@ impl HnswConfigBuilder {
     /// Panics if dimension is 0 or exceeds practical limits (>4096)
     pub fn dimension(mut self, dimension: usize) -> Self {
         assert!(dimension > 0, "Dimension must be greater than 0");
-        assert!(dimension <= 4096, "Dimension exceeds practical limit of 4096");
+        assert!(
+            dimension <= 4096,
+            "Dimension exceeds practical limit of 4096"
+        );
         self.config.dimension = dimension;
         self
     }
@@ -267,7 +270,6 @@ impl Default for HnswConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hnsw::errors::HnswConfigError;
 
     #[test]
     fn test_builder_basic() {
@@ -292,15 +294,13 @@ mod tests {
     #[test]
     #[should_panic(expected = "Dimension must be greater than 0")]
     fn test_builder_validation_dimension_zero() {
-        HnswConfigBuilder::new()
-            .dimension(0);
+        HnswConfigBuilder::new().dimension(0);
     }
 
     #[test]
     #[should_panic(expected = "M must be greater than 0")]
     fn test_builder_validation_m_zero() {
-        HnswConfigBuilder::new()
-            .m_connections(0);
+        HnswConfigBuilder::new().m_connections(0);
     }
 
     #[test]
@@ -314,15 +314,13 @@ mod tests {
     #[test]
     #[should_panic(expected = "ef_search must be greater than 0")]
     fn test_builder_validation_ef_search_zero() {
-        HnswConfigBuilder::new()
-            .ef_search(0);
+        HnswConfigBuilder::new().ef_search(0);
     }
 
     #[test]
     #[should_panic(expected = "ml must be greater than 0")]
     fn test_builder_validation_ml_zero() {
-        HnswConfigBuilder::new()
-            .max_layers(0);
+        HnswConfigBuilder::new().max_layers(0);
     }
 
     #[test]
@@ -409,10 +407,7 @@ mod tests {
     #[test]
     fn test_builder_defaults_multilayer_disabled() {
         // Default configuration should have multi-layer disabled for backward compatibility
-        let config = HnswConfigBuilder::new()
-            .dimension(512)
-            .build()
-            .unwrap();
+        let config = HnswConfigBuilder::new().dimension(512).build().unwrap();
 
         assert!(!config.enable_multilayer);
         assert_eq!(config.multilayer_level_distribution_base, None);

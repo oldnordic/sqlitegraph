@@ -161,8 +161,10 @@ impl CheckpointError {
 
     /// Create I/O error
     pub fn io(message: impl Into<String>) -> Self {
-        Self::new(CheckpointErrorKind::Io, message)
-            .with_recovery(RecoverySuggestion::Retry { max_attempts: 3, backoff_ms: 100 })
+        Self::new(CheckpointErrorKind::Io, message).with_recovery(RecoverySuggestion::Retry {
+            max_attempts: 3,
+            backoff_ms: 100,
+        })
     }
 
     /// Create V2 integration error
@@ -173,14 +175,14 @@ impl CheckpointError {
 
     /// Create strategy error
     pub fn strategy(message: impl Into<String>) -> Self {
-        Self::new(CheckpointErrorKind::Strategy, message)
-            .with_recovery(RecoverySuggestion::Custom("Review checkpoint strategy configuration".to_string()))
+        Self::new(CheckpointErrorKind::Strategy, message).with_recovery(RecoverySuggestion::Custom(
+            "Review checkpoint strategy configuration".to_string(),
+        ))
     }
 
     /// Create state error
     pub fn state(message: impl Into<String>) -> Self {
-        Self::new(CheckpointErrorKind::State, message)
-            .with_recovery(RecoverySuggestion::Restart)
+        Self::new(CheckpointErrorKind::State, message).with_recovery(RecoverySuggestion::Restart)
     }
 
     /// Create validation error
@@ -203,8 +205,9 @@ impl CheckpointError {
 
     /// Create corruption error
     pub fn corruption(message: impl Into<String>) -> Self {
-        Self::new(CheckpointErrorKind::Corruption, message)
-            .with_recovery(RecoverySuggestion::ManualIntervention("Data corruption detected".to_string()))
+        Self::new(CheckpointErrorKind::Corruption, message).with_recovery(
+            RecoverySuggestion::ManualIntervention("Data corruption detected".to_string()),
+        )
     }
 
     /// Create unknown error
@@ -215,10 +218,16 @@ impl CheckpointError {
     /// Get error severity level
     pub fn severity(&self) -> ErrorSeverity {
         match self.kind {
-            CheckpointErrorKind::Configuration | CheckpointErrorKind::Strategy => ErrorSeverity::Warning,
-            CheckpointErrorKind::Io | CheckpointErrorKind::Resource | CheckpointErrorKind::Timeout => ErrorSeverity::Error,
+            CheckpointErrorKind::Configuration | CheckpointErrorKind::Strategy => {
+                ErrorSeverity::Warning
+            }
+            CheckpointErrorKind::Io
+            | CheckpointErrorKind::Resource
+            | CheckpointErrorKind::Timeout => ErrorSeverity::Error,
             CheckpointErrorKind::State | CheckpointErrorKind::Validation => ErrorSeverity::Error,
-            CheckpointErrorKind::V2Integration | CheckpointErrorKind::Corruption => ErrorSeverity::Critical,
+            CheckpointErrorKind::V2Integration | CheckpointErrorKind::Corruption => {
+                ErrorSeverity::Critical
+            }
             CheckpointErrorKind::Concurrency | CheckpointErrorKind::Unknown => ErrorSeverity::Error,
         }
     }
@@ -313,21 +322,38 @@ impl From<NativeBackendError> for CheckpointError {
             NativeBackendError::Io(_) => {
                 Self::io(&message).with_source(format!("NativeBackendError: {}", message))
             }
-            NativeBackendError::InvalidHeader { field, reason, .. } => {
-                Self::configuration(message).with_source(format!("NativeBackendError: Invalid header {}: {}", field, reason))
-            }
-            NativeBackendError::CorruptNodeRecord { node_id, reason, .. } => {
-                Self::corruption(message).with_source(format!("NativeBackendError: Corrupt node {}: {}", node_id, reason))
-            }
-            NativeBackendError::CorruptEdgeRecord { edge_id, reason, .. } => {
-                Self::corruption(message).with_source(format!("NativeBackendError: Corrupt edge {}: {}", edge_id, reason))
-            }
-            NativeBackendError::InvalidMagic { expected, found, .. } => {
-                Self::corruption(message).with_source(format!("NativeBackendError: Invalid magic expected {:x}, found {:x}", expected, found))
-            }
-            NativeBackendError::ValidationFailed { metric, expected, actual, .. } => {
-                Self::validation(message).with_source(format!("NativeBackendError: Validation failed for {}: expected {}, found {}", metric, expected, actual))
-            }
+            NativeBackendError::InvalidHeader { field, reason, .. } => Self::configuration(message)
+                .with_source(format!(
+                    "NativeBackendError: Invalid header {}: {}",
+                    field, reason
+                )),
+            NativeBackendError::CorruptNodeRecord {
+                node_id, reason, ..
+            } => Self::corruption(message).with_source(format!(
+                "NativeBackendError: Corrupt node {}: {}",
+                node_id, reason
+            )),
+            NativeBackendError::CorruptEdgeRecord {
+                edge_id, reason, ..
+            } => Self::corruption(message).with_source(format!(
+                "NativeBackendError: Corrupt edge {}: {}",
+                edge_id, reason
+            )),
+            NativeBackendError::InvalidMagic {
+                expected, found, ..
+            } => Self::corruption(message).with_source(format!(
+                "NativeBackendError: Invalid magic expected {:x}, found {:x}",
+                expected, found
+            )),
+            NativeBackendError::ValidationFailed {
+                metric,
+                expected,
+                actual,
+                ..
+            } => Self::validation(message).with_source(format!(
+                "NativeBackendError: Validation failed for {}: expected {}, found {}",
+                metric, expected, actual
+            )),
             NativeBackendError::InvalidParameter { context, .. } => {
                 Self::configuration(message).with_source(format!("NativeBackendError: {}", context))
             }
@@ -337,9 +363,7 @@ impl From<NativeBackendError> for CheckpointError {
             NativeBackendError::CorruptionDetected { context, .. } => {
                 Self::corruption(message).with_source(format!("NativeBackendError: {}", context))
             }
-            _ => {
-                Self::unknown(message).with_source("NativeBackendError".to_string())
-            }
+            _ => Self::unknown(message).with_source("NativeBackendError".to_string()),
         }
     }
 }
@@ -354,12 +378,16 @@ impl From<io::Error> for CheckpointError {
             io::ErrorKind::NotFound => Self::io(format!("File not found: {}", message)),
             io::ErrorKind::PermissionDenied => Self::io(format!("Permission denied: {}", message)),
             io::ErrorKind::AlreadyExists => Self::io(format!("File already exists: {}", message)),
-            io::ErrorKind::InvalidInput => Self::configuration(format!("Invalid input: {}", message)),
+            io::ErrorKind::InvalidInput => {
+                Self::configuration(format!("Invalid input: {}", message))
+            }
             io::ErrorKind::InvalidData => Self::corruption(format!("Invalid data: {}", message)),
             io::ErrorKind::TimedOut => Self::timeout(format!("Operation timed out: {}", message)),
             io::ErrorKind::WriteZero => Self::io(format!("Write zero bytes: {}", message)),
             io::ErrorKind::Interrupted => Self::io(format!("Operation interrupted: {}", message)),
-            io::ErrorKind::UnexpectedEof => Self::corruption(format!("Unexpected EOF: {}", message)),
+            io::ErrorKind::UnexpectedEof => {
+                Self::corruption(format!("Unexpected EOF: {}", message))
+            }
             _ => Self::io(format!("I/O error: {}", message)),
         };
 
@@ -416,10 +444,7 @@ impl CheckpointErrorCollection {
 
     /// Get highest severity error
     pub fn highest_severity(&self) -> Option<ErrorSeverity> {
-        self.errors
-            .iter()
-            .map(|error| error.severity())
-            .max()
+        self.errors.iter().map(|error| error.severity()).max()
     }
 
     /// Get number of errors by severity
@@ -514,8 +539,7 @@ macro_rules! checkpoint_error {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::SystemTime;
-
+    
     #[test]
     fn test_checkpoint_error_creation() {
         let error = CheckpointError::configuration("Invalid path");
@@ -533,8 +557,7 @@ mod tests {
             ..Default::default()
         };
 
-        let error = CheckpointError::io("File write failed")
-            .with_context(context);
+        let error = CheckpointError::io("File write failed").with_context(context);
 
         assert_eq!(error.context.lsn_range, Some((1000, 2000)));
         assert_eq!(error.context.records_processed, Some(500));
@@ -545,15 +568,17 @@ mod tests {
         let error = CheckpointError::timeout("Operation timed out")
             .with_recovery(RecoverySuggestion::IncreaseTimeout);
 
-        assert!(matches!(error.recovery, RecoverySuggestion::IncreaseTimeout));
+        assert!(matches!(
+            error.recovery,
+            RecoverySuggestion::IncreaseTimeout
+        ));
         assert_eq!(error.retry_delay_ms(), Some(5000));
     }
 
     #[test]
     fn test_checkpoint_error_from_native() {
-        let native_error = NativeBackendError::Io(
-            std::io::Error::new(std::io::ErrorKind::StorageFull, "test")
-        );
+        let native_error =
+            NativeBackendError::Io(std::io::Error::new(std::io::ErrorKind::StorageFull, "test"));
 
         let checkpoint_error: CheckpointError = native_error.into();
         assert_eq!(checkpoint_error.kind, CheckpointErrorKind::Io);
@@ -603,7 +628,10 @@ mod tests {
 
         let error = CheckpointError::io("Test error")
             .with_context(context)
-            .with_recovery(RecoverySuggestion::Retry { max_attempts: 3, backoff_ms: 100 });
+            .with_recovery(RecoverySuggestion::Retry {
+                max_attempts: 3,
+                backoff_ms: 100,
+            });
 
         let report = error.diagnostic_report();
         assert!(report.contains("Test error"));

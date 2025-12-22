@@ -4,10 +4,9 @@
 //! including compression algorithms, I/O batching strategies, cluster-affinity
 //! optimizations, and adaptive tuning mechanisms.
 
+use crate::backend::native::v2::wal::V2WALRecord;
 use crate::backend::native::{NativeBackendError, NativeResult};
-use crate::backend::native::v2::wal::{V2WALRecord, V2WALRecordType};
 use std::collections::HashMap;
-use std::io::{Read, Write};
 use std::time::{Duration, Instant};
 
 /// Performance optimization configuration
@@ -139,7 +138,10 @@ impl WALRecordCompressor {
         if !algorithm.validate_level(level) {
             return Err(NativeBackendError::InvalidConfiguration {
                 parameter: "compression_level".to_string(),
-                reason: format!("Invalid compression level {} for algorithm {:?}", level, algorithm),
+                reason: format!(
+                    "Invalid compression level {} for algorithm {:?}",
+                    level, algorithm
+                ),
             });
         }
 
@@ -171,11 +173,13 @@ impl WALRecordCompressor {
 
         let total_records = self.compression_stats.total_records;
         self.compression_stats.avg_compression_time_us =
-            ((self.compression_stats.avg_compression_time_us * (total_records - 1)) + duration) / total_records;
+            ((self.compression_stats.avg_compression_time_us * (total_records - 1)) + duration)
+                / total_records;
 
         if self.compression_stats.total_input_bytes > 0 {
-            self.compression_stats.compression_ratio =
-                self.compression_stats.total_output_bytes as f64 / self.compression_stats.total_input_bytes as f64;
+            self.compression_stats.compression_ratio = self.compression_stats.total_output_bytes
+                as f64
+                / self.compression_stats.total_input_bytes as f64;
         }
 
         Ok(compressed)
@@ -199,7 +203,9 @@ impl WALRecordCompressor {
         let total_records = self.compression_stats.total_records;
         if total_records > 0 {
             self.compression_stats.avg_decompression_time_us =
-                ((self.compression_stats.avg_decompression_time_us * (total_records - 1)) + duration) / total_records;
+                ((self.compression_stats.avg_decompression_time_us * (total_records - 1))
+                    + duration)
+                    / total_records;
         }
 
         Ok(decompressed)
@@ -338,13 +344,14 @@ impl WALRecordCompressor {
             let max_offset = std::cmp::min(i, 64); // Snappy uses up to 64KB offset
             let max_match_len = std::cmp::min(64, data.len() - i); // Snappy max match length
 
-            'search: for offset in 1..max_offset {
+            for offset in 1..max_offset {
                 if i >= offset {
                     let mut match_len = 0;
-                    while match_len < max_match_len &&
-                          i + match_len < data.len() &&
-                          offset + match_len <= i &&
-                          data[i + match_len] == data[i - offset + match_len] {
+                    while match_len < max_match_len
+                        && i + match_len < data.len()
+                        && offset + match_len <= i
+                        && data[i + match_len] == data[i - offset + match_len]
+                    {
                         match_len += 1;
                     }
 
@@ -527,8 +534,7 @@ impl IOBatcher {
         let wait_time = self.batch_start_time.elapsed();
 
         // Check if batch should be flushed
-        if self.current_batch.len() >= self.max_batch_size ||
-           wait_time >= self.batch_timeout {
+        if self.current_batch.len() >= self.max_batch_size || wait_time >= self.batch_timeout {
             self.flush_batch()
         } else {
             None
@@ -550,12 +556,15 @@ impl IOBatcher {
         self.stats.total_bytes += batch.iter().map(|data| data.len()).sum::<usize>() as u64;
 
         let total_batches = self.stats.total_batches;
-        self.stats.avg_batch_size =
-            ((self.stats.avg_batch_size * (total_batches - 1) as f64) + batch.len() as f64) / total_batches as f64;
+        self.stats.avg_batch_size = ((self.stats.avg_batch_size * (total_batches - 1) as f64)
+            + batch.len() as f64)
+            / total_batches as f64;
 
         let total_batches = self.stats.total_batches;
-        self.stats.avg_batch_wait_time_us =
-            ((self.stats.avg_batch_wait_time_us * (total_batches - 1) as u64) + wait_time.as_micros() as u64) / total_batches;
+        self.stats.avg_batch_wait_time_us = ((self.stats.avg_batch_wait_time_us
+            * (total_batches - 1) as u64)
+            + wait_time.as_micros() as u64)
+            / total_batches;
 
         self.batch_start_time = Instant::now();
 
@@ -609,7 +618,10 @@ impl ClusterAffinityOptimizer {
     /// Add a record to cluster organization
     pub fn add_record(&mut self, record: V2WALRecord) {
         if let Some(cluster_key) = record.cluster_key() {
-            let group = self.cluster_groups.entry(cluster_key).or_insert_with(Vec::new);
+            let group = self
+                .cluster_groups
+                .entry(cluster_key)
+                .or_insert_with(Vec::new);
             group.push(record.clone());
 
             // Update statistics
@@ -650,7 +662,8 @@ impl ClusterAffinityOptimizer {
         let mut stats = self.stats.clone();
 
         if self.stats.total_records > 0 {
-            stats.avg_group_size = self.stats.total_records as f64 / self.stats.total_groups.max(1) as f64;
+            stats.avg_group_size =
+                self.stats.total_records as f64 / self.stats.total_groups.max(1) as f64;
             stats.affinity_hit_rate = 1.0; // All records processed are groupable
         }
 
@@ -910,12 +923,18 @@ mod tests {
 
         // Get records for cluster - should find them since we haven't hit the group size limit
         let records = optimizer.get_cluster_records(42);
-        assert!(records.is_some(), "Should find records for cluster 42 before auto-flush");
+        assert!(
+            records.is_some(),
+            "Should find records for cluster 42 before auto-flush"
+        );
         assert_eq!(records.unwrap().len(), 2);
 
         // Test Case 2: Verify behavior when no records exist for a cluster
         let empty_records = optimizer.get_cluster_records(999); // Non-existent cluster
-        assert!(empty_records.is_none(), "Should return None for non-existent cluster");
+        assert!(
+            empty_records.is_none(),
+            "Should return None for non-existent cluster"
+        );
 
         // Test Case 3: Verify auto-flush behavior when group size limit is reached
         let mut small_optimizer = ClusterAffinityOptimizer::new(1); // Group size = 1
@@ -927,7 +946,10 @@ mod tests {
 
         // Since group size = 1, adding one record should trigger auto-flush
         let flushed_records = small_optimizer.get_cluster_records(100);
-        assert!(flushed_records.is_none(), "Should return None after auto-flush");
+        assert!(
+            flushed_records.is_none(),
+            "Should return None after auto-flush"
+        );
     }
 
     #[test]

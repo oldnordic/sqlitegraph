@@ -273,7 +273,10 @@ mod tests {
     #[test]
     fn test_constants_reasonableness() {
         // Ensure constants are within reasonable bounds
-        assert!(MAX_CONCURRENT_CHECKPOINTS == 1, "Only one checkpoint should run at a time for consistency");
+        assert!(
+            MAX_CONCURRENT_CHECKPOINTS == 1,
+            "Only one checkpoint should run at a time for consistency"
+        );
         assert!(METRICS_SMOOTHING_ALPHA > 0.0 && METRICS_SMOOTHING_ALPHA < 1.0);
         assert!(MAX_CHECKPOINT_RETRIES > 0 && MAX_CHECKPOINT_RETRIES < 10);
         assert!(CHECKPOINT_RETRY_BACKOFF > 1.0 && CHECKPOINT_RETRY_BACKOFF < 10.0);

@@ -41,7 +41,6 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-use std::fmt;
 use crate::hnsw::distance_metric::DistanceMetric;
 
 /// HNSW algorithm configuration parameters
@@ -206,15 +205,15 @@ pub struct HnswConfig {
 impl Default for HnswConfig {
     fn default() -> Self {
         HnswConfig {
-            dimension: 768,           // Common embedding size
-            m: 16,                    // Balanced connectivity
-            ef_construction: 200,     // Good construction quality
-            ef_search: 50,           // Balanced search speed/quality
-            ml: 16,                   // Reasonable depth
+            dimension: 768,       // Common embedding size
+            m: 16,                // Balanced connectivity
+            ef_construction: 200, // Good construction quality
+            ef_search: 50,        // Balanced search speed/quality
+            ml: 16,               // Reasonable depth
             distance_metric: DistanceMetric::Cosine,
             enable_multilayer: false, // Single-layer mode for backward compatibility
             multilayer_level_distribution_base: None, // Use m as default
-            multilayer_deterministic_seed: None,      // Non-deterministic for production
+            multilayer_deterministic_seed: None, // Non-deterministic for production
         }
     }
 }
@@ -244,7 +243,6 @@ pub fn hnsw_config() -> crate::hnsw::builder::HnswConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hnsw::builder::HnswConfigBuilder;
 
     #[test]
     fn test_default_config() {

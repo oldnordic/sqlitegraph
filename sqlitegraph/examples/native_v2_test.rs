@@ -1,5 +1,5 @@
 //! Test Native V2 backend functionality
-use sqlitegraph::{GraphConfig, BackendKind, open_graph, NodeSpec, EdgeSpec};
+use sqlitegraph::{BackendKind, EdgeSpec, GraphConfig, NodeSpec, open_graph};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing Native V2 backend...");
@@ -39,7 +39,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let edge_id = graph.insert_edge(edge_spec)?;
-        println!("✅ Inserted edge {}: {} -> {} = {}", i, from_idx, to_idx, edge_id);
+        println!(
+            "✅ Inserted edge {}: {} -> {} = {}",
+            i, from_idx, to_idx, edge_id
+        );
     }
 
     println!("🎉 Native V2 backend test completed successfully!");

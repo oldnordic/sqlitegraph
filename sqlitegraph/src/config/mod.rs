@@ -1,24 +1,24 @@
 //! Configuration for backend selection and backend-specific options.
 
 // Re-export public types
+pub use config::GraphConfig;
+pub use factory::open_graph;
 pub use kinds::BackendKind;
 pub use native::NativeConfig;
 pub use sqlite::SqliteConfig;
-pub use config::GraphConfig;
-pub use factory::open_graph;
 
 // Private modules
+mod config;
+mod factory;
 mod kinds;
 mod native;
 mod sqlite;
-mod config;
-mod factory;
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::backend::native::CpuProfile;
+    use tempfile::tempdir;
 
     #[test]
     fn test_backend_kind_default() {
@@ -78,18 +78,18 @@ mod tests {
 
     #[test]
     fn test_sqlite_config_builder() {
-        let cfg = SqliteConfig::new()
-            .with_wal_mode()
-            .with_cache_size(1000);
+        let cfg = SqliteConfig::new().with_wal_mode().with_cache_size(1000);
 
-        assert_eq!(cfg.pragma_settings.get("journal_mode"), Some(&"WAL".to_string()));
+        assert_eq!(
+            cfg.pragma_settings.get("journal_mode"),
+            Some(&"WAL".to_string())
+        );
         assert_eq!(cfg.cache_size, Some(1000));
     }
 
     #[test]
     fn test_native_config_builder() {
-        let config = NativeConfig::default()
-            .with_cpu_profile(CpuProfile::X86Avx2);
+        let config = NativeConfig::default().with_cpu_profile(CpuProfile::X86Avx2);
 
         assert_eq!(config.cpu_profile, Some(CpuProfile::X86Avx2));
         assert_eq!(config.effective_cpu_profile(), CpuProfile::X86Avx2);

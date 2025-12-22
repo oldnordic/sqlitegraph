@@ -181,7 +181,8 @@ pub struct MetricsReport {
     pub timestamp: u64,
 
     /// Performance counters
-    pub performance_counters: crate::backend::native::v2::wal::metrics::core::WALPerformanceCounters,
+    pub performance_counters:
+        crate::backend::native::v2::wal::metrics::core::WALPerformanceCounters,
 
     /// Resource utilization
     pub resource_metrics: ResourceTracker,
@@ -287,7 +288,8 @@ impl ResourceTracker {
         1000 + (SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis() % 2000) as u64
+            .as_millis()
+            % 2000) as u64
     }
 
     fn estimate_disk_throughput(&self) -> f64 {
@@ -295,7 +297,9 @@ impl ResourceTracker {
         50.0 + (SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_secs() % 100) as f64 / 10.0
+            .as_secs()
+            % 100) as f64
+            / 10.0
     }
 
     fn estimate_fd_count(&self) -> u64 {
@@ -303,7 +307,8 @@ impl ResourceTracker {
         25 + (SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_secs() % 50) as u64
+            .as_secs()
+            % 50) as u64
     }
 
     fn estimate_buffer_hit_rate(&self) -> f64 {
@@ -311,7 +316,10 @@ impl ResourceTracker {
         0.85 + ((SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
-            .as_millis() % 1000) as f64 / 1000.0) * 0.14 // 85-99%
+            .as_millis()
+            % 1000) as f64
+            / 1000.0)
+            * 0.14 // 85-99%
     }
 }
 
@@ -345,7 +353,9 @@ impl ClusterPerformanceMetrics {
             .unwrap_or_default()
             .as_secs();
 
-        let cluster = self.per_cluster.entry(cluster_id)
+        let cluster = self
+            .per_cluster
+            .entry(cluster_id)
             .or_insert_with(|| ClusterMetrics {
                 cluster_id,
                 node_count: 0,
@@ -361,8 +371,7 @@ impl ClusterPerformanceMetrics {
 
         // Update access pattern locality score (simplified)
         const ALPHA: f64 = 0.1;
-        cluster.access_pattern_locality =
-            cluster.access_pattern_locality * (1.0 - ALPHA) + ALPHA;
+        cluster.access_pattern_locality = cluster.access_pattern_locality * (1.0 - ALPHA) + ALPHA;
     }
 
     /// Update cluster statistics with current data.
@@ -375,18 +384,15 @@ impl ClusterPerformanceMetrics {
     /// * `cluster_id` - ID of the cluster to update
     /// * `node_count` - Current number of nodes in cluster
     /// * `edge_count` - Current number of edges in cluster
-    pub fn update_cluster_stats(
-        &mut self,
-        cluster_id: i64,
-        node_count: u32,
-        edge_count: u64,
-    ) {
+    pub fn update_cluster_stats(&mut self, cluster_id: i64, node_count: u32, edge_count: u64) {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
 
-        let cluster = self.per_cluster.entry(cluster_id)
+        let cluster = self
+            .per_cluster
+            .entry(cluster_id)
             .or_insert_with(|| ClusterMetrics {
                 cluster_id,
                 node_count: 0,
@@ -407,8 +413,10 @@ impl ClusterPerformanceMetrics {
         };
 
         // Update derived efficiency scores (simplified calculations)
-        cluster.io_efficiency_score = ClusterPerformanceMetrics::calculate_io_efficiency_static(cluster);
-        cluster.compression_ratio = ClusterPerformanceMetrics::calculate_compression_ratio_static(cluster);
+        cluster.io_efficiency_score =
+            ClusterPerformanceMetrics::calculate_io_efficiency_static(cluster);
+        cluster.compression_ratio =
+            ClusterPerformanceMetrics::calculate_compression_ratio_static(cluster);
 
         self.update_global_metrics();
     }
@@ -523,7 +531,10 @@ impl ErrorTracker {
     /// * `error_entry` - Complete error information to record
     pub fn record_error(&mut self, error_entry: ErrorEntry) {
         // Update error counts
-        *self.error_counts.entry(error_entry.error_type.clone()).or_insert(0) += 1;
+        *self
+            .error_counts
+            .entry(error_entry.error_type.clone())
+            .or_insert(0) += 1;
 
         // Add to recent errors
         self.recent_errors.push_back(error_entry.clone());
@@ -606,7 +617,8 @@ impl ErrorTracker {
     ///
     /// Vector of (error_type, count) tuples sorted by count (descending)
     pub fn get_top_errors(&self, limit: usize) -> Vec<(String, u64)> {
-        let mut errors: Vec<(String, u64)> = self.error_counts
+        let mut errors: Vec<(String, u64)> = self
+            .error_counts
             .iter()
             .map(|(k, v)| (k.clone(), *v))
             .collect();

@@ -4,7 +4,9 @@
 //! including error factories for validation failures, context builders for validation scenarios,
 //! and specialized validation error types.
 
-use super::core::{ErrorContext, RecoveryError, RecoveryErrorKind, RecoverySuggestion, ErrorSeverity};
+use super::core::{
+    ErrorContext, ErrorSeverity, RecoveryError, RecoveryErrorKind, RecoverySuggestion,
+};
 
 /// Validation-specific error context builders
 pub struct ValidationErrorContext;
@@ -21,11 +23,19 @@ impl ValidationErrorContext {
         context.recovery_state = Some("V2 Format Validation".to_string());
 
         if let Some(format) = actual_format {
-            context.metadata.insert("expected_format".to_string(), expected_format.to_string());
-            context.metadata.insert("actual_format".to_string(), format.to_string());
+            context
+                .metadata
+                .insert("expected_format".to_string(), expected_format.to_string());
+            context
+                .metadata
+                .insert("actual_format".to_string(), format.to_string());
         } else {
-            context.metadata.insert("expected_format".to_string(), expected_format.to_string());
-            context.metadata.insert("actual_format".to_string(), "None".to_string());
+            context
+                .metadata
+                .insert("expected_format".to_string(), expected_format.to_string());
+            context
+                .metadata
+                .insert("actual_format".to_string(), "None".to_string());
         }
 
         context
@@ -43,9 +53,17 @@ impl ValidationErrorContext {
         context.recovery_state = Some("Checksum Validation".to_string());
 
         context.metadata.insert("lsn".to_string(), lsn.to_string());
-        context.metadata.insert("expected_checksum".to_string(), format!("{:x}", expected_checksum));
-        context.metadata.insert("actual_checksum".to_string(), format!("{:x}", actual_checksum));
-        context.metadata.insert("checksum_algorithm".to_string(), algorithm.to_string());
+        context.metadata.insert(
+            "expected_checksum".to_string(),
+            format!("{:x}", expected_checksum),
+        );
+        context.metadata.insert(
+            "actual_checksum".to_string(),
+            format!("{:x}", actual_checksum),
+        );
+        context
+            .metadata
+            .insert("checksum_algorithm".to_string(), algorithm.to_string());
 
         context
     }
@@ -60,18 +78,30 @@ impl ValidationErrorContext {
         context.recovery_state = Some("Consistency Validation".to_string());
 
         if let Some((expected, actual)) = node_count_mismatch {
-            context.metadata.insert("expected_node_count".to_string(), expected.to_string());
-            context.metadata.insert("actual_node_count".to_string(), actual.to_string());
+            context
+                .metadata
+                .insert("expected_node_count".to_string(), expected.to_string());
+            context
+                .metadata
+                .insert("actual_node_count".to_string(), actual.to_string());
         }
 
         if let Some((expected, actual)) = edge_count_mismatch {
-            context.metadata.insert("expected_edge_count".to_string(), expected.to_string());
-            context.metadata.insert("actual_edge_count".to_string(), actual.to_string());
+            context
+                .metadata
+                .insert("expected_edge_count".to_string(), expected.to_string());
+            context
+                .metadata
+                .insert("actual_edge_count".to_string(), actual.to_string());
         }
 
         if let Some((cluster_id, error_type)) = cluster_inconsistency {
-            context.metadata.insert("cluster_id".to_string(), cluster_id.to_string());
-            context.metadata.insert("cluster_error_type".to_string(), error_type.to_string());
+            context
+                .metadata
+                .insert("cluster_id".to_string(), cluster_id.to_string());
+            context
+                .metadata
+                .insert("cluster_error_type".to_string(), error_type.to_string());
         }
 
         context
@@ -87,14 +117,24 @@ impl ValidationErrorContext {
         let mut context = ErrorContext::default();
         context.recovery_state = Some("Structural Validation".to_string());
 
-        context.metadata.insert("record_type".to_string(), record_type.to_string());
-        context.metadata.insert("field_name".to_string(), field_name.to_string());
-        context.metadata.insert("expected_type".to_string(), expected_type.to_string());
+        context
+            .metadata
+            .insert("record_type".to_string(), record_type.to_string());
+        context
+            .metadata
+            .insert("field_name".to_string(), field_name.to_string());
+        context
+            .metadata
+            .insert("expected_type".to_string(), expected_type.to_string());
 
         if let Some(value) = actual_value {
-            context.metadata.insert("actual_value".to_string(), value.to_string());
+            context
+                .metadata
+                .insert("actual_value".to_string(), value.to_string());
         } else {
-            context.metadata.insert("actual_value".to_string(), "None".to_string());
+            context
+                .metadata
+                .insert("actual_value".to_string(), "None".to_string());
         }
 
         context
@@ -110,10 +150,18 @@ impl ValidationErrorContext {
         let mut context = ErrorContext::default();
         context.recovery_state = Some("Range Validation".to_string());
 
-        context.metadata.insert("field_name".to_string(), field_name.to_string());
-        context.metadata.insert("value".to_string(), value.to_string());
-        context.metadata.insert("min_allowed".to_string(), min_allowed.to_string());
-        context.metadata.insert("max_allowed".to_string(), max_allowed.to_string());
+        context
+            .metadata
+            .insert("field_name".to_string(), field_name.to_string());
+        context
+            .metadata
+            .insert("value".to_string(), value.to_string());
+        context
+            .metadata
+            .insert("min_allowed".to_string(), min_allowed.to_string());
+        context
+            .metadata
+            .insert("max_allowed".to_string(), max_allowed.to_string());
 
         context
     }
@@ -128,10 +176,19 @@ impl ValidationErrorContext {
         let mut context = ErrorContext::default();
         context.recovery_state = Some("Dependency Validation".to_string());
 
-        context.metadata.insert("dependent_type".to_string(), dependent_type.to_string());
-        context.metadata.insert("dependency_type".to_string(), dependency_type.to_string());
-        context.metadata.insert("dependency_id".to_string(), dependency_id.to_string());
-        context.metadata.insert("missing_reference".to_string(), missing_reference.to_string());
+        context
+            .metadata
+            .insert("dependent_type".to_string(), dependent_type.to_string());
+        context
+            .metadata
+            .insert("dependency_type".to_string(), dependency_type.to_string());
+        context
+            .metadata
+            .insert("dependency_id".to_string(), dependency_id.to_string());
+        context.metadata.insert(
+            "missing_reference".to_string(),
+            missing_reference.to_string(),
+        );
 
         context
     }
@@ -148,7 +205,11 @@ impl ValidationErrorFactory {
         actual_format: Option<&str>,
     ) -> RecoveryError {
         RecoveryError::new(RecoveryErrorKind::Validation, message)
-            .with_context(ValidationErrorContext::v2_format(None, expected_format, actual_format))
+            .with_context(ValidationErrorContext::v2_format(
+                None,
+                expected_format,
+                actual_format,
+            ))
             .with_recovery(RecoverySuggestion::ValidateWalFile)
             .with_severity(ErrorSeverity::Error)
     }
@@ -166,7 +227,12 @@ impl ValidationErrorFactory {
         );
 
         RecoveryError::new(RecoveryErrorKind::Validation, message)
-            .with_context(ValidationErrorContext::checksum_validation(lsn, expected_checksum, actual_checksum, algorithm))
+            .with_context(ValidationErrorContext::checksum_validation(
+                lsn,
+                expected_checksum,
+                actual_checksum,
+                algorithm,
+            ))
             .with_recovery(RecoverySuggestion::ForceRecovery)
             .with_severity(ErrorSeverity::Error)
     }
@@ -178,7 +244,11 @@ impl ValidationErrorFactory {
         edge_count_mismatch: Option<(u64, u64)>,
     ) -> RecoveryError {
         RecoveryError::new(RecoveryErrorKind::Consistency, message)
-            .with_context(ValidationErrorContext::consistency_validation(node_count_mismatch, edge_count_mismatch, None))
+            .with_context(ValidationErrorContext::consistency_validation(
+                node_count_mismatch,
+                edge_count_mismatch,
+                None,
+            ))
             .with_recovery(RecoverySuggestion::ForceRecovery)
             .with_severity(ErrorSeverity::Critical)
     }
@@ -191,7 +261,12 @@ impl ValidationErrorFactory {
         expected_type: &str,
     ) -> RecoveryError {
         RecoveryError::new(RecoveryErrorKind::Validation, message)
-            .with_context(ValidationErrorContext::structural_validation(record_type, field_name, expected_type, None))
+            .with_context(ValidationErrorContext::structural_validation(
+                record_type,
+                field_name,
+                expected_type,
+                None,
+            ))
             .with_recovery(RecoverySuggestion::ForceRecovery)
             .with_severity(ErrorSeverity::Error)
     }
@@ -205,7 +280,12 @@ impl ValidationErrorFactory {
         max_allowed: u64,
     ) -> RecoveryError {
         RecoveryError::new(RecoveryErrorKind::Validation, message)
-            .with_context(ValidationErrorContext::range_validation(field_name, value, min_allowed, max_allowed))
+            .with_context(ValidationErrorContext::range_validation(
+                field_name,
+                value,
+                min_allowed,
+                max_allowed,
+            ))
             .with_recovery(RecoverySuggestion::ForceRecovery)
             .with_severity(ErrorSeverity::Error)
     }
@@ -218,7 +298,12 @@ impl ValidationErrorFactory {
         dependency_id: u64,
     ) -> RecoveryError {
         RecoveryError::new(RecoveryErrorKind::Consistency, message)
-            .with_context(ValidationErrorContext::dependency_validation(dependent_type, dependency_type, dependency_id, true))
+            .with_context(ValidationErrorContext::dependency_validation(
+                dependent_type,
+                dependency_type,
+                dependency_id,
+                true,
+            ))
             .with_recovery(RecoverySuggestion::ForceRecovery)
             .with_severity(ErrorSeverity::Error)
     }
@@ -229,8 +314,11 @@ impl ValidationErrorFactory {
         lsn_range: Option<(u64, u64)>,
         affected_records: u64,
     ) -> RecoveryError {
-        let mut context = ValidationErrorContext::v2_format(lsn_range, "V2 Integrity", Some("Corrupted"));
-        context.metadata.insert("affected_records".to_string(), affected_records.to_string());
+        let mut context =
+            ValidationErrorContext::v2_format(lsn_range, "V2 Integrity", Some("Corrupted"));
+        context
+            .metadata
+            .insert("affected_records".to_string(), affected_records.to_string());
 
         RecoveryError::new(RecoveryErrorKind::Corruption, message)
             .with_context(context)
@@ -244,7 +332,8 @@ impl ValidationErrorFactory {
         expected_version: &str,
         actual_version: &str,
     ) -> RecoveryError {
-        let mut context = ValidationErrorContext::v2_format(None, expected_version, Some(actual_version));
+        let mut context =
+            ValidationErrorContext::v2_format(None, expected_version, Some(actual_version));
         context.recovery_state = Some("Schema Validation".to_string());
 
         RecoveryError::new(RecoveryErrorKind::V2Integration, message)
@@ -293,11 +382,15 @@ impl ValidationErrorExt for RecoveryError {
         context.recovery_state = Some(format!("Validation: {}", stage));
 
         if let Some(count) = record_count {
-            context.metadata.insert("records_validated".to_string(), count.to_string());
+            context
+                .metadata
+                .insert("records_validated".to_string(), count.to_string());
         }
 
         if let Some(count) = failure_count {
-            context.metadata.insert("validation_failures".to_string(), count.to_string());
+            context
+                .metadata
+                .insert("validation_failures".to_string(), count.to_string());
         }
 
         self.with_context(context)
@@ -316,21 +409,26 @@ impl ValidationErrorExt for RecoveryError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::core::ErrorSeverity;
+    use super::*;
 
     #[test]
     fn test_validation_error_context_v2_format() {
-        let context = ValidationErrorContext::v2_format(
-            Some((1000, 2000)),
-            "V2.0",
-            Some("V1.0")
-        );
+        let context = ValidationErrorContext::v2_format(Some((1000, 2000)), "V2.0", Some("V1.0"));
 
         assert_eq!(context.lsn_range, Some((1000, 2000)));
-        assert_eq!(context.recovery_state, Some("V2 Format Validation".to_string()));
-        assert_eq!(context.metadata.get("expected_format"), Some(&"V2.0".to_string()));
-        assert_eq!(context.metadata.get("actual_format"), Some(&"V1.0".to_string()));
+        assert_eq!(
+            context.recovery_state,
+            Some("V2 Format Validation".to_string())
+        );
+        assert_eq!(
+            context.metadata.get("expected_format"),
+            Some(&"V2.0".to_string())
+        );
+        assert_eq!(
+            context.metadata.get("actual_format"),
+            Some(&"V1.0".to_string())
+        );
     }
 
     #[test]
@@ -338,11 +436,23 @@ mod tests {
         let context = ValidationErrorContext::checksum_validation(1234, 0xABCD, 0xDCBA, "CRC32");
 
         assert_eq!(context.lsn_range, Some((1234, 1234)));
-        assert_eq!(context.recovery_state, Some("Checksum Validation".to_string()));
+        assert_eq!(
+            context.recovery_state,
+            Some("Checksum Validation".to_string())
+        );
         assert_eq!(context.metadata.get("lsn"), Some(&"1234".to_string()));
-        assert_eq!(context.metadata.get("expected_checksum"), Some(&"abcd".to_string()));
-        assert_eq!(context.metadata.get("actual_checksum"), Some(&"dcba".to_string()));
-        assert_eq!(context.metadata.get("checksum_algorithm"), Some(&"CRC32".to_string()));
+        assert_eq!(
+            context.metadata.get("expected_checksum"),
+            Some(&"abcd".to_string())
+        );
+        assert_eq!(
+            context.metadata.get("actual_checksum"),
+            Some(&"dcba".to_string())
+        );
+        assert_eq!(
+            context.metadata.get("checksum_algorithm"),
+            Some(&"CRC32".to_string())
+        );
     }
 
     #[test]
@@ -362,15 +472,27 @@ mod tests {
         let error = ValidationErrorFactory::consistency_error(
             "Node count mismatch",
             Some((100, 90)),
-            Some((200, 180))
+            Some((200, 180)),
         );
 
         assert_eq!(error.kind, RecoveryErrorKind::Consistency);
         assert_eq!(error.severity(), ErrorSeverity::Critical);
-        assert_eq!(error.context.metadata.get("expected_node_count"), Some(&"100".to_string()));
-        assert_eq!(error.context.metadata.get("actual_node_count"), Some(&"90".to_string()));
-        assert_eq!(error.context.metadata.get("expected_edge_count"), Some(&"200".to_string()));
-        assert_eq!(error.context.metadata.get("actual_edge_count"), Some(&"180".to_string()));
+        assert_eq!(
+            error.context.metadata.get("expected_node_count"),
+            Some(&"100".to_string())
+        );
+        assert_eq!(
+            error.context.metadata.get("actual_node_count"),
+            Some(&"90".to_string())
+        );
+        assert_eq!(
+            error.context.metadata.get("expected_edge_count"),
+            Some(&"200".to_string())
+        );
+        assert_eq!(
+            error.context.metadata.get("actual_edge_count"),
+            Some(&"180".to_string())
+        );
     }
 
     #[test]
@@ -379,13 +501,22 @@ mod tests {
             "Invalid field type",
             "NodeRecord",
             "node_id",
-            "u64"
+            "u64",
         );
 
         assert_eq!(error.kind, RecoveryErrorKind::Validation);
-        assert_eq!(error.context.metadata.get("record_type"), Some(&"NodeRecord".to_string()));
-        assert_eq!(error.context.metadata.get("field_name"), Some(&"node_id".to_string()));
-        assert_eq!(error.context.metadata.get("expected_type"), Some(&"u64".to_string()));
+        assert_eq!(
+            error.context.metadata.get("record_type"),
+            Some(&"NodeRecord".to_string())
+        );
+        assert_eq!(
+            error.context.metadata.get("field_name"),
+            Some(&"node_id".to_string())
+        );
+        assert_eq!(
+            error.context.metadata.get("expected_type"),
+            Some(&"u64".to_string())
+        );
     }
 
     #[test]
@@ -396,9 +527,18 @@ mod tests {
             .as_validation_error("Format Check")
             .with_validation_context("V2", Some(100), Some(5));
 
-        assert_eq!(validation_error.context.recovery_state, Some("Validation: V2".to_string()));
-        assert_eq!(validation_error.context.metadata.get("records_validated"), Some(&"100".to_string()));
-        assert_eq!(validation_error.context.metadata.get("validation_failures"), Some(&"5".to_string()));
+        assert_eq!(
+            validation_error.context.recovery_state,
+            Some("Validation: V2".to_string())
+        );
+        assert_eq!(
+            validation_error.context.metadata.get("records_validated"),
+            Some(&"100".to_string())
+        );
+        assert_eq!(
+            validation_error.context.metadata.get("validation_failures"),
+            Some(&"5".to_string())
+        );
     }
 
     #[test]
@@ -409,24 +549,35 @@ mod tests {
         let critical = base_error.as_critical_validation();
 
         assert_eq!(recoverable.severity(), ErrorSeverity::Error);
-        assert!(matches!(recoverable.recovery, RecoverySuggestion::ForceRecovery));
+        assert!(matches!(
+            recoverable.recovery,
+            RecoverySuggestion::ForceRecovery
+        ));
 
         assert_eq!(critical.severity(), ErrorSeverity::Critical);
-        assert!(matches!(critical.recovery, RecoverySuggestion::RestoreFromBackup));
+        assert!(matches!(
+            critical.recovery,
+            RecoverySuggestion::RestoreFromBackup
+        ));
     }
 
     #[test]
     fn test_validation_error_factory_schema() {
-        let error = ValidationErrorFactory::schema_error(
-            "Version mismatch",
-            "2.0",
-            "1.0"
-        );
+        let error = ValidationErrorFactory::schema_error("Version mismatch", "2.0", "1.0");
 
         assert_eq!(error.kind, RecoveryErrorKind::V2Integration);
         assert_eq!(error.severity(), ErrorSeverity::Critical);
-        assert_eq!(error.context.recovery_state, Some("Schema Validation".to_string()));
-        assert_eq!(error.context.metadata.get("expected_format"), Some(&"2.0".to_string()));
-        assert_eq!(error.context.metadata.get("actual_format"), Some(&"1.0".to_string()));
+        assert_eq!(
+            error.context.recovery_state,
+            Some("Schema Validation".to_string())
+        );
+        assert_eq!(
+            error.context.metadata.get("expected_format"),
+            Some(&"2.0".to_string())
+        );
+        assert_eq!(
+            error.context.metadata.get("actual_format"),
+            Some(&"1.0".to_string())
+        );
     }
 }

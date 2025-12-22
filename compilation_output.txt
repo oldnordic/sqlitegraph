@@ -1,0 +1,2232 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/feanor/Projects/sqlitegraph/sqlitegraph/Cargo.toml
+workspace: /home/feanor/Projects/sqlitegraph/Cargo.toml
+warning: unused import: `types::NativeBackendError`
+ --> sqlitegraph/src/backend/native/graph_file/io_backend.rs:8:5
+  |
+8 |     types::NativeBackendError,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `types::NativeBackendError`
+ --> sqlitegraph/src/backend/native/graph_file/io_operations.rs:8:5
+  |
+8 |     types::NativeBackendError,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `SeekFrom` and `Seek`
+   --> sqlitegraph/src/backend/native/graph_file/io_operations.rs:306:23
+    |
+306 |         use std::io::{Seek, SeekFrom};
+    |                       ^^^^  ^^^^^^^^
+
+warning: unused import: `types::NativeBackendError`
+ --> sqlitegraph/src/backend/native/graph_file/file_management.rs:8:5
+  |
+8 |     types::NativeBackendError,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `graph_file::buffers::WriteBuffer`, `types::NativeBackendError`, and `types::NativeResult`
+ --> sqlitegraph/src/backend/native/graph_file/memory_mapping.rs:7:5
+  |
+7 |     types::NativeResult,
+  |     ^^^^^^^^^^^^^^^^^^^
+8 |     types::NativeBackendError,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+9 |     graph_file::buffers::WriteBuffer,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `SeekFrom`, `Seek`, and `Write`
+  --> sqlitegraph/src/backend/native/graph_file/memory_mapping.rs:14:15
+   |
+14 | use std::io::{Write, Seek, SeekFrom};
+   |               ^^^^^  ^^^^  ^^^^^^^^
+
+warning: unused import: `NativeBackendError`
+ --> sqlitegraph/src/backend/native/graph_file/memory_resource_manager/operations.rs:7:27
+  |
+7 |     types::{NativeResult, NativeBackendError},
+  |                           ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::types::MemoryIOMode`
+  --> sqlitegraph/src/backend/native/graph_file/memory_resource_manager/operations.rs:12:5
+   |
+12 | use super::types::MemoryIOMode;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::path::Path`
+  --> sqlitegraph/src/backend/native/graph_file/graph_file_coordinator.rs:12:5
+   |
+12 | use std::path::Path;
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused imports: `SeekFrom`, `Seek`, and `Write`
+   --> sqlitegraph/src/backend/native/graph_file/graph_file_core.rs:125:31
+    |
+125 |                 use std::io::{Write, Seek, SeekFrom};
+    |                               ^^^^^  ^^^^  ^^^^^^^^
+
+warning: unused imports: `persistent_header::PersistentHeaderV2` and `transaction_state::TransactionState`
+ --> sqlitegraph/src/backend/native/graph_file/graph_file_advanced.rs:7:5
+  |
+7 |     persistent_header::PersistentHeaderV2,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+8 |     transaction_state::TransactionState,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::io::Write`
+   --> sqlitegraph/src/backend/native/graph_file/graph_file_advanced.rs:138:17
+    |
+138 |             use std::io::Write;
+    |                 ^^^^^^^^^^^^^^
+
+warning: unused import: `OpenOptions`
+  --> sqlitegraph/src/backend/native/graph_file/mod.rs:41:21
+   |
+41 | use std::fs::{File, OpenOptions};
+   |                     ^^^^^^^^^^^
+
+warning: unused import: `std::path::Path`
+  --> sqlitegraph/src/backend/native/graph_file/mod.rs:42:5
+   |
+42 | use std::path::Path;
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `SeekFrom`
+  --> sqlitegraph/src/backend/native/graph_file/mod.rs:43:34
+   |
+43 | use std::io::{Read, Seek, Write, SeekFrom};
+   |                                  ^^^^^^^^
+
+warning: unused imports: `EdgeFlags`, `EdgeRecord`, `FLAG_V2_ATOMIC_COMMIT`, `FLAG_V2_FRAMED_RECORDS`, `FileHeader`, `FileOffset`, `HEADER_SIZE`, `NodeFlags`, `NodeRecord`, `edge`, and `node::NODE_SLOT_SIZE`
+  --> sqlitegraph/src/backend/native/graph_file/mod.rs:46:17
+   |
+46 |     constants::{HEADER_SIZE, node::NODE_SLOT_SIZE,
+   |                 ^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+47 |                FLAG_V2_FRAMED_RECORDS, FLAG_V2_ATOMIC_COMMIT, edge},
+   |                ^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^  ^^^^
+...
+50 |     types::{NativeResult, NativeNodeId, NativeBackendError, FileOffset, EdgeRecord, EdgeFlags, NodeRecord, NodeFlags, FileHeader},
+   |                                                             ^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^
+
+warning: unused imports: `V2_FORMAT_VERSION` and `V2_MAGIC`
+  --> sqlitegraph/src/backend/native/graph_file/mod.rs:56:34
+   |
+56 | use crate::backend::native::v2::{V2_MAGIC, V2_FORMAT_VERSION};
+   |                                  ^^^^^^^^  ^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Deserialize` and `Serialize`
+ --> sqlitegraph/src/backend/native/types/file_header.rs:3:13
+  |
+3 | use serde::{Deserialize, Serialize};
+  |             ^^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: `std::fmt`
+ --> sqlitegraph/src/backend/native/types/file_header.rs:4:5
+  |
+4 | use std::fmt;
+  |     ^^^^^^^^
+
+warning: unused imports: `EdgeFlags` and `NodeFlags`
+ --> sqlitegraph/src/backend/native/types/file_header.rs:8:33
+  |
+8 | use super::{NativeBackendError, NodeFlags, EdgeFlags};
+  |                                 ^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: `FileOffset`
+ --> sqlitegraph/src/backend/native/types/utils.rs:3:47
+  |
+3 | use super::{NativeBackendError, NativeNodeId, FileOffset};
+  |                                               ^^^^^^^^^^
+
+warning: unused import: `super::cpu_tuning::resolve_cpu_profile`
+  --> sqlitegraph/src/backend/native/graph_ops/mod.rs:25:5
+   |
+25 | use super::cpu_tuning::resolve_cpu_profile;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `BackendDirection`, `ChainStep`, `PatternMatch`, and `PatternQuery`
+  --> sqlitegraph/src/backend/native/graph_ops/mod.rs:29:22
+   |
+29 | use crate::backend::{BackendDirection, ChainStep, PatternMatch, PatternQuery};
+   |                      ^^^^^^^^^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `Direction`
+ --> sqlitegraph/src/backend/native/graph_ops/bfs_implementations.rs:3:59
+  |
+3 | use crate::backend::native::adjacency::{AdjacencyHelpers, Direction};
+  |                                                           ^^^^^^^^^
+
+warning: unused imports: `TraceContext`, `TraceGuard`, `current_trace_context`, `format_strict_reason`, `strict_mode_enabled`, and `with_trace_context`
+ --> sqlitegraph/src/backend/native/v2/edge_cluster/cluster.rs:3:39
+  |
+3 | ...{Direction, TraceContext, TraceGuard, strict_mode_enabled, with_trace_context, current_trace_context, format_strict_reason};
+  |                ^^^^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::hash_map::DefaultHasher`
+ --> sqlitegraph/src/backend/native/v2/edge_cluster/cluster_serialization.rs:8:5
+  |
+8 | use std::collections::hash_map::DefaultHasher;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Hash` and `Hasher`
+ --> sqlitegraph/src/backend/native/v2/edge_cluster/cluster_serialization.rs:9:17
+  |
+9 | use std::hash::{Hash, Hasher};
+  |                 ^^^^  ^^^^^^
+
+warning: unused imports: `NativeBackendError` and `NativeResult`
+ --> sqlitegraph/src/backend/native/v2/node_record_v2/core.rs:3:30
+  |
+3 | use crate::backend::native::{NativeBackendError, NativeResult, NodeFlags};
+  |                              ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `clusters::*`
+  --> sqlitegraph/src/backend/native/v2/node_record_v2/mod.rs:22:9
+   |
+22 | pub use clusters::*;
+   |         ^^^^^^^^^^^
+
+warning: unused import: `serialization::*`
+  --> sqlitegraph/src/backend/native/v2/node_record_v2/mod.rs:23:9
+   |
+23 | pub use serialization::*;
+   |         ^^^^^^^^^^^^^^^^
+
+warning: unused import: `deserialization::*`
+  --> sqlitegraph/src/backend/native/v2/node_record_v2/mod.rs:24:9
+   |
+24 | pub use deserialization::*;
+   |         ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `validation::*`
+  --> sqlitegraph/src/backend/native/v2/node_record_v2/mod.rs:25:9
+   |
+25 | pub use validation::*;
+   |         ^^^^^^^^^^^^^
+
+warning: unused import: `NativeBackendError`
+ --> sqlitegraph/src/backend/native/v2/wal/manager.rs:6:30
+  |
+6 | use crate::backend::native::{NativeBackendError, NativeResult};
+  |                              ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `V2WALReader`
+ --> sqlitegraph/src/backend/native/v2/wal/manager.rs:8:57
+  |
+8 |     V2WALConfig, V2WALHeader, V2WALRecord, V2WALWriter, V2WALReader,
+  |                                                         ^^^^^^^^^^^
+
+warning: unused import: `crate::backend::native::v2::node_record_v2::NodeRecordV2`
+ --> sqlitegraph/src/backend/native/v2/wal/record.rs:9:5
+  |
+9 | use crate::backend::native::v2::node_record_v2::NodeRecordV2;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Deserialize` and `Serialize`
+  --> sqlitegraph/src/backend/native/v2/wal/record.rs:10:13
+   |
+10 | use serde::{Deserialize, Serialize};
+   |             ^^^^^^^^^^^  ^^^^^^^^^
+
+warning: unused import: `Read`
+  --> sqlitegraph/src/backend/native/v2/wal/record.rs:11:15
+   |
+11 | use std::io::{Read, Write};
+   |               ^^^^
+
+warning: unused import: `Condvar`
+  --> sqlitegraph/src/backend/native/v2/wal/writer.rs:12:26
+   |
+12 | use parking_lot::{Mutex, Condvar};
+   |                          ^^^^^^^
+
+warning: unused import: `std::path::Path`
+  --> sqlitegraph/src/backend/native/v2/wal/writer.rs:16:5
+   |
+16 | use std::path::Path;
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `V2WALReader`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:12:39
+   |
+12 | use crate::backend::native::v2::wal::{V2WALReader, V2WALConfig};
+   |                                       ^^^^^^^^^^^
+
+warning: unused import: `std::path::Path`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:17:5
+   |
+17 | use std::path::Path;
+   |     ^^^^^^^^^^^^^^^
+
+warning: unused import: `Instant`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:28:41
+   |
+28 | use std::time::{SystemTime, UNIX_EPOCH, Instant};
+   |                                         ^^^^^^^
+
+warning: unnecessary parentheses around assigned value
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/mod.rs:330:17
+    |
+330 |                 ((metrics.checkpoint_throughput_mbps * (1.0 - alpha)) +
+    |                 ^
+331 |                  (mb_per_second * alpha));
+    |                                         ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+330 ~                 (metrics.checkpoint_throughput_mbps * (1.0 - alpha)) +
+331 ~                  (mb_per_second * alpha);
+    |
+
+warning: unused imports: `CheckpointError` and `CheckpointResult`
+ --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/consistency.rs:8:59
+  |
+8 | use crate::backend::native::v2::wal::checkpoint::errors::{CheckpointError, CheckpointResult};
+  |                                                           ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^
+
+warning: unused import: `Instant`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/consistency.rs:11:39
+   |
+11 | use std::time::{Duration, SystemTime, Instant};
+   |                                       ^^^^^^^
+
+warning: unused import: `crate::backend::native::v2::wal::checkpoint::constants::*`
+ --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/reporting.rs:7:5
+  |
+7 | use crate::backend::native::v2::wal::checkpoint::constants::*;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `CheckpointProgress`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/reporting.rs:10:57
+   |
+10 | use crate::backend::native::v2::wal::checkpoint::core::{CheckpointProgress};
+   |                                                         ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ConsistencyViolation`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/reporting.rs:12:45
+   |
+12 | use super::consistency::{ConsistencyResult, ConsistencyViolation, ConsistencySeverity};
+   |                                             ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `V2InvariantViolation`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/reporting.rs:13:44
+   |
+13 | use super::invariants::{V2InvariantResult, V2InvariantViolation};
+   |                                            ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Instant`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/reporting.rs:14:29
+   |
+14 | use std::time::{SystemTime, Instant};
+   |                             ^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/reporting.rs:15:5
+   |
+15 | use std::collections::HashMap;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unnecessary parentheses around assigned value
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/reporting.rs:243:31
+    |
+243 |             let total_score = (summary.critical_violations as f64 * critical_weight +
+    |                               ^
+...
+246 |                               summary.info_violations as f64 * info_weight);
+    |                                                                           ^
+    |
+help: remove these parentheses
+    |
+243 ~             let total_score = summary.critical_violations as f64 * critical_weight +
+244 |                               summary.error_violations as f64 * error_weight +
+245 |                               summary.warning_violations as f64 * warning_weight +
+246 ~                               summary.info_violations as f64 * info_weight;
+    |
+
+warning: unused imports: `NativeBackendError` and `NativeResult`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/mod.rs:62:30
+   |
+62 | use crate::backend::native::{NativeBackendError, NativeResult};
+   |                              ^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^
+
+warning: unused import: `types::FileOffset`
+  --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:18:63
+   |
+18 | use crate::backend::native::{GraphFile, NodeStore, EdgeStore, types::FileOffset};
+   |                                                               ^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `EdgeRecord`, `FileOffset`, `NativeBackendError`, `NativeResult`, `NodeFlags`, and `graph_file::TransactionManager`
+  --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:15:38
+   |
+15 |     GraphFile, NodeStore, EdgeStore, NativeResult, NativeBackendError,
+   |                                      ^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^
+16 |     NodeFlags, FileOffset, EdgeRecord, NativeNodeId,
+   |     ^^^^^^^^^  ^^^^^^^^^^  ^^^^^^^^^^
+17 |     graph_file::TransactionManager,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `Direction` and `EdgeCluster`
+  --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:21:19
+   |
+21 |     NodeRecordV2, EdgeCluster, StringTable, FreeSpaceManager,
+   |                   ^^^^^^^^^^^
+22 |     edge_cluster::{CompactEdgeRecord, Direction},
+   |                                       ^^^^^^^^^
+
+warning: unused import: `Path`
+  --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:25:17
+   |
+25 | use std::path::{Path, PathBuf};
+   |                 ^^^^
+
+warning: unused import: `serde_json::Value`
+  --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:28:5
+   |
+28 | use serde_json::Value;
+   |     ^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::path::PathBuf`
+ --> sqlitegraph/src/backend/native/v2/wal/recovery/errors/scanner.rs:8:5
+  |
+8 | use std::path::PathBuf;
+  |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::backend::native::NativeResult`
+ --> sqlitegraph/src/backend/native/v2/wal/metrics/core.rs:8:5
+  |
+8 | use crate::backend::native::NativeResult;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `EdgeOperationMetrics`, `FreeSpaceOperationMetrics`, `NodeOperationMetrics`, and `StringTableOperationMetrics`
+  --> sqlitegraph/src/backend/native/v2/wal/metrics/collection.rs:13:5
+   |
+13 |     EdgeOperationMetrics, NodeOperationMetrics, FreeSpaceOperationMetrics,
+   |     ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^
+14 |     StringTableOperationMetrics
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::collections::HashMap`
+ --> sqlitegraph/src/backend/native/v2/wal/metrics/analysis.rs:7:5
+  |
+7 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unnecessary parentheses around block return value
+   --> sqlitegraph/src/backend/native/v2/wal/metrics/analysis.rs:481:9
+    |
+481 |         (write_score * 0.4 + read_score * 0.6)
+    |         ^                                    ^
+    |
+help: remove these parentheses
+    |
+481 -         (write_score * 0.4 + read_score * 0.6)
+481 +         write_score * 0.4 + read_score * 0.6
+    |
+
+warning: unnecessary parentheses around block return value
+   --> sqlitegraph/src/backend/native/v2/wal/metrics/analysis.rs:513:9
+    |
+513 |         (memory_score * 0.3 + buffer_score * 0.3 + cpu_score * 0.2 + disk_score * 0.2)
+    |         ^                                                                            ^
+    |
+help: remove these parentheses
+    |
+513 -         (memory_score * 0.3 + buffer_score * 0.3 + cpu_score * 0.2 + disk_score * 0.2)
+513 +         memory_score * 0.3 + buffer_score * 0.3 + cpu_score * 0.2 + disk_score * 0.2
+    |
+
+warning: unnecessary parentheses around block return value
+   --> sqlitegraph/src/backend/native/v2/wal/metrics/analysis.rs:586:9
+    |
+586 |         (buffer_efficiency * 0.4 + cluster_efficiency * 0.3 + operation_efficiency * 0.3)
+    |         ^                                                                               ^
+    |
+help: remove these parentheses
+    |
+586 -         (buffer_efficiency * 0.4 + cluster_efficiency * 0.3 + operation_efficiency * 0.3)
+586 +         buffer_efficiency * 0.4 + cluster_efficiency * 0.3 + operation_efficiency * 0.3
+    |
+
+warning: unnecessary parentheses around block return value
+   --> sqlitegraph/src/backend/native/v2/wal/metrics/analysis.rs:602:9
+    |
+602 |         (category_scores.throughput * 0.25 +
+    |         ^
+...
+606 |          category_scores.efficiency * 0.10)
+    |                                           ^
+    |
+help: remove these parentheses
+    |
+602 ~         category_scores.throughput * 0.25 +
+603 |          category_scores.latency * 0.30 +
+604 |          category_scores.resources * 0.15 +
+605 |          category_scores.reliability * 0.20 +
+606 ~          category_scores.efficiency * 0.10
+    |
+
+warning: unused import: `std::fmt`
+  --> sqlitegraph/src/hnsw/config.rs:44:5
+   |
+44 | use std::fmt;
+   |     ^^^^^^^^
+
+warning: unused import: `crate::hnsw::distance_functions::*`
+  --> sqlitegraph/src/hnsw/distance_metric.rs:38:5
+   |
+38 | use crate::hnsw::distance_functions::*;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `SearchResult`, `VectorRecord`, `compute_distance`, and `hnsw_config`
+  --> sqlitegraph/src/hnsw/index.rs:53:9
+   |
+53 |         hnsw_config,
+   |         ^^^^^^^^^^^
+54 |         distance_metric::{compute_distance, DistanceMetric},
+   |                           ^^^^^^^^^^^^^^^^
+...
+57 |         neighborhood::{NeighborhoodSearch, SearchResult},
+   |                                            ^^^^^^^^^^^^
+58 |         storage::{InMemoryVectorStorage, VectorRecord, VectorStorage, VectorStorageStats},
+   |                                          ^^^^^^^^^^^^
+
+warning: unused import: `crate::backend::native::v2::node_record_v2::NodeRecordV2Ext`
+ --> sqlitegraph/src/backend/native/adjacency/core_iterator.rs:7:5
+  |
+7 | use crate::backend::native::v2::node_record_v2::NodeRecordV2Ext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::backend::native::v2::node_record_v2::NodeRecordV2Ext`
+ --> sqlitegraph/src/backend/native/adjacency/v2_clustered.rs:6:5
+  |
+6 | use crate::backend::native::v2::node_record_v2::NodeRecordV2Ext;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::backend::native::v2::node_record_v2::NodeRecordV2Ext`
+  --> sqlitegraph/src/backend/native/edge_store/mod.rs:86:13
+   |
+86 |         use crate::backend::native::v2::node_record_v2::NodeRecordV2Ext;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `crate::backend::native::v2::node_record_v2::NodeRecordV2Ext`
+   --> sqlitegraph/src/backend/native/edge_store/mod.rs:153:13
+    |
+153 |         use crate::backend::native::v2::node_record_v2::NodeRecordV2Ext;
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Seek`
+  --> sqlitegraph/src/backend/native/graph_file/mod.rs:43:21
+   |
+43 | use std::io::{Read, Seek, Write, SeekFrom};
+   |                     ^^^^
+
+warning: unused import: `Write`
+  --> sqlitegraph/src/backend/native/graph_file/mod.rs:43:27
+   |
+43 | use std::io::{Read, Seek, Write, SeekFrom};
+   |                           ^^^^^
+
+warning: unused import: `Read`
+  --> sqlitegraph/src/backend/native/graph_file/mod.rs:43:15
+   |
+43 | use std::io::{Read, Seek, Write, SeekFrom};
+   |               ^^^^
+
+warning: unused import: `NodeRecordV2Ext`
+ --> sqlitegraph/src/backend/native/node_store.rs:9:64
+  |
+9 | use crate::backend::native::v2::node_record_v2::{NodeRecordV2, NodeRecordV2Ext};
+  |                                                                ^^^^^^^^^^^^^^^
+
+warning: unused import: `Write`
+  --> sqlitegraph/src/backend/native/v2/wal/record.rs:11:21
+   |
+11 | use std::io::{Read, Write};
+   |                     ^^^^^
+
+warning: unused import: `NodeRecordV2Ext`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:20:64
+   |
+20 | use crate::backend::native::v2::node_record_v2::{NodeRecordV2, NodeRecordV2Ext};
+   |                                                                ^^^^^^^^^^^^^^^
+
+warning: unused import: `NodeRecordV2Ext`
+  --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:19:64
+   |
+19 | use crate::backend::native::v2::node_record_v2::{NodeRecordV2, NodeRecordV2Ext};
+   |                                                                ^^^^^^^^^^^^^^^
+
+warning: value assigned to `offset` is never read
+   --> sqlitegraph/src/backend/native/graph_file/encoding.rs:241:9
+    |
+241 |         offset += 8;
+    |         ^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `file_path`
+   --> sqlitegraph/src/backend/native/graph_file/debug.rs:218:9
+    |
+218 |         file_path: &std::path::Path,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_file_path`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `write_buffer`
+  --> sqlitegraph/src/backend/native/graph_file/io_backend.rs:30:9
+   |
+30 |         write_buffer: &mut WriteBuffer,
+   |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_write_buffer`
+
+warning: unused variable: `io_mode`
+  --> sqlitegraph/src/backend/native/graph_file/io_backend.rs:32:9
+   |
+32 |         io_mode: IOMode,
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_io_mode`
+
+warning: unused variable: `write_buffer`
+  --> sqlitegraph/src/backend/native/graph_file/io_backend.rs:62:9
+   |
+62 |         write_buffer: &mut WriteBuffer,
+   |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_write_buffer`
+
+warning: unused variable: `io_mode`
+  --> sqlitegraph/src/backend/native/graph_file/io_backend.rs:64:9
+   |
+64 |         io_mode: IOMode,
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_io_mode`
+
+warning: unused variable: `io_mode`
+  --> sqlitegraph/src/backend/native/graph_file/io_backend.rs:94:9
+   |
+94 |         io_mode: IOMode,
+   |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_io_mode`
+
+warning: unused variable: `file_size_fn`
+  --> sqlitegraph/src/backend/native/graph_file/memory_resource_manager/operations.rs:69:9
+   |
+69 |         file_size_fn: F,
+   |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_file_size_fn`
+
+warning: unused variable: `intended_rollback_size`
+   --> sqlitegraph/src/backend/native/graph_file/graph_file_coordinator.rs:167:9
+    |
+167 |         intended_rollback_size: u64,
+    |         ^^^^^^^^^^^^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+167 |         _intended_rollback_size: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+167 -         intended_rollback_size: u64,
+167 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `before_buffer_mmap`
+   --> sqlitegraph/src/backend/native/node_store.rs:147:21
+    |
+147 |             let mut before_buffer_mmap = vec![0u8; 32];
+    |                     ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_before_buffer_mmap`
+
+warning: unused variable: `after_buffer_mmap`
+   --> sqlitegraph/src/backend/native/node_store.rs:149:21
+    |
+149 |             let mut after_buffer_mmap = vec![0u8; 32];
+    |                     ^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_after_buffer_mmap`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/node_store.rs:147:17
+    |
+147 |             let mut before_buffer_mmap = vec![0u8; 32];
+    |                 ----^^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/node_store.rs:149:17
+    |
+149 |             let mut after_buffer_mmap = vec![0u8; 32];
+    |                 ----^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: unused variable: `debug_buffer_mmap`
+   --> sqlitegraph/src/backend/native/node_store.rs:262:21
+    |
+262 |             let mut debug_buffer_mmap = vec![0u8; 32];
+    |                     ^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_debug_buffer_mmap`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/node_store.rs:262:17
+    |
+262 |             let mut debug_buffer_mmap = vec![0u8; 32];
+    |                 ----^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: unused variable: `graph_file`
+  --> sqlitegraph/src/backend/native/graph_ops/chain_queries.rs:67:5
+   |
+67 |     graph_file: &mut GraphFile,
+   |     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_graph_file`
+
+warning: unused variable: `start`
+  --> sqlitegraph/src/backend/native/graph_ops/chain_queries.rs:68:5
+   |
+68 |     start: NativeNodeId,
+   |     ^^^^^
+   |
+help: if this is intentional, prefix it with an underscore
+   |
+68 |     _start: NativeNodeId,
+   |     +
+help: you might have meant to pattern match on the similarly named constant `SCHEMA_VERSION`
+   |
+68 -     start: NativeNodeId,
+68 +     schema::SCHEMA_VERSION: NativeNodeId,
+   |
+
+warning: unused variable: `pattern`
+  --> sqlitegraph/src/backend/native/graph_ops/chain_queries.rs:69:5
+   |
+69 |     pattern: &PatternQuery,
+   |     ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_pattern`
+
+warning: variable does not need to be mutable
+  --> sqlitegraph/src/backend/native/v2/free_space/manager.rs:63:13
+   |
+63 |         let mut candidates: Vec<usize> = self
+   |             ----^^^^^^^^^^
+   |             |
+   |             help: remove this `mut`
+
+warning: unused variable: `record_type`
+   --> sqlitegraph/src/backend/native/v2/wal/reader.rs:257:13
+    |
+257 |         let record_type = V2WALRecordType::try_from(header_bytes[0])?;
+    |             ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_record_type`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/reader.rs:292:13
+    |
+292 |         let mut current_pos = std::mem::size_of::<V2WALHeader>() as u64;
+    |             ----^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `start_time`
+   --> sqlitegraph/src/backend/native/v2/wal/writer.rs:275:13
+    |
+275 |         let start_time = Instant::now();
+    |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_start_time`
+
+warning: unused variable: `start_time`
+   --> sqlitegraph/src/backend/native/v2/wal/writer.rs:314:13
+    |
+314 |         let start_time = Instant::now();
+    |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_start_time`
+
+warning: unused variable: `dirty_blocks`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:361:17
+    |
+361 |         let mut dirty_blocks = self.dirty_blocks.lock();
+    |                 ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dirty_blocks`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:361:13
+    |
+361 |         let mut dirty_blocks = self.dirty_blocks.lock();
+    |             ----^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `start_time`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:601:34
+    |
+601 |     fn execute_checkpoint(&self, start_time: Instant, force: bool) -> CheckpointResult<CheckpointProgress> {
+    |                                  ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_start_time`
+
+warning: unused variable: `force`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:601:55
+    |
+601 |     fn execute_checkpoint(&self, start_time: Instant, force: bool) -> CheckpointResult<CheckpointProgress> {
+    |                                                       ^^^^^ help: if this is intentional, prefix it with an underscore: `_force`
+
+warning: unused variable: `threshold`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:641:50
+    |
+641 |             CheckpointStrategy::TransactionCount(threshold) => {
+    |                                                  ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_threshold`
+
+warning: unused variable: `threshold`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:644:47
+    |
+644 |             CheckpointStrategy::SizeThreshold(threshold) => {
+    |                                               ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_threshold`
+
+warning: unused variable: `dirty_blocks`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:628:9
+    |
+628 |         dirty_blocks: &DirtyBlockTracker,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dirty_blocks`
+
+warning: unused variable: `timestamp`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:673:9
+    |
+673 |         timestamp: u64,
+    |         ^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+673 |         _timestamp: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+673 -         timestamp: u64,
+673 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `timestamp`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:694:9
+    |
+694 |         timestamp: u64,
+    |         ^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+694 |         _timestamp: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+694 -         timestamp: u64,
+694 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `state`
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:69:9
+   |
+69 |         state: &CheckpointState,
+   |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: unused variable: `timestamp`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:171:26
+    |
+171 |             if let Some(&timestamp) = dirty_blocks.block_timestamps().get(&block_offset) {
+    |                          ^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+171 |             if let Some(&_timestamp) = dirty_blocks.block_timestamps().get(&block_offset) {
+    |                          +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+171 -             if let Some(&timestamp) = dirty_blocks.block_timestamps().get(&block_offset) {
+171 +             if let Some(&backend::native::v2::wal::lsn::LSN_INVALID) = dirty_blocks.block_timestamps().get(&block_offset) {
+    |
+
+warning: unused variable: `cluster_key`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:179:14
+    |
+179 |         for (cluster_key, cluster_blocks) in dirty_blocks.cluster_dirty_blocks() {
+    |              ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_cluster_key`
+
+warning: unused variable: `start_lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:164:9
+    |
+164 |         start_lsn: u64,
+    |         ^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+164 |         _start_lsn: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+164 -         start_lsn: u64,
+164 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `end_lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:165:9
+    |
+165 |         end_lsn: u64,
+    |         ^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+165 |         _end_lsn: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+165 -         end_lsn: u64,
+165 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `slot_offset`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:457:51
+    |
+457 |     fn apply_node_insert(&mut self, node_id: u64, slot_offset: u64, node_data: &[u8], _lsn: u64) -> CheckpointResult<()> {
+    |                                                   ^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+457 |     fn apply_node_insert(&mut self, node_id: u64, _slot_offset: u64, node_data: &[u8], _lsn: u64) -> CheckpointResult<()> {
+    |                                                   +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+457 -     fn apply_node_insert(&mut self, node_id: u64, slot_offset: u64, node_data: &[u8], _lsn: u64) -> CheckpointResult<()> {
+457 +     fn apply_node_insert(&mut self, node_id: u64, backend::native::v2::wal::lsn::LSN_INVALID: u64, node_data: &[u8], _lsn: u64) -> CheckpointResult<()> {
+    |
+
+warning: unused variable: `edge_store`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:556:17
+    |
+556 |         let mut edge_store = self.edge_store.lock()
+    |                 ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_edge_store`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:556:13
+    |
+556 |         let mut edge_store = self.edge_store.lock()
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `free_space_manager`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:700:17
+    |
+700 |         let mut free_space_manager = self.free_space_manager.lock()
+    |                 ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_free_space_manager`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:700:13
+    |
+700 |         let mut free_space_manager = self.free_space_manager.lock()
+    |             ----^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `string_table`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:942:17
+    |
+942 |         let mut string_table = self.string_table.lock()
+    |                 ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_string_table`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:942:13
+    |
+942 |         let mut string_table = self.string_table.lock()
+    |             ----^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `dirty_blocks`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/mod.rs:156:9
+    |
+156 |         dirty_blocks: &DirtyBlockTracker,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dirty_blocks`
+
+warning: unused variable: `checkpoint_state`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/mod.rs:157:9
+    |
+157 |         checkpoint_state: &CheckpointState,
+    |         ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_checkpoint_state`
+
+warning: unused variable: `checkpoint_progress`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/mod.rs:158:9
+    |
+158 |         checkpoint_progress: &CheckpointProgress,
+    |         ^^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_checkpoint_progress`
+
+warning: unused variable: `max_pending_blocks`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/mod.rs:162:9
+    |
+162 |         max_pending_blocks: u64,
+    |         ^^^^^^^^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+162 |         _max_pending_blocks: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+162 -         max_pending_blocks: u64,
+162 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `dirty_blocks`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/mod.rs:451:9
+    |
+451 |         dirty_blocks: &mut DirtyBlockTracker,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dirty_blocks`
+
+warning: unused variable: `now`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/consistency.rs:203:13
+    |
+203 |         let now = SystemTime::now()
+    |             ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+203 |         let _now = SystemTime::now()
+    |             +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+203 -         let now = SystemTime::now()
+203 +         let backend::native::v2::wal::lsn::LSN_INVALID = SystemTime::now()
+    |
+
+warning: unused variable: `alignment`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:173:13
+    |
+173 |         let alignment = v2::V2_CLUSTER_ALIGNMENT;
+    |             ^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+173 |         let _alignment = v2::V2_CLUSTER_ALIGNMENT;
+    |             +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+173 -         let alignment = v2::V2_CLUSTER_ALIGNMENT;
+173 +         let backend::native::v2::wal::lsn::LSN_INVALID = v2::V2_CLUSTER_ALIGNMENT;
+    |
+
+warning: unused variable: `dirty_blocks`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:167:9
+    |
+167 |         dirty_blocks: &DirtyBlockTracker,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_dirty_blocks`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:169:13
+    |
+169 |         let mut violations = Vec::new();
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `state`
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:222:9
+    |
+222 |         state: &CheckpointState,
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:224:13
+    |
+224 |         let mut violations = Vec::new();
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:359:13
+    |
+359 |         let mut violations = Vec::new();
+    |             ----^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: value assigned to `v2_version` is never read
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:389:17
+    |
+389 |         let mut v2_version = None;
+    |                 ^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `attempt`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/core.rs:241:32
+    |
+241 |     fn attempt_recovery(&self, attempt: u32) -> Result<Vec<String>, RecoveryError> {
+    |                                ^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+241 |     fn attempt_recovery(&self, _attempt: u32) -> Result<Vec<String>, RecoveryError> {
+    |                                +
+help: you might have meant to pattern match on the similarly named constant `V2_FORMAT_VERSION`
+    |
+241 -     fn attempt_recovery(&self, attempt: u32) -> Result<Vec<String>, RecoveryError> {
+241 +     fn attempt_recovery(&self, backend::native::v2::V2_FORMAT_VERSION: u32) -> Result<Vec<String>, RecoveryError> {
+    |
+
+warning: unused variable: `scanner`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/core.rs:434:13
+    |
+434 |         let scanner = WALScanner::new();
+    |             ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_scanner`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/core.rs:470:13
+    |
+470 |         let mut replayer = V2GraphFileReplayer::create(self.database_path.clone(), config)
+    |             ----^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/scanner.rs:420:9
+    |
+420 |         lsn: u64,
+    |         ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+420 |         _lsn: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+420 -         lsn: u64,
+420 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:273:68
+    |
+273 |     fn validate_node_insert(&self, node_id: i64, node_data: &[u8], lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                                    ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+273 |     fn validate_node_insert(&self, node_id: i64, node_data: &[u8], _lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                                    +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+273 -     fn validate_node_insert(&self, node_id: i64, node_data: &[u8], lsn: u64) -> RecoveryResult<ValidationResult> {
+273 +     fn validate_node_insert(&self, node_id: i64, node_data: &[u8], backend::native::v2::wal::lsn::LSN_INVALID: u64) -> RecoveryResult<ValidationResult> {
+    |
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:367:9
+    |
+367 |         lsn: u64,
+    |         ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+367 |         _lsn: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+367 -         lsn: u64,
+367 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:425:67
+    |
+425 |     fn validate_node_delete(&self, node_id: i64, old_data: &[u8], lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                                   ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+425 |     fn validate_node_delete(&self, node_id: i64, old_data: &[u8], _lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                                   +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+425 -     fn validate_node_delete(&self, node_id: i64, old_data: &[u8], lsn: u64) -> RecoveryResult<ValidationResult> {
+425 +     fn validate_node_delete(&self, node_id: i64, old_data: &[u8], backend::native::v2::wal::lsn::LSN_INVALID: u64) -> RecoveryResult<ValidationResult> {
+    |
+
+warning: unused variable: `direction`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:470:9
+    |
+470 |         direction: Direction,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_direction`
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:474:9
+    |
+474 |         lsn: u64,
+    |         ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+474 |         _lsn: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+474 -         lsn: u64,
+474 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:563:58
+    |
+563 |     fn validate_edge_insert(&self, record: &V2WALRecord, lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                          ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+563 |     fn validate_edge_insert(&self, record: &V2WALRecord, _lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                          +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+563 -     fn validate_edge_insert(&self, record: &V2WALRecord, lsn: u64) -> RecoveryResult<ValidationResult> {
+563 +     fn validate_edge_insert(&self, record: &V2WALRecord, backend::native::v2::wal::lsn::LSN_INVALID: u64) -> RecoveryResult<ValidationResult> {
+    |
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:616:58
+    |
+616 |     fn validate_edge_update(&self, record: &V2WALRecord, lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                          ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+616 |     fn validate_edge_update(&self, record: &V2WALRecord, _lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                          +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+616 -     fn validate_edge_update(&self, record: &V2WALRecord, lsn: u64) -> RecoveryResult<ValidationResult> {
+616 +     fn validate_edge_update(&self, record: &V2WALRecord, backend::native::v2::wal::lsn::LSN_INVALID: u64) -> RecoveryResult<ValidationResult> {
+    |
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:658:58
+    |
+658 |     fn validate_edge_delete(&self, record: &V2WALRecord, lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                          ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+658 |     fn validate_edge_delete(&self, record: &V2WALRecord, _lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                          +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+658 -     fn validate_edge_delete(&self, record: &V2WALRecord, lsn: u64) -> RecoveryResult<ValidationResult> {
+658 +     fn validate_edge_delete(&self, record: &V2WALRecord, backend::native::v2::wal::lsn::LSN_INVALID: u64) -> RecoveryResult<ValidationResult> {
+    |
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:695:74
+    |
+695 |     fn validate_string_insert(&self, string_id: u32, string_value: &str, lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                                          ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+695 |     fn validate_string_insert(&self, string_id: u32, string_value: &str, _lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                                          +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+695 -     fn validate_string_insert(&self, string_id: u32, string_value: &str, lsn: u64) -> RecoveryResult<ValidationResult> {
+695 +     fn validate_string_insert(&self, string_id: u32, string_value: &str, backend::native::v2::wal::lsn::LSN_INVALID: u64) -> RecoveryResult<ValidationResult> {
+    |
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:742:80
+    |
+742 |     fn validate_free_space_allocate(&self, block_offset: u64, block_size: u32, lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                                                ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+742 |     fn validate_free_space_allocate(&self, block_offset: u64, block_size: u32, _lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                                                +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+742 -     fn validate_free_space_allocate(&self, block_offset: u64, block_size: u32, lsn: u64) -> RecoveryResult<ValidationResult> {
+742 +     fn validate_free_space_allocate(&self, block_offset: u64, block_size: u32, backend::native::v2::wal::lsn::LSN_INVALID: u64) -> RecoveryResult<ValidationResult> {
+    |
+
+warning: unused variable: `lsn`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:790:82
+    |
+790 |     fn validate_free_space_deallocate(&self, block_offset: u64, block_size: u32, lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                                                  ^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+790 |     fn validate_free_space_deallocate(&self, block_offset: u64, block_size: u32, _lsn: u64) -> RecoveryResult<ValidationResult> {
+    |                                                                                  +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+790 -     fn validate_free_space_deallocate(&self, block_offset: u64, block_size: u32, lsn: u64) -> RecoveryResult<ValidationResult> {
+790 +     fn validate_free_space_deallocate(&self, block_offset: u64, block_size: u32, backend::native::v2::wal::lsn::LSN_INVALID: u64) -> RecoveryResult<ValidationResult> {
+    |
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:791:13
+    |
+791 |         let mut issues = Vec::new();
+    |             ----^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `has_cluster_create`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:867:21
+    |
+867 |                 let has_cluster_create = transaction.records.iter().any(|r| {
+    |                     ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_has_cluster_create`
+
+warning: unused variable: `start_time`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:264:13
+    |
+264 |         let start_time = Instant::now();
+    |             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_start_time`
+
+warning: unused variable: `tx_index`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:261:9
+    |
+261 |         tx_index: usize,
+    |         ^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+261 |         _tx_index: usize,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `MAX_AVG_EDGE_SIZE`
+    |
+261 -         tx_index: usize,
+261 +         backend::native::v2::performance_targets::MAX_AVG_EDGE_SIZE: usize,
+    |
+
+warning: unused variable: `total_txs`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:262:9
+    |
+262 |         total_txs: usize,
+    |         ^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+262 |         _total_txs: usize,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `MAX_AVG_EDGE_SIZE`
+    |
+262 -         total_txs: usize,
+262 +         backend::native::v2::performance_targets::MAX_AVG_EDGE_SIZE: usize,
+    |
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:267:13
+    |
+267 |         let mut warnings = Vec::new();
+    |             ----^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: unused variable: `graph_file`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:427:21
+    |
+427 |             let mut graph_file = self.graph_file.write();
+    |                     ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_graph_file`
+
+warning: variable does not need to be mutable
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:427:17
+    |
+427 |             let mut graph_file = self.graph_file.write();
+    |                 ----^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: unused variable: `slot_offset`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:447:9
+    |
+447 |         slot_offset: u64,
+    |         ^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+447 |         _slot_offset: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+447 -         slot_offset: u64,
+447 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `old_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:449:9
+    |
+449 |         old_data: Option<&Vec<u8>>,
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_old_data`
+
+warning: unused variable: `slot_offset`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:486:9
+    |
+486 |         slot_offset: u64,
+    |         ^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+486 |         _slot_offset: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+486 -         slot_offset: u64,
+486 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `old_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:487:9
+    |
+487 |         old_data: Option<&Vec<u8>>,
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_old_data`
+
+warning: unused variable: `node_id`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:567:45
+    |
+567 |             RollbackOperation::NodeInsert { node_id, node_data } => {
+    |                                             ^^^^^^^ help: try ignoring the field: `node_id: _`
+
+warning: unused variable: `node_id`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:573:45
+    |
+573 |             RollbackOperation::NodeUpdate { node_id, old_data } => {
+    |                                             ^^^^^^^ help: try ignoring the field: `node_id: _`
+
+warning: unused variable: `slot_offset`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:579:54
+    |
+579 |             RollbackOperation::NodeDelete { node_id, slot_offset } => {
+    |                                                      ^^^^^^^^^^^ help: try ignoring the field: `slot_offset: _`
+
+warning: unused variable: `node_id`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:598:9
+    |
+598 |         node_id: u64,
+    |         ^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+598 |         _node_id: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+598 -         node_id: u64,
+598 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `direction`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:599:9
+    |
+599 |         direction: crate::backend::native::v2::edge_cluster::Direction,
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_direction`
+
+warning: unused variable: `cluster_offset`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:600:9
+    |
+600 |         cluster_offset: u64,
+    |         ^^^^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+600 |         _cluster_offset: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+600 -         cluster_offset: u64,
+600 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `cluster_size`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:601:9
+    |
+601 |         cluster_size: u64,
+    |         ^^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+601 |         _cluster_size: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+601 -         cluster_size: u64,
+601 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `edge_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:602:9
+    |
+602 |         edge_data: &[u8],
+    |         ^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_edge_data`
+
+warning: unused variable: `rollback_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:603:9
+    |
+603 |         rollback_data: &mut Vec<RollbackOperation>,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rollback_data`
+
+warning: unused variable: `cluster_key`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:612:9
+    |
+612 |         cluster_key: (u64, u64),
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_cluster_key`
+
+warning: unused variable: `edge_record`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:613:9
+    |
+613 |         edge_record: &CompactEdgeRecord,
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_edge_record`
+
+warning: unused variable: `insertion_point`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:614:9
+    |
+614 |         insertion_point: u32,
+    |         ^^^^^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+614 |         _insertion_point: u32,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `V2_FORMAT_VERSION`
+    |
+614 -         insertion_point: u32,
+614 +         backend::native::v2::V2_FORMAT_VERSION: u32,
+    |
+
+warning: unused variable: `rollback_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:615:9
+    |
+615 |         rollback_data: &mut Vec<RollbackOperation>,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rollback_data`
+
+warning: unused variable: `cluster_key`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:624:9
+    |
+624 |         cluster_key: (u64, u64),
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_cluster_key`
+
+warning: unused variable: `new_edge`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:625:9
+    |
+625 |         new_edge: &CompactEdgeRecord,
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_new_edge`
+
+warning: unused variable: `position`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:626:9
+    |
+626 |         position: u32,
+    |         ^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+626 |         _position: u32,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `V2_FORMAT_VERSION`
+    |
+626 -         position: u32,
+626 +         backend::native::v2::V2_FORMAT_VERSION: u32,
+    |
+
+warning: unused variable: `old_edge`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:627:9
+    |
+627 |         old_edge: Option<&CompactEdgeRecord>,
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_old_edge`
+
+warning: unused variable: `rollback_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:628:9
+    |
+628 |         rollback_data: &mut Vec<RollbackOperation>,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rollback_data`
+
+warning: unused variable: `cluster_key`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:637:9
+    |
+637 |         cluster_key: (u64, u64),
+    |         ^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_cluster_key`
+
+warning: unused variable: `position`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:638:9
+    |
+638 |         position: u32,
+    |         ^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+638 |         _position: u32,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `V2_FORMAT_VERSION`
+    |
+638 -         position: u32,
+638 +         backend::native::v2::V2_FORMAT_VERSION: u32,
+    |
+
+warning: unused variable: `old_edge`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:639:9
+    |
+639 |         old_edge: Option<&CompactEdgeRecord>,
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_old_edge`
+
+warning: unused variable: `rollback_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:640:9
+    |
+640 |         rollback_data: &mut Vec<RollbackOperation>,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rollback_data`
+
+warning: unused variable: `string_id`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:649:9
+    |
+649 |         string_id: u64,
+    |         ^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+649 |         _string_id: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+649 -         string_id: u64,
+649 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `string_value`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:650:9
+    |
+650 |         string_value: &str,
+    |         ^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_string_value`
+
+warning: unused variable: `rollback_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:651:9
+    |
+651 |         rollback_data: &mut Vec<RollbackOperation>,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rollback_data`
+
+warning: unused variable: `block_offset`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:660:9
+    |
+660 |         block_offset: u64,
+    |         ^^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+660 |         _block_offset: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+660 -         block_offset: u64,
+660 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `block_size`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:661:9
+    |
+661 |         block_size: u64,
+    |         ^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+661 |         _block_size: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+661 -         block_size: u64,
+661 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `block_type`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:662:9
+    |
+662 |         block_type: u8,
+    |         ^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+662 |         _block_type: u8,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `CHECKSUM_ALGORITHM`
+    |
+662 -         block_type: u8,
+662 +         backend::native::v2::wal::recovery::constants::format::CHECKSUM_ALGORITHM: u8,
+    |
+
+warning: unused variable: `rollback_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:663:9
+    |
+663 |         rollback_data: &mut Vec<RollbackOperation>,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rollback_data`
+
+warning: unused variable: `block_offset`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:672:9
+    |
+672 |         block_offset: u64,
+    |         ^^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+672 |         _block_offset: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+672 -         block_offset: u64,
+672 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `block_size`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:673:9
+    |
+673 |         block_size: u64,
+    |         ^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+673 |         _block_size: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+673 -         block_size: u64,
+673 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `block_type`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:674:9
+    |
+674 |         block_type: u8,
+    |         ^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+674 |         _block_type: u8,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `CHECKSUM_ALGORITHM`
+    |
+674 -         block_type: u8,
+674 +         backend::native::v2::wal::recovery::constants::format::CHECKSUM_ALGORITHM: u8,
+    |
+
+warning: unused variable: `rollback_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:675:9
+    |
+675 |         rollback_data: &mut Vec<RollbackOperation>,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rollback_data`
+
+warning: unused variable: `header_offset`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:684:9
+    |
+684 |         header_offset: u64,
+    |         ^^^^^^^^^^^^^
+    |
+help: if this is intentional, prefix it with an underscore
+    |
+684 |         _header_offset: u64,
+    |         +
+help: you might have meant to pattern match on the similarly named constant `LSN_INVALID`
+    |
+684 -         header_offset: u64,
+684 +         backend::native::v2::wal::lsn::LSN_INVALID: u64,
+    |
+
+warning: unused variable: `new_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:685:9
+    |
+685 |         new_data: &[u8],
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_new_data`
+
+warning: unused variable: `old_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:686:9
+    |
+686 |         old_data: Option<&[u8]>,
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_old_data`
+
+warning: unused variable: `rollback_data`
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:687:9
+    |
+687 |         rollback_data: &mut Vec<RollbackOperation>,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_rollback_data`
+
+warning: unused variable: `error_tracker`
+   --> sqlitegraph/src/backend/native/v2/wal/metrics/analysis.rs:628:9
+    |
+628 |         error_tracker: &ErrorTracker,
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_error_tracker`
+
+warning: unused variable: `throughput_tracker`
+   --> sqlitegraph/src/backend/native/v2/wal/metrics/analysis.rs:699:9
+    |
+699 |         throughput_tracker: &ThroughputTracker,
+    |         ^^^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_throughput_tracker`
+
+warning: function `unlikely` is never used
+  --> sqlitegraph/src/backend/native/adjacency/mod.rs:58:15
+   |
+58 | pub(crate) fn unlikely(cond: bool) -> bool {
+   |               ^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: fields `cached_node` and `node_hot` are never read
+  --> sqlitegraph/src/backend/native/adjacency/core_iterator.rs:35:16
+   |
+21 | pub struct AdjacencyIterator<'a> {
+   |            ----------------- fields in this struct
+...
+35 |     pub(crate) cached_node: Option<NodeRecord>,
+   |                ^^^^^^^^^^^
+...
+39 |     pub(crate) node_hot: Option<NodeHot>,
+   |                ^^^^^^^^
+
+warning: method `reset` is never used
+  --> sqlitegraph/src/backend/native/adjacency/instrumentation.rs:95:12
+   |
+29 | impl AdjacencyMetrics {
+   | --------------------- method in this implementation
+...
+95 |     pub fn reset(&self) {
+   |            ^^^^^
+
+warning: field `total_collect_operations` is never read
+   --> sqlitegraph/src/backend/native/adjacency/instrumentation.rs:112:9
+    |
+109 | pub struct MetricsSnapshot {
+    |            --------------- field in this struct
+...
+112 |     pub total_collect_operations: usize,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `MetricsSnapshot` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: method `has_warnings` is never used
+   --> sqlitegraph/src/backend/native/adjacency/instrumentation.rs:257:12
+    |
+234 | impl ValidationReport {
+    | --------------------- method in this implementation
+...
+257 |     pub fn has_warnings(&self) -> bool {
+    |            ^^^^^^^^^^^^
+
+warning: fields `current_index` and `total_count` are never read
+   --> sqlitegraph/src/backend/native/adjacency/instrumentation.rs:264:24
+    |
+264 |     IndexOutOfBounds { current_index: u32, total_count: u32 },
+    |     ----------------   ^^^^^^^^^^^^^       ^^^^^^^^^^^
+    |     |
+    |     fields in this variant
+    |
+    = note: `ValidationError` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: fields `current_index` and `cached_len` are never read
+   --> sqlitegraph/src/backend/native/adjacency/instrumentation.rs:265:24
+    |
+265 |     IndexBeyondCache { current_index: u32, cached_len: usize },
+    |     ----------------   ^^^^^^^^^^^^^       ^^^^^^^^^^
+    |     |
+    |     fields in this variant
+    |
+    = note: `ValidationError` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `total_count` is never read
+   --> sqlitegraph/src/backend/native/adjacency/instrumentation.rs:266:30
+    |
+266 |     EmptyCacheNonZeroCount { total_count: u32 },
+    |     ----------------------   ^^^^^^^^^^^
+    |     |
+    |     field in this variant
+    |
+    = note: `ValidationError` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: fields `cached_len` and `total_count` are never read
+   --> sqlitegraph/src/backend/native/adjacency/instrumentation.rs:271:30
+    |
+271 |     InconsistentCacheState { cached_len: usize, total_count: u32 },
+    |     ----------------------   ^^^^^^^^^^         ^^^^^^^^^^^
+    |     |
+    |     fields in this variant
+    |
+    = note: `ValidationWarning` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: method `clear_v2_cluster_metadata_on_rollback` is never used
+   --> sqlitegraph/src/backend/native/graph_file/mod.rs:111:8
+    |
+ 98 | impl GraphFile {
+    | -------------- method in this implementation
+...
+111 |     fn clear_v2_cluster_metadata_on_rollback(&mut self) -> NativeResult<()> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: associated function `begin_cluster_commit` is never used
+   --> sqlitegraph/src/backend/native/graph_file/file_lifecycle.rs:182:8
+    |
+ 21 | impl FileLifecycleManager {
+    | ------------------------- associated function in this implementation
+...
+182 |     fn begin_cluster_commit(
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: method `direct_read_with_sync` is never used
+   --> sqlitegraph/src/backend/native/graph_file/memory_resource_manager/operations.rs:185:8
+    |
+ 17 | impl<'a> MemoryResourceManager<'a> {
+    | ---------------------------------- method in this implementation
+...
+185 |     fn direct_read_with_sync(
+    |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: method `initialize_v2_header` is never used
+   --> sqlitegraph/src/backend/native/graph_file/graph_file_core.rs:155:8
+    |
+ 19 | impl GraphFile {
+    | -------------- method in this implementation
+...
+155 |     fn initialize_v2_header(&mut self) {
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: method `validate_node_fields` is never used
+   --> sqlitegraph/src/backend/native/node_store.rs:423:8
+    |
+ 18 | impl<'a> NodeStore<'a> {
+    | ---------------------- method in this implementation
+...
+423 |     fn validate_node_fields(&self, node: &NodeRecord) -> NativeResult<()> {
+    |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: field `strict_guard` is never read
+  --> sqlitegraph/src/backend/native/v2/edge_cluster/cluster_trace.rs:28:5
+   |
+27 | pub struct TraceGuard {
+   |            ---------- field in this struct
+28 |     strict_guard: StrictModeGuard,
+   |     ^^^^^^^^^^^^
+
+warning: function `strict_mode_enabled` is never used
+  --> sqlitegraph/src/backend/native/v2/edge_cluster/cluster_trace.rs:78:8
+   |
+78 | pub fn strict_mode_enabled() -> bool {
+   |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `with_trace_context` is never used
+  --> sqlitegraph/src/backend/native/v2/edge_cluster/cluster_trace.rs:83:8
+   |
+83 | pub fn with_trace_context<F: FnOnce(&TraceContext)>(f: F) {
+   |        ^^^^^^^^^^^^^^^^^^
+
+warning: function `current_trace_context` is never used
+  --> sqlitegraph/src/backend/native/v2/edge_cluster/cluster_trace.rs:92:8
+   |
+92 | pub fn current_trace_context() -> Option<TraceContext> {
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `format_strict_reason` is never used
+  --> sqlitegraph/src/backend/native/v2/edge_cluster/cluster_trace.rs:97:8
+   |
+97 | pub fn format_strict_reason(
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: fields `config` and `header` are never read
+  --> sqlitegraph/src/backend/native/v2/wal/manager.rs:14:5
+   |
+12 | pub struct V2WALManager {
+   |            ------------ fields in this struct
+13 |     /// WAL configuration
+14 |     config: V2WALConfig,
+   |     ^^^^^^
+...
+20 |     header: V2WALHeader,
+   |     ^^^^^^
+
+warning: field `config` is never read
+  --> sqlitegraph/src/backend/native/v2/wal/writer.rs:23:5
+   |
+21 | pub struct V2WALWriter {
+   |            ----------- field in this struct
+22 |     /// Configuration parameters
+23 |     config: V2WALConfig,
+   |     ^^^^^^
+
+warning: fields `lsn`, `timestamp`, and `committed` are never read
+  --> sqlitegraph/src/backend/native/v2/wal/writer.rs:70:5
+   |
+65 | struct BufferedRecord {
+   |        -------------- fields in this struct
+...
+70 |     lsn: u64,
+   |     ^^^
+...
+73 |     timestamp: Instant,
+   |     ^^^^^^^^^
+...
+76 |     committed: bool,
+   |     ^^^^^^^^^
+   |
+   = note: `BufferedRecord` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: fields `last_commit` and `active_transactions` are never read
+  --> sqlitegraph/src/backend/native/v2/wal/writer.rs:92:5
+   |
+81 | struct GroupCommitState {
+   |        ---------------- fields in this struct
+...
+92 |     last_commit: Instant,
+   |     ^^^^^^^^^^^
+...
+95 |     active_transactions: u32,
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `GroupCommitState` has a derived impl for the trait `Debug`, but this is intentionally ignored during dead code analysis
+
+warning: field `config` is never read
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:49:5
+   |
+47 | pub struct V2WALCheckpointManager {
+   |            ---------------------- field in this struct
+48 |     /// WAL configuration
+49 |     config: V2WALConfig,
+   |     ^^^^^^
+
+warning: methods `apply_cluster_update`, `apply_cluster_delete`, and `apply_string_table_delete` are never used
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:878:8
+    |
+361 | impl V2GraphIntegrator {
+    | ---------------------- methods in this implementation
+...
+878 |     fn apply_cluster_update(&mut self, node_id: u64, direction: u8, cluster_offset: u64, cluster_size: u64, edge_data: &[u8], _lsn: u64) ...
+    |        ^^^^^^^^^^^^^^^^^^^^
+...
+883 |     fn apply_cluster_delete(&mut self, node_id: u64, direction: u8, cluster_offset: u64, _lsn: u64) -> CheckpointResult<()> {
+    |        ^^^^^^^^^^^^^^^^^^^^
+...
+937 |     fn apply_string_table_delete(&mut self, string_id: u64, _lsn: u64) -> CheckpointResult<()> {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `config` is never read
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/mod.rs:52:5
+   |
+51 | pub struct CheckpointValidator {
+   |            ------------------- field in this struct
+52 |     config: V2WALConfig,
+   |     ^^^^^^
+
+warning: field `config` is never read
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/consistency.rs:77:5
+   |
+76 | pub struct CheckpointConsistencyValidator {
+   |            ------------------------------ field in this struct
+77 |     config: V2WALConfig,
+   |     ^^^^^^
+
+warning: field `config` is never read
+  --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:69:5
+   |
+68 | pub struct V2InvariantValidator {
+   |            -------------------- field in this struct
+69 |     config: V2WALConfig,
+   |     ^^^^^^
+
+warning: field `config` is never read
+   --> sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/reporting.rs:102:5
+    |
+101 | pub struct CheckpointValidationReporter {
+    |            ---------------------------- field in this struct
+102 |     config: V2WALConfig,
+    |     ^^^^^^
+
+warning: fields `config` and `backup_path` are never read
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/core.rs:94:5
+    |
+ 93 | pub struct V2WALRecoveryEngine {
+    |            ------------------- fields in this struct
+ 94 |     config: V2WALConfig,
+    |     ^^^^^^
+...
+101 |     backup_path: Option<PathBuf>,
+    |     ^^^^^^^^^^^
+
+warning: fields `offset`, `size`, `edge_count`, `last_modified_lsn`, and `created_lsn` are never read
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:105:5
+    |
+104 | struct ClusterMetadata {
+    |        --------------- fields in this struct
+105 |     offset: u64,
+    |     ^^^^^^
+106 |     size: u32,
+    |     ^^^^
+107 |     edge_count: u32,
+    |     ^^^^^^^^^^
+108 |     last_modified_lsn: u64,
+    |     ^^^^^^^^^^^^^^^^^
+109 |     created_lsn: u64,
+    |     ^^^^^^^^^^^
+    |
+    = note: `ClusterMetadata` has derived impls for the traits `Clone` and `Debug`, but these are intentionally ignored during dead code analysis
+
+warning: fields `database_path`, `edge_store`, `string_table`, and `free_space_manager` are never read
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:104:5
+    |
+102 | pub struct V2GraphFileReplayer {
+    |            ------------------- fields in this struct
+103 |     /// Database file path
+104 |     database_path: PathBuf,
+    |     ^^^^^^^^^^^^^
+...
+110 |     edge_store: Arc<Mutex<EdgeStore<'static>>>,
+    |     ^^^^^^^^^^
+111 |     /// String table for V2 operations
+112 |     string_table: Arc<Mutex<StringTable>>,
+    |     ^^^^^^^^^^^^
+113 |     /// Free space manager for V2 operations
+114 |     free_space_manager: Arc<Mutex<FreeSpaceManager>>,
+    |     ^^^^^^^^^^^^^^^^^^
+
+warning: method `underlying_connection` is never used
+  --> sqlitegraph/src/graph/adjacency.rs:15:19
+   |
+ 9 | impl SqliteGraph {
+   | ---------------- method in this implementation
+...
+15 |     pub(crate) fn underlying_connection(&self) -> &rusqlite::Connection {
+   |                   ^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `EdgeId` is never constructed
+ --> sqlitegraph/src/api_ergonomics.rs:7:12
+  |
+7 | pub struct EdgeId(pub i64);
+  |            ^^^^^^
+
+warning: variant `Phase75V2ClusterMetadataBeforeCommit` is never constructed
+  --> sqlitegraph/src/fault_injection.rs:13:5
+   |
+ 9 | pub enum FaultPoint {
+   |          ---------- variant in this enum
+...
+13 |     Phase75V2ClusterMetadataBeforeCommit,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `FaultPoint` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: function `reset_faults` is never used
+  --> sqlitegraph/src/fault_injection.rs:25:8
+   |
+25 | pub fn reset_faults() {
+   |        ^^^^^^^^^^^^
+
+warning: function `configure_fault` is never used
+  --> sqlitegraph/src/fault_injection.rs:29:8
+   |
+29 | pub fn configure_fault(point: FaultPoint, failures: usize) {
+   |        ^^^^^^^^^^^^^^^
+
+warning: method `validate_search_parameters` is never used
+   --> sqlitegraph/src/hnsw/neighborhood.rs:394:8
+    |
+207 | impl NeighborhoodSearch {
+    | ----------------------- method in this implementation
+...
+394 |     fn validate_search_parameters(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: comparison is useless due to type limits
+   --> sqlitegraph/src/backend/native/graph_file/node_edge_access.rs:216:9
+    |
+216 |         node.outgoing_cluster_offset >= 0 &&
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: comparison is useless due to type limits
+   --> sqlitegraph/src/backend/native/graph_file/node_edge_access.rs:217:9
+    |
+217 |         node.incoming_cluster_offset >= 0 &&
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: comparison is useless due to type limits
+   --> sqlitegraph/src/backend/native/graph_file/node_edge_access.rs:218:9
+    |
+218 |         node.outgoing_edge_count >= 0 &&
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: comparison is useless due to type limits
+   --> sqlitegraph/src/backend/native/graph_file/node_edge_access.rs:219:9
+    |
+219 |         node.incoming_edge_count >= 0
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused `Result` that must be used
+  --> sqlitegraph/src/backend/native/graph_file/graph_file_core.rs:81:9
+   |
+81 |         coordinator.begin_transaction(tx_id);
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: this `Result` may be an `Err` variant, which should be handled
+   = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+   |
+81 |         let _ = coordinator.begin_transaction(tx_id);
+   |         +++++++
+
+warning: comparison is useless due to type limits
+   --> sqlitegraph/src/backend/native/graph_validation.rs:225:8
+    |
+225 |     if header.node_count < 0 || header.edge_count < 0 {
+    |        ^^^^^^^^^^^^^^^^^^^^^
+
+warning: comparison is useless due to type limits
+   --> sqlitegraph/src/backend/native/graph_validation.rs:225:33
+    |
+225 |     if header.node_count < 0 || header.edge_count < 0 {
+    |                                 ^^^^^^^^^^^^^^^^^^^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> sqlitegraph/src/backend/native/v2/wal/reader.rs:379:17
+    |
+379 |     pub fn iter(&mut self) -> WALRecordIterator {
+    |                 ^^^^^^^^^     ^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                 |
+    |                 the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+    = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+    |
+379 |     pub fn iter(&mut self) -> WALRecordIterator<'_> {
+    |                                                ++++
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+   --> sqlitegraph/src/backend/native/v2/wal/reader.rs:387:23
+    |
+387 |     pub fn iter_until(&mut self, end_lsn: u64) -> WALRecordIterator {
+    |                       ^^^^^^^^^                   ^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+    |                       |
+    |                       the lifetime is elided here
+    |
+    = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+help: use `'_` for type paths
+    |
+387 |     pub fn iter_until(&mut self, end_lsn: u64) -> WALRecordIterator<'_> {
+    |                                                                    ++++
+
+warning: the type `NodeStore<'_>` does not permit zero-initialization
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:166:35
+    |
+166 |         let node_store = unsafe { std::mem::zeroed() }; // Placeholder - will be properly initialized
+    |                                   ^^^^^^^^^^^^^^^^^^
+    |                                   |
+    |                                   this code causes undefined behavior when executed
+    |                                   help: use `MaybeUninit<T>` instead, and only call `assume_init` after initialization is done
+    |
+note: references must be non-null (in this struct field)
+   --> sqlitegraph/src/backend/native/node_store.rs:14:5
+    |
+ 14 |     graph_file: &'a mut GraphFile,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: `#[warn(invalid_value)]` on by default
+
+warning: the type `EdgeStore<'_>` does not permit zero-initialization
+   --> sqlitegraph/src/backend/native/v2/wal/recovery/replayer.rs:167:35
+    |
+167 |         let edge_store = unsafe { std::mem::zeroed() };  // Placeholder - will be properly initialized
+    |                                   ^^^^^^^^^^^^^^^^^^
+    |                                   |
+    |                                   this code causes undefined behavior when executed
+    |                                   help: use `MaybeUninit<T>` instead, and only call `assume_init` after initialization is done
+    |
+    = note: `backend::native::edge_store::EdgeStore<'_>` must be non-null
+note: because references must be non-null (in this struct field)
+   --> sqlitegraph/src/backend/native/edge_store/mod.rs:34:5
+    |
+ 34 |     graph_file: &'a mut crate::backend::native::graph_file::GraphFile,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `sqlitegraph` (lib) generated 252 warnings (run `cargo fix --lib -p sqlitegraph` to apply 128 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.04s

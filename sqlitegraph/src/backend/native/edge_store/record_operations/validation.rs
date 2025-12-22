@@ -4,7 +4,7 @@
 //? ID checking, and size limits.
 
 use crate::backend::native::constants::edge;
-use crate::backend::native::types::{NativeResult, EdgeRecord, NativeBackendError};
+use crate::backend::native::types::{EdgeRecord, NativeBackendError, NativeResult};
 
 /// Edge record validation utilities
 pub struct EdgeValidator;
@@ -36,7 +36,11 @@ impl EdgeValidator {
         // Validate node IDs are positive
         if edge.from_id <= 0 || edge.to_id <= 0 {
             return Err(NativeBackendError::InvalidNodeId {
-                id: if edge.from_id <= 0 { edge.from_id } else { edge.to_id },
+                id: if edge.from_id <= 0 {
+                    edge.from_id
+                } else {
+                    edge.to_id
+                },
                 max_id: 0,
             });
         }

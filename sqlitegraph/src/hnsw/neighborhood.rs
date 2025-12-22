@@ -19,10 +19,10 @@
 //! - **Deterministic**: Predictable search results with stable sorting
 //! - **Scalable**: Efficient for both small and large result sets
 
-use std::collections::HashSet;
 use crate::hnsw::distance_metric::{DistanceMetric, compute_distance};
 use crate::hnsw::errors::{HnswError, HnswIndexError};
 use crate::hnsw::layer::HnswLayer;
+use std::collections::HashSet;
 
 /// Search candidate for k-NN algorithms
 ///
@@ -65,7 +65,7 @@ impl PartialOrd for SearchCandidate {
         // We want: c2 < c1 when c2.distance < c1.distance
         match self.distance.partial_cmp(&other.distance) {
             Some(std::cmp::Ordering::Equal) => Some(self.node_id.cmp(&other.node_id)),
-            Some(ord) => Some(ord),  // Keep natural ordering for distances
+            Some(ord) => Some(ord), // Keep natural ordering for distances
             None => None,
         }
     }
@@ -293,7 +293,8 @@ impl NeighborhoodSearch {
         // Add entry points to candidate list
         for &entry_point in entry_points {
             if layer.contains_node(entry_point) {
-                let distance = self.compute_distance(query_vector, &vectors[entry_point as usize])?;
+                let distance =
+                    self.compute_distance(query_vector, &vectors[entry_point as usize])?;
                 candidates.push(SearchCandidate::new(entry_point, distance, layer.level()));
                 visited.insert(entry_point);
             }
@@ -306,7 +307,8 @@ impl NeighborhoodSearch {
         while !candidates.is_empty() && result_candidates.len() < k + layer.max_connections() {
             // Find best candidate (smallest distance)
             candidates.sort_by(|a, b| {
-                a.distance.partial_cmp(&b.distance)
+                a.distance
+                    .partial_cmp(&b.distance)
                     .unwrap_or(std::cmp::Ordering::Equal)
                     .then_with(|| a.node_id.cmp(&b.node_id))
             });
@@ -320,15 +322,9 @@ impl NeighborhoodSearch {
                 for &neighbor_id in connections {
                     if !visited.contains(&neighbor_id) {
                         visited.insert(neighbor_id);
-                        let distance = self.compute_distance(
-                            query_vector,
-                            &vectors[neighbor_id as usize]
-                        )?;
-                        candidates.push(SearchCandidate::new(
-                            neighbor_id,
-                            distance,
-                            layer.level()
-                        ));
+                        let distance =
+                            self.compute_distance(query_vector, &vectors[neighbor_id as usize])?;
+                        candidates.push(SearchCandidate::new(neighbor_id, distance, layer.level()));
                     }
                 }
             }
@@ -336,7 +332,8 @@ impl NeighborhoodSearch {
 
         // Sort results by distance and select top k
         result_candidates.sort_by(|a, b| {
-            a.distance.partial_cmp(&b.distance)
+            a.distance
+                .partial_cmp(&b.distance)
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then_with(|| a.node_id.cmp(&b.node_id))
         });
@@ -344,15 +341,16 @@ impl NeighborhoodSearch {
         result_candidates.truncate(k);
 
         // Extract neighbors and distances
-        let neighbors: Vec<u64> = result_candidates.iter()
-            .map(|c| c.node_id)
-            .collect();
-        let distances: Vec<f32> = result_candidates.iter()
-            .map(|c| c.distance)
-            .collect();
+        let neighbors: Vec<u64> = result_candidates.iter().map(|c| c.node_id).collect();
+        let distances: Vec<f32> = result_candidates.iter().map(|c| c.distance).collect();
 
         metrics.search_depth = visited.len();
-        Ok(SearchResult::new(neighbors, distances, candidates_examined, metrics))
+        Ok(SearchResult::new(
+            neighbors,
+            distances,
+            candidates_examined,
+            metrics,
+        ))
     }
 
     /// Compute distance between query and target vectors
@@ -377,7 +375,11 @@ impl NeighborhoodSearch {
             }));
         }
 
-        Ok(compute_distance(self.distance_metric, query_vector, target_vector))
+        Ok(compute_distance(
+            self.distance_metric,
+            query_vector,
+            target_vector,
+        ))
     }
 
     /// Validate search parameters
@@ -426,11 +428,11 @@ mod tests {
 
     fn create_test_vectors() -> Vec<Vec<f32>> {
         vec![
-            vec![1.0, 0.0, 0.0],  // Node 0
-            vec![0.0, 1.0, 0.0],  // Node 1
-            vec![0.0, 0.0, 1.0],  // Node 2
-            vec![1.0, 1.0, 0.0],  // Node 3
-            vec![0.5, 0.5, 0.5],  // Node 4
+            vec![1.0, 0.0, 0.0], // Node 0
+            vec![0.0, 1.0, 0.0], // Node 1
+            vec![0.0, 0.0, 1.0], // Node 2
+            vec![1.0, 1.0, 0.0], // Node 3
+            vec![0.5, 0.5, 0.5], // Node 4
         ]
     }
 
@@ -473,9 +475,9 @@ mod tests {
         println!("c2 < c1: {}", c2 < c1);
 
         // Min-heap ordering (smaller distance = higher priority)
-        assert!(c2 < c1);  // 0.5 < 0.9
-        assert!(c2 < c3);  // 0.5 < 0.7
-        assert!(c3 < c1);  // 0.7 < 0.9
+        assert!(c2 < c1); // 0.5 < 0.9
+        assert!(c2 < c3); // 0.5 < 0.7
+        assert!(c3 < c1); // 0.7 < 0.9
     }
 
     #[test]
@@ -499,9 +501,11 @@ mod tests {
         let search = NeighborhoodSearch::new(DistanceMetric::Cosine);
         let vectors = create_test_vectors();
         let layer = create_test_layer();
-        let query_vector = vec![1.0, 0.0, 0.0];  // Similar to node 0
+        let query_vector = vec![1.0, 0.0, 0.0]; // Similar to node 0
 
-        let result = search.search_layer(&layer, &query_vector, &vectors, &[0], 3).unwrap();
+        let result = search
+            .search_layer(&layer, &query_vector, &vectors, &[0], 3)
+            .unwrap();
 
         assert_eq!(result.len(), 3);
         assert_eq!(result.neighbors().len(), 3);
@@ -519,7 +523,9 @@ mod tests {
         let layer = create_test_layer();
         let query_vector = vec![1.0, 0.0, 0.0];
 
-        let result = search.search_layer(&layer, &query_vector, &vectors, &[0], 0).unwrap();
+        let result = search
+            .search_layer(&layer, &query_vector, &vectors, &[0], 0)
+            .unwrap();
 
         assert!(result.is_empty());
         assert_eq!(result.len(), 0);
@@ -546,7 +552,7 @@ mod tests {
     fn test_search_layer_empty_layer() {
         let search = NeighborhoodSearch::new(DistanceMetric::Cosine);
         let vectors = vec![];
-        let mut layer = HnswLayer::new(0, 4);  // Empty layer
+        let mut layer = HnswLayer::new(0, 4); // Empty layer
         let query_vector = vec![1.0, 0.0, 0.0];
 
         let result = search.search_layer(&layer, &query_vector, &vectors, &[0], 3);
@@ -560,12 +566,8 @@ mod tests {
 
     #[test]
     fn test_search_result_accessors() {
-        let result = SearchResult::new(
-            vec![1, 2, 3],
-            vec![0.1, 0.2, 0.3],
-            10,
-            SearchMetrics::new()
-        );
+        let result =
+            SearchResult::new(vec![1, 2, 3], vec![0.1, 0.2, 0.3], 10, SearchMetrics::new());
 
         assert_eq!(result.len(), 3);
         assert!(!result.is_empty());
@@ -609,15 +611,18 @@ mod tests {
     #[test]
     fn test_compute_distance_dimension_mismatch() {
         let search = NeighborhoodSearch::new(DistanceMetric::Euclidean);
-        let query = vec![1.0, 0.0, 0.0];      // 3D
-        let target = vec![1.0, 0.0];           // 2D
+        let query = vec![1.0, 0.0, 0.0]; // 3D
+        let target = vec![1.0, 0.0]; // 2D
 
         let result = search.compute_distance(&query, &target);
 
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            HnswError::Index(HnswIndexError::VectorDimensionMismatch { expected: 3, actual: 2 })
+            HnswError::Index(HnswIndexError::VectorDimensionMismatch {
+                expected: 3,
+                actual: 2
+            })
         ));
     }
 
@@ -625,24 +630,34 @@ mod tests {
     fn test_different_distance_metrics() {
         let vectors = create_test_vectors();
         let layer = create_test_layer();
-        let query_vector = vec![0.3, 0.7, 0.2];  // Non-matching query
+        let query_vector = vec![0.3, 0.7, 0.2]; // Non-matching query
 
         // Test with Euclidean distance
         let euclidean_search = NeighborhoodSearch::new(DistanceMetric::Euclidean);
-        let euclidean_result = euclidean_search.search_layer(&layer, &query_vector, &vectors, &[0], 1).unwrap();
+        let euclidean_result = euclidean_search
+            .search_layer(&layer, &query_vector, &vectors, &[0], 1)
+            .unwrap();
 
         // Test with Manhattan distance
         let manhattan_search = NeighborhoodSearch::new(DistanceMetric::Manhattan);
-        let manhattan_result = manhattan_search.search_layer(&layer, &query_vector, &vectors, &[0], 1).unwrap();
+        let manhattan_result = manhattan_search
+            .search_layer(&layer, &query_vector, &vectors, &[0], 1)
+            .unwrap();
 
         // Test that both metrics work and produce valid results
         assert_eq!(euclidean_result.len(), 1);
         assert_eq!(manhattan_result.len(), 1);
 
         // Both should find the same nearest neighbor (deterministic ordering)
-        assert_eq!(euclidean_result.neighbors()[0], manhattan_result.neighbors()[0]);
+        assert_eq!(
+            euclidean_result.neighbors()[0],
+            manhattan_result.neighbors()[0]
+        );
 
         // Distances should be different for different metrics
-        assert_ne!(euclidean_result.distances()[0], manhattan_result.distances()[0]);
+        assert_ne!(
+            euclidean_result.distances()[0],
+            manhattan_result.distances()[0]
+        );
     }
 }

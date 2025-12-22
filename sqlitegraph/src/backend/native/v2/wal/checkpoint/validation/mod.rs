@@ -21,29 +21,31 @@
 
 // Re-export all public types and functions for backward compatibility
 pub use self::rules::{
-    ValidationRule, ValidationRuleEngine, ValidationSeverity, ValidationConfig,
-    ValidationContext, FileValidationRules,
+    FileValidationRules, ValidationConfig, ValidationContext, ValidationRule, ValidationRuleEngine,
+    ValidationSeverity,
 };
 
 pub use self::consistency::{
-    ConsistencyResult, ConsistencyViolation, ConsistencyViolationType, ConsistencySeverity,
-    CheckpointConsistencyValidator, ConsistencyUtils,
+    CheckpointConsistencyValidator, ConsistencyResult, ConsistencySeverity, ConsistencyUtils,
+    ConsistencyViolation, ConsistencyViolationType,
 };
 
 pub use self::invariants::{
-    V2InvariantResult, V2InvariantViolation, V2InvariantViolationType,
-    V2InvariantValidator, V2InvariantUtils, V2InvariantSeverity, V2InvariantSummary,
+    V2InvariantResult, V2InvariantSeverity, V2InvariantSummary, V2InvariantUtils,
+    V2InvariantValidator, V2InvariantViolation, V2InvariantViolationType,
 };
 
 pub use self::reporting::{
-    CheckpointValidationReport, ValidationStatus, PerformanceMetrics, AnomalySummary,
-    ValidationSummary, CheckpointValidationReporter, ValidationReportUtils, TrendAnalysis,
+    AnomalySummary, CheckpointValidationReport, CheckpointValidationReporter, PerformanceMetrics,
+    TrendAnalysis, ValidationReportUtils, ValidationStatus, ValidationSummary,
 };
 
 // Re-export the main checkpoint validator types for backward compatibility
-use crate::backend::native::v2::wal::checkpoint::errors::{CheckpointError, CheckpointResult};
-use crate::backend::native::v2::wal::checkpoint::core::{DirtyBlockTracker, CheckpointProgress, CheckpointState};
 use crate::backend::native::v2::wal::V2WALConfig;
+use crate::backend::native::v2::wal::checkpoint::core::{
+    CheckpointProgress, CheckpointState, DirtyBlockTracker,
+};
+use crate::backend::native::v2::wal::checkpoint::errors::{CheckpointError, CheckpointResult};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -74,7 +76,10 @@ impl CheckpointValidator {
     }
 
     /// Validate checkpoint file integrity (backward compatibility method)
-    pub fn validate_checkpoint_file(&self, checkpoint_path: &std::path::Path) -> CheckpointResult<bool> {
+    pub fn validate_checkpoint_file(
+        &self,
+        checkpoint_path: &std::path::Path,
+    ) -> CheckpointResult<bool> {
         // Basic file existence check
         if !checkpoint_path.exists() {
             return Ok(false);
@@ -85,8 +90,9 @@ impl CheckpointValidator {
 
         // Open file and validate format
         use std::fs::File;
-        let mut file = File::open(checkpoint_path)
-            .map_err(|e| CheckpointError::validation(format!("Failed to open checkpoint file: {}", e)))?;
+        let mut file = File::open(checkpoint_path).map_err(|e| {
+            CheckpointError::validation(format!("Failed to open checkpoint file: {}", e))
+        })?;
 
         FileValidationRules::validate_magic_number(&mut file)?;
         FileValidationRules::validate_version(&mut file)?;
@@ -103,13 +109,13 @@ impl CheckpointValidator {
         checkpoint_lsn_range: (u64, u64),
         last_checkpointed_lsn: u64,
     ) -> CheckpointResult<()> {
-        let result = self.consistency_validator.validate_checkpoint_consistency(
-            checkpoint_lsn_range,
-            last_checkpointed_lsn,
-        );
+        let result = self
+            .consistency_validator
+            .validate_checkpoint_consistency(checkpoint_lsn_range, last_checkpointed_lsn);
 
         if !result.is_consistent {
-            let error_msg = result.violations
+            let error_msg = result
+                .violations
                 .first()
                 .map(|v| v.description.clone())
                 .unwrap_or_else(|| "Consistency validation failed".to_string());
@@ -132,8 +138,7 @@ impl CheckpointValidator {
         if total_blocks > max_pending_blocks {
             return Err(CheckpointError::validation(format!(
                 "Too many pending dirty blocks: {} (maximum: {})",
-                total_blocks,
-                max_pending_blocks
+                total_blocks, max_pending_blocks
             )));
         }
 
@@ -141,8 +146,7 @@ impl CheckpointValidator {
         if global_blocks as u64 > MAX_GLOBAL_DIRTY_BLOCKS as u64 {
             return Err(CheckpointError::validation(format!(
                 "Too many global dirty blocks: {} (maximum: {})",
-                global_blocks as u64,
-                MAX_GLOBAL_DIRTY_BLOCKS
+                global_blocks as u64, MAX_GLOBAL_DIRTY_BLOCKS
             )));
         }
 
@@ -153,22 +157,25 @@ impl CheckpointValidator {
     pub fn validate_comprehensive(
         &self,
         checkpoint_path: &std::path::Path,
-        dirty_blocks: &DirtyBlockTracker,
-        checkpoint_state: &CheckpointState,
-        checkpoint_progress: &CheckpointProgress,
+        _dirty_blocks: &DirtyBlockTracker,
+        _checkpoint_state: &CheckpointState,
+        _checkpoint_progress: &CheckpointProgress,
         checkpoint_lsn_range: (u64, u64),
         last_checkpointed_lsn: u64,
         checkpoint_duration: Duration,
-        max_pending_blocks: u64,
+        _max_pending_blocks: u64,
     ) -> CheckpointResult<CheckpointValidationReport> {
         // Validate V2 invariants
-        let v2_invariant_result = Some(self.invariants_validator.validate_v2_metadata(checkpoint_path)?);
+        let v2_invariant_result = Some(
+            self.invariants_validator
+                .validate_v2_metadata(checkpoint_path)?,
+        );
 
         // Validate consistency
-        let consistency_result = Some(self.consistency_validator.validate_checkpoint_consistency(
-            checkpoint_lsn_range,
-            last_checkpointed_lsn,
-        ));
+        let consistency_result = Some(
+            self.consistency_validator
+                .validate_checkpoint_consistency(checkpoint_lsn_range, last_checkpointed_lsn),
+        );
 
         // Generate report
         let report = self.reporter.generate_validation_report(
@@ -184,7 +191,7 @@ impl CheckpointValidator {
             ValidationStatus::CriticalFailure | ValidationStatus::Failed => {
                 let error_msg = format!("Validation failed: {:?}", report.validation_status);
                 Err(CheckpointError::validation(error_msg))
-            },
+            }
             _ => Ok(report),
         }
     }
@@ -302,7 +309,9 @@ impl CheckpointMetrics {
     ) -> CheckpointResult<()> {
         let duration_ms = start_time.elapsed().as_millis() as u64;
 
-        let mut metrics = self.metrics.lock()
+        let mut metrics = self
+            .metrics
+            .lock()
             .map_err(|e| CheckpointError::validation(format!("Failed to lock metrics: {}", e)))?;
 
         metrics.total_checkpoints += 1;
@@ -310,25 +319,25 @@ impl CheckpointMetrics {
         // Update averages using exponential smoothing
         let alpha = METRICS_SMOOTHING_ALPHA;
 
-        metrics.avg_checkpoint_duration_ms =
-            ((metrics.avg_checkpoint_duration_ms as f64 * (1.0 - alpha)) +
-             (duration_ms as f64 * alpha)) as u64;
+        metrics.avg_checkpoint_duration_ms = ((metrics.avg_checkpoint_duration_ms as f64
+            * (1.0 - alpha))
+            + (duration_ms as f64 * alpha)) as u64;
 
         metrics.avg_blocks_per_checkpoint =
-            ((metrics.avg_blocks_per_checkpoint as f64 * (1.0 - alpha)) +
-             (progress.flushed_blocks as f64 * alpha)) as u64;
+            ((metrics.avg_blocks_per_checkpoint as f64 * (1.0 - alpha))
+                + (progress.flushed_blocks as f64 * alpha)) as u64;
 
         metrics.avg_records_per_checkpoint =
-            ((metrics.avg_records_per_checkpoint as f64 * (1.0 - alpha)) +
-             (progress.total_records as f64 * alpha)) as u64;
+            ((metrics.avg_records_per_checkpoint as f64 * (1.0 - alpha))
+                + (progress.total_records as f64 * alpha)) as u64;
 
         // Calculate throughput
         if duration_ms > 0 {
             let bytes_processed = progress.total_records * 100;
-            let mb_per_second = (bytes_processed as f64) / (1024.0 * 1024.0) / (duration_ms as f64 / 1000.0);
+            let mb_per_second =
+                (bytes_processed as f64) / (1024.0 * 1024.0) / (duration_ms as f64 / 1000.0);
             metrics.checkpoint_throughput_mbps =
-                ((metrics.checkpoint_throughput_mbps * (1.0 - alpha)) +
-                 (mb_per_second * alpha));
+                (metrics.checkpoint_throughput_mbps * (1.0 - alpha)) + (mb_per_second * alpha);
         }
 
         metrics.last_checkpoint_timestamp = Some(SystemTime::now());
@@ -354,22 +363,31 @@ impl CheckpointMetrics {
     ) {
         let detector = &mut metrics.anomaly_detector;
 
-        if duration_ms as f64 > detector.baseline_duration_ms as f64 * detector.duration_anomaly_threshold {
+        if duration_ms as f64
+            > detector.baseline_duration_ms as f64 * detector.duration_anomaly_threshold
+        {
             detector.duration_anomalies += 1;
         }
 
-        if metrics.checkpoint_throughput_mbps < detector.baseline_throughput_mbps * detector.throughput_anomaly_threshold {
+        if metrics.checkpoint_throughput_mbps
+            < detector.baseline_throughput_mbps * detector.throughput_anomaly_threshold
+        {
             detector.throughput_anomalies += 1;
         }
 
-        if progress.flushed_blocks as f64 > detector.baseline_blocks_per_checkpoint as f64 * detector.block_count_anomaly_threshold {
+        if progress.flushed_blocks as f64
+            > detector.baseline_blocks_per_checkpoint as f64
+                * detector.block_count_anomaly_threshold
+        {
             detector.block_count_anomalies += 1;
         }
     }
 
     /// Get current metrics snapshot
     pub fn get_metrics(&self) -> CheckpointResult<CheckpointMetricsData> {
-        let mut metrics = self.metrics.lock()
+        let mut metrics = self
+            .metrics
+            .lock()
             .map_err(|e| CheckpointError::validation(format!("Failed to lock metrics: {}", e)))?;
 
         // Update time since last checkpoint
@@ -385,7 +403,9 @@ impl CheckpointMetrics {
 
     /// Reset metrics to baseline
     pub fn reset_metrics(&self) -> CheckpointResult<()> {
-        let mut metrics = self.metrics.lock()
+        let mut metrics = self
+            .metrics
+            .lock()
             .map_err(|e| CheckpointError::validation(format!("Failed to lock metrics: {}", e)))?;
 
         *metrics = CheckpointMetricsData {
@@ -419,10 +439,12 @@ impl CheckpointMetrics {
                 throughput_anomalies: metrics.anomaly_detector.throughput_anomalies,
                 block_count_anomalies: metrics.anomaly_detector.block_count_anomalies,
                 anomaly_percentage: if metrics.total_checkpoints > 0 {
-                    ((metrics.anomaly_detector.duration_anomalies +
-                      metrics.anomaly_detector.throughput_anomalies +
-                      metrics.anomaly_detector.block_count_anomalies) as f64 /
-                     (metrics.total_checkpoints as f64 * 3.0)) * 100.0
+                    ((metrics.anomaly_detector.duration_anomalies
+                        + metrics.anomaly_detector.throughput_anomalies
+                        + metrics.anomaly_detector.block_count_anomalies)
+                        as f64
+                        / (metrics.total_checkpoints as f64 * 3.0))
+                        * 100.0
                 } else {
                     0.0
                 },
@@ -448,7 +470,7 @@ impl CheckpointCleanup {
     /// Clean up checkpointed dirty blocks from tracking (simplified version)
     pub fn clear_checkpointed_blocks(
         &self,
-        dirty_blocks: &mut DirtyBlockTracker,
+        _dirty_blocks: &mut DirtyBlockTracker,
         checkpointed_blocks: &[u64],
     ) -> CheckpointResult<()> {
         // This is a simplified implementation
@@ -457,7 +479,10 @@ impl CheckpointCleanup {
 
         if !checkpointed_blocks.is_empty() {
             // Log the cleanup operation (in real implementation, would actually clean up)
-            println!("Cleaning up {} checkpointed blocks", checkpointed_blocks.len());
+            println!(
+                "Cleaning up {} checkpointed blocks",
+                checkpointed_blocks.len()
+            );
         }
 
         Ok(())
@@ -470,8 +495,7 @@ impl CheckpointCleanup {
         last_checkpoint_time: SystemTime,
         max_wait_time: Duration,
     ) -> CheckpointResult<bool> {
-        let time_since_last = last_checkpoint_time.elapsed()
-            .unwrap_or(Duration::ZERO);
+        let time_since_last = last_checkpoint_time.elapsed().unwrap_or(Duration::ZERO);
 
         // Force checkpoint if it's been too long
         if time_since_last > max_wait_time {
@@ -480,14 +504,14 @@ impl CheckpointCleanup {
 
         // Check if checkpoint state indicates it's stuck (using public API)
         match state {
-            CheckpointState::Initializing |
-            CheckpointState::Collecting |
-            CheckpointState::Processing |
-            CheckpointState::Flushing => {
+            CheckpointState::Initializing
+            | CheckpointState::Collecting
+            | CheckpointState::Processing
+            | CheckpointState::Flushing => {
                 if time_since_last > Duration::from_millis(DEFAULT_CHECKPOINT_TIMEOUT_MS) {
                     return Ok(true);
                 }
-            },
+            }
             _ => {}
         }
 
@@ -495,22 +519,38 @@ impl CheckpointCleanup {
     }
 
     /// Cleanup old checkpoint files
-    pub fn cleanup_old_checkpoints(&self, max_checkpoints_to_keep: usize) -> CheckpointResult<usize> {
+    pub fn cleanup_old_checkpoints(
+        &self,
+        max_checkpoints_to_keep: usize,
+    ) -> CheckpointResult<usize> {
         use std::fs;
 
-        let checkpoint_dir = self.config.checkpoint_path.parent()
-            .ok_or_else(|| CheckpointError::validation("Invalid checkpoint path".to_string()))?;
+        let checkpoint_dir =
+            self.config.checkpoint_path.parent().ok_or_else(|| {
+                CheckpointError::validation("Invalid checkpoint path".to_string())
+            })?;
 
         let mut checkpoint_files = Vec::new();
 
         // Find all checkpoint files
-        for entry in fs::read_dir(checkpoint_dir)
-            .map_err(|e| CheckpointError::validation(format!("Failed to read checkpoint directory: {}", e)))? {
-            let entry = entry.map_err(|e| CheckpointError::validation(format!("Failed to read directory entry: {}", e)))?;
+        for entry in fs::read_dir(checkpoint_dir).map_err(|e| {
+            CheckpointError::validation(format!("Failed to read checkpoint directory: {}", e))
+        })? {
+            let entry = entry.map_err(|e| {
+                CheckpointError::validation(format!("Failed to read directory entry: {}", e))
+            })?;
             let path = entry.path();
 
             if let Some(filename) = path.file_name().and_then(|n| n.to_str()) {
-                if filename.ends_with(".checkpoint") && filename != self.config.checkpoint_path.file_name().and_then(|n| n.to_str()).unwrap_or("") {
+                if filename.ends_with(".checkpoint")
+                    && filename
+                        != self
+                            .config
+                            .checkpoint_path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("")
+                {
                     if let Ok(metadata) = fs::metadata(&path) {
                         if let Ok(modified) = metadata.modified() {
                             checkpoint_files.push((path, modified));
@@ -593,14 +633,14 @@ pub struct ValidationComponents {
 }
 
 // Module exports
-pub mod rules;
 pub mod consistency;
 pub mod invariants;
 pub mod reporting;
+pub mod rules;
 
 // Import required constants and modules
-use crate::backend::native::v2::wal::checkpoint::constants::*;
 use crate::backend::native::v2::wal::checkpoint::constants::performance;
+use crate::backend::native::v2::wal::checkpoint::constants::*;
 
 #[cfg(test)]
 mod tests {

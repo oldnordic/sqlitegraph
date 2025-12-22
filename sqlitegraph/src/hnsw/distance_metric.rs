@@ -35,7 +35,6 @@
 //! ```
 
 use std::fmt;
-use crate::hnsw::distance_functions::*;
 
 /// Distance metrics supported by HNSW index
 ///
@@ -141,14 +140,13 @@ pub fn compute_distance(metric: DistanceMetric, a: &[f32], b: &[f32]) -> f32 {
 
 // Re-export distance functions for backward compatibility
 pub use crate::hnsw::distance_functions::{
-    cosine_similarity, euclidean_distance, dot_product, manhattan_distance,
+    cosine_similarity, dot_product, euclidean_distance, manhattan_distance,
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hnsw::distance_functions::*;
-
+    
     #[test]
     fn test_distance_metric_display() {
         assert_eq!(DistanceMetric::Cosine.to_string(), "cosine");

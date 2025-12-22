@@ -5,12 +5,11 @@
 //! It includes performance counters, operation-specific metrics, and the main
 //! metrics collector interface.
 
-use crate::backend::native::NativeResult;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use serde::{Deserialize, Serialize};
 
 /// V2 WAL performance metrics collection specifically for graph operations.
 ///
@@ -33,19 +32,24 @@ pub struct V2WALMetrics {
     pub(crate) counters: Arc<Mutex<WALPerformanceCounters>>,
 
     /// Latency tracking with histogram buckets
-    pub(crate) latency_histogram: Arc<Mutex<crate::backend::native::v2::wal::metrics::aggregation::LatencyHistogram>>,
+    pub(crate) latency_histogram:
+        Arc<Mutex<crate::backend::native::v2::wal::metrics::aggregation::LatencyHistogram>>,
 
     /// Throughput metrics over time windows
-    pub(crate) throughput_tracker: Arc<Mutex<crate::backend::native::v2::wal::metrics::aggregation::ThroughputTracker>>,
+    pub(crate) throughput_tracker:
+        Arc<Mutex<crate::backend::native::v2::wal::metrics::aggregation::ThroughputTracker>>,
 
     /// Resource utilization metrics
-    pub(crate) resource_tracker: Arc<Mutex<crate::backend::native::v2::wal::metrics::reporting::ResourceTracker>>,
+    pub(crate) resource_tracker:
+        Arc<Mutex<crate::backend::native::v2::wal::metrics::reporting::ResourceTracker>>,
 
     /// Cluster-specific performance metrics
-    pub(crate) cluster_metrics: Arc<Mutex<crate::backend::native::v2::wal::metrics::reporting::ClusterPerformanceMetrics>>,
+    pub(crate) cluster_metrics:
+        Arc<Mutex<crate::backend::native::v2::wal::metrics::reporting::ClusterPerformanceMetrics>>,
 
     /// Error tracking and analysis
-    pub(crate) error_tracker: Arc<Mutex<crate::backend::native::v2::wal::metrics::reporting::ErrorTracker>>,
+    pub(crate) error_tracker:
+        Arc<Mutex<crate::backend::native::v2::wal::metrics::reporting::ErrorTracker>>,
 
     /// Global performance counters
     pub(crate) global_counters: GlobalCounters,
@@ -306,7 +310,9 @@ impl V2WALMetrics {
     /// # Returns
     ///
     /// A clone of the current `LatencyHistogram`.
-    pub fn get_latency_histogram(&self) -> crate::backend::native::v2::wal::metrics::aggregation::LatencyHistogram {
+    pub fn get_latency_histogram(
+        &self,
+    ) -> crate::backend::native::v2::wal::metrics::aggregation::LatencyHistogram {
         self.latency_histogram.lock().clone()
     }
 
@@ -318,7 +324,9 @@ impl V2WALMetrics {
     /// # Returns
     ///
     /// A clone of the current `ThroughputTracker`.
-    pub fn get_throughput_tracker(&self) -> crate::backend::native::v2::wal::metrics::aggregation::ThroughputTracker {
+    pub fn get_throughput_tracker(
+        &self,
+    ) -> crate::backend::native::v2::wal::metrics::aggregation::ThroughputTracker {
         self.throughput_tracker.lock().clone()
     }
 
@@ -330,7 +338,9 @@ impl V2WALMetrics {
     /// # Returns
     ///
     /// A clone of the current `ResourceTracker`.
-    pub fn get_resource_tracker(&self) -> crate::backend::native::v2::wal::metrics::reporting::ResourceTracker {
+    pub fn get_resource_tracker(
+        &self,
+    ) -> crate::backend::native::v2::wal::metrics::reporting::ResourceTracker {
         self.resource_tracker.lock().clone()
     }
 
@@ -342,7 +352,9 @@ impl V2WALMetrics {
     /// # Returns
     ///
     /// A clone of the current `ClusterPerformanceMetrics`.
-    pub fn get_cluster_metrics(&self) -> crate::backend::native::v2::wal::metrics::reporting::ClusterPerformanceMetrics {
+    pub fn get_cluster_metrics(
+        &self,
+    ) -> crate::backend::native::v2::wal::metrics::reporting::ClusterPerformanceMetrics {
         self.cluster_metrics.lock().clone()
     }
 
@@ -354,7 +366,9 @@ impl V2WALMetrics {
     /// # Returns
     ///
     /// A clone of the current `ErrorTracker`.
-    pub fn get_error_tracker(&self) -> crate::backend::native::v2::wal::metrics::reporting::ErrorTracker {
+    pub fn get_error_tracker(
+        &self,
+    ) -> crate::backend::native::v2::wal::metrics::reporting::ErrorTracker {
         self.error_tracker.lock().clone()
     }
 
@@ -372,7 +386,9 @@ impl V2WALMetrics {
             self.global_counters.records_read.load(Ordering::Relaxed),
             self.global_counters.bytes_written.load(Ordering::Relaxed),
             self.global_counters.bytes_read.load(Ordering::Relaxed),
-            self.global_counters.active_operations.load(Ordering::Relaxed),
+            self.global_counters
+                .active_operations
+                .load(Ordering::Relaxed),
         )
     }
 
@@ -414,11 +430,19 @@ impl V2WALMetrics {
         }
 
         // Reset global atomic counters
-        self.global_counters.records_written.store(0, Ordering::Relaxed);
-        self.global_counters.records_read.store(0, Ordering::Relaxed);
-        self.global_counters.bytes_written.store(0, Ordering::Relaxed);
+        self.global_counters
+            .records_written
+            .store(0, Ordering::Relaxed);
+        self.global_counters
+            .records_read
+            .store(0, Ordering::Relaxed);
+        self.global_counters
+            .bytes_written
+            .store(0, Ordering::Relaxed);
         self.global_counters.bytes_read.store(0, Ordering::Relaxed);
-        self.global_counters.active_operations.store(0, Ordering::Relaxed);
+        self.global_counters
+            .active_operations
+            .store(0, Ordering::Relaxed);
     }
 }
 

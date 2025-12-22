@@ -227,5 +227,10 @@ fn matches_constraint(
         cache.insert(node, entity.clone());
         entity
     };
-    Ok(constraint.unwrap().matches(&entry))
+    match constraint {
+        Some(constraint) => Ok(constraint.matches(&entry)),
+        None => Err(SqliteGraphError::invalid_input(
+            "Pattern constraint not available for matching"
+        )),
+    }
 }

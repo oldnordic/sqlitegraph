@@ -170,10 +170,16 @@ mod tests {
 
         // Test maximum capacity
         let max_edges = (max_size - 16) / 16; // (1024 - 16) / 16 = 63
-        assert_eq!(calculate_optimal_cluster_size(max_edges, min_size, max_size), 1024);
+        assert_eq!(
+            calculate_optimal_cluster_size(max_edges, min_size, max_size),
+            1024
+        );
 
         // Test exceeding maximum
-        assert_eq!(calculate_optimal_cluster_size(max_edges + 1, min_size, max_size), 1024);
+        assert_eq!(
+            calculate_optimal_cluster_size(max_edges + 1, min_size, max_size),
+            1024
+        );
     }
 
     #[test]
@@ -184,7 +190,13 @@ mod tests {
         // Test that result is always aligned to 64-byte boundaries
         for edge_count in 1..=50 {
             let size = calculate_optimal_cluster_size(edge_count, min_size, max_size);
-            assert_eq!(size % 64, 0, "Size {} for {} edges should be aligned to 64-byte boundaries", size, edge_count);
+            assert_eq!(
+                size % 64,
+                0,
+                "Size {} for {} edges should be aligned to 64-byte boundaries",
+                size,
+                edge_count
+            );
         }
     }
 }

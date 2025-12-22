@@ -9,7 +9,7 @@ pub use operations::EdgeRecordOperations;
 
 // Import modules
 mod operations;
-mod validation;
 mod serialization;
 #[cfg(test)]
 mod tests;
+mod validation;

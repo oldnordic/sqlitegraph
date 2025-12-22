@@ -110,7 +110,8 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 pub fn euclidean_distance(a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(a.len(), b.len(), "Vectors must have the same length");
 
-    let sum_squares: f32 = a.iter()
+    let sum_squares: f32 = a
+        .iter()
         .zip(b.iter())
         .map(|(x, y)| {
             let diff = x - y;
@@ -201,9 +202,7 @@ pub fn dot_product(a: &[f32], b: &[f32]) -> f32 {
 pub fn manhattan_distance(a: &[f32], b: &[f32]) -> f32 {
     assert_eq!(a.len(), b.len(), "Vectors must have the same length");
 
-    a.iter().zip(b.iter())
-        .map(|(x, y)| (x - y).abs())
-        .sum()
+    a.iter().zip(b.iter()).map(|(x, y)| (x - y).abs()).sum()
 }
 
 #[cfg(test)]

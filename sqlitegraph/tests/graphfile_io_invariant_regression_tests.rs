@@ -25,25 +25,32 @@ fn test_read_bytes_direct_file_size_invariant() -> Result<(), Box<dyn std::error
         match error {
             NativeBackendError::FileTooSmall { size, min_size } => {
                 assert_eq!(size, 13, "Should report actual file size");
-                assert_eq!(min_size, 80, "Should report minimum required size (HEADER_SIZE)");
+                assert_eq!(
+                    min_size, 80,
+                    "Should report minimum required size (HEADER_SIZE)"
+                );
             }
-            other => panic!(
-                "Expected FileTooSmall error, got: {:?}",
-                other
-            ),
+            other => panic!("Expected FileTooSmall error, got: {:?}", other),
         }
     }
 
     // Test 2: Create properly sized file with GraphFile::create()
     let temp_file = NamedTempFile::new()?;
     let graph_file = GraphFile::create(temp_file.path())?;
-    assert!(graph_file.file_size()? >= 80, "Created file should meet minimum size requirements");
+    assert!(
+        graph_file.file_size()? >= 80,
+        "Created file should meet minimum size requirements"
+    );
 
     // Test 3: Valid reads should succeed on properly created file
     let mut graph_file = GraphFile::open(temp_file.path())?;
     let mut buffer = vec![0u8; 10];
     let result = graph_file.read_bytes(0, &mut buffer);
-    assert!(result.is_ok(), "Valid read on proper file should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Valid read on proper file should succeed: {:?}",
+        result
+    );
 
     // Test 4: Reading at valid offset should succeed
     let result = graph_file.read_bytes(40, &mut buffer);
@@ -65,7 +72,10 @@ fn test_read_header_file_size_invariant() -> Result<(), Box<dyn std::error::Erro
         match error {
             NativeBackendError::FileTooSmall { size, min_size } => {
                 assert_eq!(size, 0, "Should report actual file size as 0");
-                assert_eq!(min_size, 80, "Should report minimum required size (HEADER_SIZE)");
+                assert_eq!(
+                    min_size, 80,
+                    "Should report minimum required size (HEADER_SIZE)"
+                );
             }
             other => panic!(
                 "Expected FileTooSmall error for empty file, got: {:?}",
@@ -95,9 +105,9 @@ fn test_read_edge_at_offset_file_size_invariant() -> Result<(), Box<dyn std::err
     // Verify the error type is appropriate for reading beyond file bounds
     if let Err(error) = result {
         match error {
-            NativeBackendError::Io(_) |
-            NativeBackendError::CorruptNodeRecord { .. } |
-            NativeBackendError::InvalidHeader { .. } => {
+            NativeBackendError::Io(_)
+            | NativeBackendError::CorruptNodeRecord { .. }
+            | NativeBackendError::InvalidHeader { .. } => {
                 // Expected error types for reading beyond file bounds
             }
             other => panic!(
@@ -128,8 +138,11 @@ fn test_detailed_error_message_format() -> Result<(), Box<dyn std::error::Error>
 
         // FileTooSmall errors should contain size information
         // Note: The exact format may vary, but should contain size details
-        assert!(error_msg.contains("50") || error_msg.contains("size"),
-               "Error should mention file size: {}", error_msg);
+        assert!(
+            error_msg.contains("50") || error_msg.contains("size"),
+            "Error should mention file size: {}",
+            error_msg
+        );
     }
 
     Ok(())

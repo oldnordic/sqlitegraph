@@ -5,8 +5,6 @@
 
 use super::compact_record::CompactEdgeRecord;
 use crate::backend::native::{NativeBackendError, NativeResult};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 /// Serialize cluster header + payload.
 /// CRITICAL FIX: Ensure the final buffer size matches header expectations exactly.
@@ -242,7 +240,10 @@ pub fn deserialize_cluster(bytes: &[u8]) -> NativeResult<(Vec<CompactEdgeRecord>
                     node_id: -1,
                     reason: format!(
                         "deserialize(): edge_index={}, cursor={}, error={:?}, bytes={:02X?}",
-                        edge_index, cursor, e, &bytes[cursor..cursor.saturating_add(20)]
+                        edge_index,
+                        cursor,
+                        e,
+                        &bytes[cursor..cursor.saturating_add(20)]
                     ),
                 });
             }
@@ -256,7 +257,13 @@ pub fn deserialize_cluster(bytes: &[u8]) -> NativeResult<(Vec<CompactEdgeRecord>
                 node_id: -1,
                 reason: format!(
                     "deserialize(): edge_index={}, cursor={}, edge_size={}, next_cursor={}, bytes_len={}, payload_size={} (current) -> {} (new)",
-                    edge_index, cursor, record.size_bytes(), next_cursor, bytes.len(), current_payload_size, new_payload_size
+                    edge_index,
+                    cursor,
+                    record.size_bytes(),
+                    next_cursor,
+                    bytes.len(),
+                    current_payload_size,
+                    new_payload_size
                 ),
             });
         }
@@ -271,9 +278,9 @@ pub fn deserialize_cluster(bytes: &[u8]) -> NativeResult<(Vec<CompactEdgeRecord>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::backend::native::{EdgeRecord, EdgeFlags};
     use crate::backend::native::v2::edge_cluster::cluster_trace::Direction;
     use crate::backend::native::v2::string_table::StringTable;
+    use crate::backend::native::{EdgeFlags, EdgeRecord};
 
     fn create_test_edge_record(from_id: i64, to_id: i64, edge_type: &str) -> EdgeRecord {
         EdgeRecord {
@@ -305,7 +312,10 @@ mod tests {
         let edge_records = vec![create_test_edge_record(1, 2, "test")];
         let compact_edges = edge_records
             .iter()
-            .map(|e| CompactEdgeRecord::from_edge_record(e, Direction::Outgoing, &mut string_table).unwrap())
+            .map(|e| {
+                CompactEdgeRecord::from_edge_record(e, Direction::Outgoing, &mut string_table)
+                    .unwrap()
+            })
             .collect::<Vec<_>>();
 
         let serialized_size = compact_edges.iter().map(|c| c.size_bytes()).sum();
@@ -369,7 +379,10 @@ mod tests {
         ];
         let compact_edges = edge_records
             .iter()
-            .map(|e| CompactEdgeRecord::from_edge_record(e, Direction::Outgoing, &mut string_table).unwrap())
+            .map(|e| {
+                CompactEdgeRecord::from_edge_record(e, Direction::Outgoing, &mut string_table)
+                    .unwrap()
+            })
             .collect::<Vec<_>>();
 
         let serialized_size = compact_edges.iter().map(|c| c.size_bytes()).sum();

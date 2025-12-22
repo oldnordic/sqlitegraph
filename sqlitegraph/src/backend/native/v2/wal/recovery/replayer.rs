@@ -11,21 +11,19 @@
 //! - FreeSpaceManager for space management
 //! - GraphFile for file operations
 
-use crate::backend::native::{
-    GraphFile, NodeStore, EdgeStore, NativeResult, NativeBackendError,
-    NodeFlags, FileOffset, EdgeRecord, NativeNodeId,
-    graph_file::TransactionManager,
-};
+use super::{constants::*, core::TransactionState, errors::RecoveryError};
 use crate::backend::native::v2::wal::V2WALRecord;
 use crate::backend::native::v2::{
-    NodeRecordV2, EdgeCluster, StringTable, FreeSpaceManager,
-    edge_cluster::{CompactEdgeRecord, Direction},
+    FreeSpaceManager, NodeRecordV2, StringTable,
+    edge_cluster::CompactEdgeRecord,
 };
-use super::{errors::RecoveryError, core::TransactionState, constants::*};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use crate::backend::native::{
+    EdgeStore, GraphFile, NativeNodeId, NativeResult,
+    NodeStore,
+};
 use parking_lot::{Mutex, RwLock};
-use serde_json::Value;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 macro_rules! info { ($($arg:tt)*) => { log::info!($($arg)*); }; }
@@ -157,7 +155,9 @@ impl V2GraphFileReplayer {
         // Initialize V2 components
         let string_table = StringTable::new();
 
-        let free_space_manager = FreeSpaceManager::new(crate::backend::native::v2::free_space::AllocationStrategy::FirstFit);
+        let free_space_manager = FreeSpaceManager::new(
+            crate::backend::native::v2::free_space::AllocationStrategy::FirstFit,
+        );
 
         // Create the replayer with V2 backend stores
         let graph_file_ptr = Arc::new(RwLock::new(graph_file));
@@ -217,18 +217,26 @@ impl V2GraphFileReplayer {
     /// # Returns
     /// * `Ok(ReplayResult)` - Successful replay with statistics
     /// * `Err(RecoveryError)` - Replay failure with details
-    pub fn replay_transactions(&self, transactions: &[TransactionState]) -> Result<ReplayResult, RecoveryError> {
+    pub fn replay_transactions(
+        &self,
+        transactions: &[TransactionState],
+    ) -> Result<ReplayResult, RecoveryError> {
         // Ensure stores are initialized before replay
-        self.ensure_node_store_initialized()
-            .map_err(|e| RecoveryError::replay_failure(format!("Failed to initialize node store: {}", e)))?;
-        self.ensure_edge_store_initialized()
-            .map_err(|e| RecoveryError::replay_failure(format!("Failed to initialize edge store: {}", e)))?;
+        self.ensure_node_store_initialized().map_err(|e| {
+            RecoveryError::replay_failure(format!("Failed to initialize node store: {}", e))
+        })?;
+        self.ensure_edge_store_initialized().map_err(|e| {
+            RecoveryError::replay_failure(format!("Failed to initialize edge store: {}", e))
+        })?;
         let start_time = Instant::now();
         let mut successful_operations = 0;
         let mut failed_operations = Vec::new();
         let mut warnings = Vec::new();
 
-        info!("Starting V2 transaction replay for {} transactions", transactions.len());
+        info!(
+            "Starting V2 transaction replay for {} transactions",
+            transactions.len()
+        );
 
         // Sort transactions by commit LSN for proper replay order
         let mut committed_transactions: Vec<_> = transactions
@@ -236,18 +244,26 @@ impl V2GraphFileReplayer {
             .filter(|tx| tx.committed && tx.commit_lsn.is_some())
             .collect();
 
-        committed_transactions.sort_by(|a, b| {
-            a.commit_lsn.unwrap_or(0).cmp(&b.commit_lsn.unwrap_or(0))
-        });
+        committed_transactions
+            .sort_by(|a, b| a.commit_lsn.unwrap_or(0).cmp(&b.commit_lsn.unwrap_or(0)));
 
-        info!("Replaying {} committed transactions", committed_transactions.len());
+        info!(
+            "Replaying {} committed transactions",
+            committed_transactions.len()
+        );
 
         // Process each transaction
         for (tx_index, transaction) in committed_transactions.iter().enumerate() {
-            debug!("Replaying transaction TX {} ({}/{}) with {} records",
-                   transaction.tx_id, tx_index + 1, committed_transactions.len(), transaction.records.len());
+            debug!(
+                "Replaying transaction TX {} ({}/{}) with {} records",
+                transaction.tx_id,
+                tx_index + 1,
+                committed_transactions.len(),
+                transaction.records.len()
+            );
 
-            let tx_result = self.replay_transaction(transaction, tx_index + 1, committed_transactions.len())?;
+            let tx_result =
+                self.replay_transaction(transaction, tx_index + 1, committed_transactions.len())?;
 
             successful_operations += tx_result.successful_operations;
             failed_operations.extend(tx_result.failed_operations);
@@ -266,7 +282,8 @@ impl V2GraphFileReplayer {
             stats.total_duration_ms = duration.as_millis() as u64;
 
             if successful_operations > 0 {
-                stats.avg_operation_time_ms = duration.as_millis() as f64 / successful_operations as f64;
+                stats.avg_operation_time_ms =
+                    duration.as_millis() as f64 / successful_operations as f64;
             }
         }
 
@@ -291,16 +308,20 @@ impl V2GraphFileReplayer {
     fn replay_transaction(
         &self,
         transaction: &TransactionState,
-        tx_index: usize,
-        total_txs: usize,
+        _tx_index: usize,
+        _total_txs: usize,
     ) -> Result<ReplayResult, RecoveryError> {
-        let start_time = Instant::now();
+        let _start_time = Instant::now();
         let mut successful_operations = 0;
         let mut failed_operations = Vec::new();
-        let mut warnings = Vec::new();
+        let warnings = Vec::new();
         let mut rollback_data = Vec::new();
 
-        debug!("Processing TX {} with {} records", transaction.tx_id, transaction.records.len());
+        debug!(
+            "Processing TX {} with {} records",
+            transaction.tx_id,
+            transaction.records.len()
+        );
 
         // Begin transaction for rollback support
         self.begin_transaction()?;
@@ -309,17 +330,33 @@ impl V2GraphFileReplayer {
         for (record_index, record) in transaction.records.iter().enumerate() {
             let record_start = Instant::now();
 
-            debug!("Processing record {}/{} in TX {}", record_index + 1, transaction.records.len(), transaction.tx_id);
+            debug!(
+                "Processing record {}/{} in TX {}",
+                record_index + 1,
+                transaction.records.len(),
+                transaction.tx_id
+            );
 
             let result = self.replay_record(record, &mut rollback_data);
 
             match result {
                 Ok(_) => {
                     successful_operations += 1;
-                    debug!("Successfully processed record {}/{} in TX {}", record_index + 1, transaction.records.len(), transaction.tx_id);
+                    debug!(
+                        "Successfully processed record {}/{} in TX {}",
+                        record_index + 1,
+                        transaction.records.len(),
+                        transaction.tx_id
+                    );
                 }
                 Err(e) => {
-                    error!("Failed to process record {}/{} in TX {}: {}", record_index + 1, transaction.records.len(), transaction.tx_id, e);
+                    error!(
+                        "Failed to process record {}/{} in TX {}: {}",
+                        record_index + 1,
+                        transaction.records.len(),
+                        transaction.tx_id,
+                        e
+                    );
 
                     // Attempt rollback if configured
                     if !self.attempt_rollback(&rollback_data) {
@@ -336,7 +373,11 @@ impl V2GraphFileReplayer {
             // Check operation timeout
             let record_duration = record_start.elapsed();
             if record_duration.as_millis() as u64 > self.config.operation_timeout_ms {
-                warn!("Record processing took {}ms (threshold: {}ms)", record_duration.as_millis(), self.config.operation_timeout_ms);
+                warn!(
+                    "Record processing took {}ms (threshold: {}ms)",
+                    record_duration.as_millis(),
+                    self.config.operation_timeout_ms
+                );
             }
         }
 
@@ -363,35 +404,88 @@ impl V2GraphFileReplayer {
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         match record {
-            V2WALRecord::NodeInsert { node_id, slot_offset, node_data } => {
-                self.replay_node_insert(*node_id as u64, *slot_offset, node_data, rollback_data)
-            }
-            V2WALRecord::NodeUpdate { node_id, slot_offset, new_data, old_data } => {
-                self.replay_node_update(*node_id as u64, *slot_offset, new_data, Some(&old_data), rollback_data)
-            }
-            V2WALRecord::NodeDelete { node_id, slot_offset, old_data } => {
-                self.replay_node_delete(*node_id as u64, *slot_offset, Some(&old_data), rollback_data)
-            }
-            V2WALRecord::ClusterCreate { node_id, direction, cluster_offset, cluster_size, edge_data } => {
-                self.replay_cluster_create(*node_id as u64, *direction, *cluster_offset, *cluster_size as u64, edge_data, rollback_data)
-            }
-            V2WALRecord::EdgeInsert { cluster_key, edge_record, insertion_point } => {
+            V2WALRecord::NodeInsert {
+                node_id,
+                slot_offset,
+                node_data,
+            } => self.replay_node_insert(*node_id as u64, *slot_offset, node_data, rollback_data),
+            V2WALRecord::NodeUpdate {
+                node_id,
+                slot_offset,
+                new_data,
+                old_data,
+            } => self.replay_node_update(
+                *node_id as u64,
+                *slot_offset,
+                new_data,
+                Some(&old_data),
+                rollback_data,
+            ),
+            V2WALRecord::NodeDelete {
+                node_id,
+                slot_offset,
+                old_data,
+            } => self.replay_node_delete(
+                *node_id as u64,
+                *slot_offset,
+                Some(&old_data),
+                rollback_data,
+            ),
+            V2WALRecord::ClusterCreate {
+                node_id,
+                direction,
+                cluster_offset,
+                cluster_size,
+                edge_data,
+            } => self.replay_cluster_create(
+                *node_id as u64,
+                *direction,
+                *cluster_offset,
+                *cluster_size as u64,
+                edge_data,
+                rollback_data,
+            ),
+            V2WALRecord::EdgeInsert {
+                cluster_key,
+                edge_record,
+                insertion_point,
+            } => {
                 let direction_u64 = match cluster_key.1 {
                     crate::backend::native::v2::edge_cluster::Direction::Outgoing => 0,
                     crate::backend::native::v2::edge_cluster::Direction::Incoming => 1,
                 };
                 let converted_key = (cluster_key.0 as u64, direction_u64);
-                self.replay_edge_insert(converted_key, &edge_record, *insertion_point, rollback_data)
+                self.replay_edge_insert(
+                    converted_key,
+                    &edge_record,
+                    *insertion_point,
+                    rollback_data,
+                )
             }
-            V2WALRecord::EdgeUpdate { cluster_key, new_edge, position, old_edge } => {
+            V2WALRecord::EdgeUpdate {
+                cluster_key,
+                new_edge,
+                position,
+                old_edge,
+            } => {
                 let direction_u64 = match cluster_key.1 {
                     crate::backend::native::v2::edge_cluster::Direction::Outgoing => 0,
                     crate::backend::native::v2::edge_cluster::Direction::Incoming => 1,
                 };
                 let converted_key = (cluster_key.0 as u64, direction_u64);
-                self.replay_edge_update(converted_key, &new_edge, *position, Some(&old_edge), rollback_data)
+                self.replay_edge_update(
+                    converted_key,
+                    &new_edge,
+                    *position,
+                    Some(&old_edge),
+                    rollback_data,
+                )
             }
-            V2WALRecord::EdgeDelete { cluster_key, position, old_edge } => {
+            V2WALRecord::EdgeDelete {
+                cluster_key,
+                position,
+                old_edge,
+            } => {
                 let direction_u64 = match cluster_key.1 {
                     crate::backend::native::v2::edge_cluster::Direction::Outgoing => 0,
                     crate::backend::native::v2::edge_cluster::Direction::Incoming => 1,
@@ -399,18 +493,40 @@ impl V2GraphFileReplayer {
                 let converted_key = (cluster_key.0 as u64, direction_u64);
                 self.replay_edge_delete(converted_key, *position, Some(&old_edge), rollback_data)
             }
-            V2WALRecord::StringInsert { string_id, string_value } => {
-                self.replay_string_insert(*string_id as u64, &string_value, rollback_data)
-            }
-            V2WALRecord::FreeSpaceAllocate { block_offset, block_size, block_type } => {
-                self.replay_free_space_allocate(*block_offset, *block_size as u64, *block_type, rollback_data)
-            }
-            V2WALRecord::FreeSpaceDeallocate { block_offset, block_size, block_type } => {
-                self.replay_free_space_deallocate(*block_offset, *block_size as u64, *block_type, rollback_data)
-            }
-            V2WALRecord::HeaderUpdate { header_offset, new_data, old_data } => {
-                self.replay_header_update(*header_offset, new_data, Some(old_data.as_slice()), rollback_data)
-            }
+            V2WALRecord::StringInsert {
+                string_id,
+                string_value,
+            } => self.replay_string_insert(*string_id as u64, &string_value, rollback_data),
+            V2WALRecord::FreeSpaceAllocate {
+                block_offset,
+                block_size,
+                block_type,
+            } => self.replay_free_space_allocate(
+                *block_offset,
+                *block_size as u64,
+                *block_type,
+                rollback_data,
+            ),
+            V2WALRecord::FreeSpaceDeallocate {
+                block_offset,
+                block_size,
+                block_type,
+            } => self.replay_free_space_deallocate(
+                *block_offset,
+                *block_size as u64,
+                *block_type,
+                rollback_data,
+            ),
+            V2WALRecord::HeaderUpdate {
+                header_offset,
+                new_data,
+                old_data,
+            } => self.replay_header_update(
+                *header_offset,
+                new_data,
+                Some(old_data.as_slice()),
+                rollback_data,
+            ),
             // Control records are handled at transaction level
             V2WALRecord::TransactionBegin { .. }
             | V2WALRecord::TransactionCommit { .. }
@@ -427,9 +543,7 @@ impl V2GraphFileReplayer {
             | V2WALRecord::IndexUpdate { .. }
             | V2WALRecord::StatisticsUpdate { .. }
             | V2WALRecord::Checkpoint { .. }
-            | V2WALRecord::SegmentEnd { .. } => {
-                Ok(())
-            }
+            | V2WALRecord::SegmentEnd { .. } => Ok(()),
         }
     }
 
@@ -443,12 +557,15 @@ impl V2GraphFileReplayer {
     ) -> Result<(), RecoveryError> {
         // Validate input
         if node_data.is_empty() {
-            return Err(RecoveryError::validation("Node data cannot be empty".to_string()));
+            return Err(RecoveryError::validation(
+                "Node data cannot be empty".to_string(),
+            ));
         }
 
         // Deserialize NodeRecordV2
-        let node_record = NodeRecordV2::deserialize(node_data)
-            .map_err(|e| RecoveryError::corruption(format!("Failed to deserialize NodeRecordV2: {}", e)))?;
+        let node_record = NodeRecordV2::deserialize(node_data).map_err(|e| {
+            RecoveryError::corruption(format!("Failed to deserialize NodeRecordV2: {}", e))
+        })?;
 
         // Validate node ID matches
         if node_record.id as u64 != node_id {
@@ -471,7 +588,9 @@ impl V2GraphFileReplayer {
             if let Some(ref mut store) = *node_store {
                 store.write_node_v2(&node_record)?;
             } else {
-                return Err(RecoveryError::replay_failure("Node store not initialized".to_string()));
+                return Err(RecoveryError::replay_failure(
+                    "Node store not initialized".to_string(),
+                ));
             }
 
             // Update statistics
@@ -482,7 +601,10 @@ impl V2GraphFileReplayer {
             }
         }
 
-        debug!("Successfully inserted node {} ({})", node_record.id, node_record.kind);
+        debug!(
+            "Successfully inserted node {} ({})",
+            node_record.id, node_record.kind
+        );
         Ok(())
     }
 
@@ -490,18 +612,25 @@ impl V2GraphFileReplayer {
     fn replay_node_update(
         &self,
         node_id: u64,
-        slot_offset: u64,
+        _slot_offset: u64,
         new_data: &[u8],
-        old_data: Option<&Vec<u8>>,
+        _old_data: Option<&Vec<u8>>,
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         // Read existing node for rollback
         let existing_node = {
             let mut node_store_guard = self.node_store.lock();
-            let node_store = node_store_guard.as_mut()
-                .ok_or_else(|| RecoveryError::replay_failure("Node store not initialized".to_string()))?;
-            node_store.read_node_v2(node_id as NativeNodeId)
-                .map_err(|e| RecoveryError::io_error(format!("Failed to read existing node {}: {}", node_id, e)))?
+            let node_store = node_store_guard.as_mut().ok_or_else(|| {
+                RecoveryError::replay_failure("Node store not initialized".to_string())
+            })?;
+            node_store
+                .read_node_v2(node_id as NativeNodeId)
+                .map_err(|e| {
+                    RecoveryError::io_error(format!(
+                        "Failed to read existing node {}: {}",
+                        node_id, e
+                    ))
+                })?
         };
 
         // Store rollback data
@@ -514,8 +643,9 @@ impl V2GraphFileReplayer {
         // Apply update
         {
             let mut node_store_guard = self.node_store.lock();
-            let node_store = node_store_guard.as_mut()
-                .ok_or_else(|| RecoveryError::replay_failure("Node store not initialized".to_string()))?;
+            let node_store = node_store_guard.as_mut().ok_or_else(|| {
+                RecoveryError::replay_failure("Node store not initialized".to_string())
+            })?;
             node_store.write_node_v2(&existing_node)?;
 
             {
@@ -533,17 +663,24 @@ impl V2GraphFileReplayer {
     fn replay_node_delete(
         &self,
         node_id: u64,
-        slot_offset: u64,
-        old_data: Option<&Vec<u8>>,
+        _slot_offset: u64,
+        _old_data: Option<&Vec<u8>>,
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         // Read existing node for rollback
         let existing_node = {
             let mut node_store_guard = self.node_store.lock();
-            let node_store = node_store_guard.as_mut()
-                .ok_or_else(|| RecoveryError::replay_failure("Node store not initialized".to_string()))?;
-            node_store.read_node_v2(node_id as NativeNodeId)
-                .map_err(|e| RecoveryError::io_error(format!("Failed to read node for deletion {}: {}", node_id, e)))?
+            let node_store = node_store_guard.as_mut().ok_or_else(|| {
+                RecoveryError::replay_failure("Node store not initialized".to_string())
+            })?;
+            node_store
+                .read_node_v2(node_id as NativeNodeId)
+                .map_err(|e| {
+                    RecoveryError::io_error(format!(
+                        "Failed to read node for deletion {}: {}",
+                        node_id, e
+                    ))
+                })?
         };
 
         // Store rollback data
@@ -556,8 +693,9 @@ impl V2GraphFileReplayer {
         // Delete node
         {
             let mut node_store_guard = self.node_store.lock();
-            let node_store = node_store_guard.as_mut()
-                .ok_or_else(|| RecoveryError::replay_failure("Node store not initialized".to_string()))?;
+            let node_store = node_store_guard.as_mut().ok_or_else(|| {
+                RecoveryError::replay_failure("Node store not initialized".to_string())
+            })?;
             node_store.delete_node(node_id as NativeNodeId)?;
 
             {
@@ -573,7 +711,8 @@ impl V2GraphFileReplayer {
     /// Begin transaction for rollback support
     fn begin_transaction(&self) -> Result<(), RecoveryError> {
         let mut graph_file = self.graph_file.write();
-        graph_file.begin_transaction()
+        graph_file
+            .begin_transaction()
             .map_err(|e| RecoveryError::io_error(format!("Failed to begin transaction: {}", e)))?;
 
         debug!("V2 transaction begun");
@@ -583,7 +722,8 @@ impl V2GraphFileReplayer {
     /// Commit transaction
     fn commit_transaction(&self) -> Result<(), RecoveryError> {
         let mut graph_file = self.graph_file.write();
-        graph_file.commit_transaction()
+        graph_file
+            .commit_transaction()
             .map_err(|e| RecoveryError::io_error(format!("Failed to commit transaction: {}", e)))?;
 
         debug!("V2 transaction committed");
@@ -593,8 +733,9 @@ impl V2GraphFileReplayer {
     /// Rollback transaction
     fn rollback_transaction(&self) -> Result<(), RecoveryError> {
         let mut graph_file = self.graph_file.write();
-        graph_file.rollback_transaction()
-            .map_err(|e| RecoveryError::io_error(format!("Failed to rollback transaction: {}", e)))?;
+        graph_file.rollback_transaction().map_err(|e| {
+            RecoveryError::io_error(format!("Failed to rollback transaction: {}", e))
+        })?;
 
         debug!("V2 transaction rolled back");
         Ok(())
@@ -602,7 +743,10 @@ impl V2GraphFileReplayer {
 
     /// Attempt rollback using stored rollback operations
     fn attempt_rollback(&self, rollback_data: &[RollbackOperation]) -> bool {
-        debug!("Attempting rollback with {} operations", rollback_data.len());
+        debug!(
+            "Attempting rollback with {} operations",
+            rollback_data.len()
+        );
 
         // Apply rollback operations in reverse order
         for operation in rollback_data.iter().rev() {
@@ -618,30 +762,35 @@ impl V2GraphFileReplayer {
     /// Apply a single rollback operation
     fn apply_rollback_operation(&self, operation: &RollbackOperation) -> Result<(), RecoveryError> {
         match operation {
-            RollbackOperation::NodeInsert { node_id, node_data } => {
+            RollbackOperation::NodeInsert { node_id: _, node_data } => {
                 // Reinsert the node
                 let node_record = NodeRecordV2::deserialize(node_data)?;
                 let mut node_store_guard = self.node_store.lock();
-                let node_store = node_store_guard.as_mut()
-                    .ok_or_else(|| RecoveryError::replay_failure("Node store not initialized".to_string()))?;
+                let node_store = node_store_guard.as_mut().ok_or_else(|| {
+                    RecoveryError::replay_failure("Node store not initialized".to_string())
+                })?;
                 node_store.write_node_v2(&node_record)?;
             }
-            RollbackOperation::NodeUpdate { node_id, old_data } => {
+            RollbackOperation::NodeUpdate { node_id: _, old_data } => {
                 // Restore old node data
                 let node_record = NodeRecordV2::deserialize(old_data)?;
                 let mut node_store_guard = self.node_store.lock();
-                let node_store = node_store_guard.as_mut()
-                    .ok_or_else(|| RecoveryError::replay_failure("Node store not initialized".to_string()))?;
+                let node_store = node_store_guard.as_mut().ok_or_else(|| {
+                    RecoveryError::replay_failure("Node store not initialized".to_string())
+                })?;
                 node_store.write_node_v2(&node_record)?;
             }
-            RollbackOperation::NodeDelete { node_id, slot_offset } => {
+            RollbackOperation::NodeDelete {
+                node_id,
+                slot_offset: _,
+            } => {
                 // Delete the node
                 let mut node_store_guard = self.node_store.lock();
-                let node_store = node_store_guard.as_mut()
-                    .ok_or_else(|| RecoveryError::replay_failure("Node store not initialized".to_string()))?;
+                let node_store = node_store_guard.as_mut().ok_or_else(|| {
+                    RecoveryError::replay_failure("Node store not initialized".to_string())
+                })?;
                 node_store.delete_node(*node_id)?;
-            }
-            // Add more rollback operations as needed
+            } // Add more rollback operations as needed
         }
         Ok(())
     }
@@ -649,18 +798,21 @@ impl V2GraphFileReplayer {
     /// Report replay progress
     fn report_progress(&self, completed: usize, total: usize) {
         let percentage = (completed as f64 / total as f64) * 100.0;
-        info!("Replay progress: {}/{} ({:.1}%)", completed, total, percentage);
+        info!(
+            "Replay progress: {}/{} ({:.1}%)",
+            completed, total, percentage
+        );
     }
 
     // Placeholder implementations for edge and cluster operations (to be implemented)
     fn replay_cluster_create(
         &self,
-        node_id: u64,
-        direction: crate::backend::native::v2::edge_cluster::Direction,
-        cluster_offset: u64,
-        cluster_size: u64,
-        edge_data: &[u8],
-        rollback_data: &mut Vec<RollbackOperation>,
+        _node_id: u64,
+        _direction: crate::backend::native::v2::edge_cluster::Direction,
+        _cluster_offset: u64,
+        _cluster_size: u64,
+        _edge_data: &[u8],
+        _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         // TODO: Implement proper cluster creation
         warn!("Cluster create replay not yet implemented - placeholder");
@@ -669,10 +821,10 @@ impl V2GraphFileReplayer {
 
     fn replay_edge_insert(
         &self,
-        cluster_key: (u64, u64),
-        edge_record: &CompactEdgeRecord,
-        insertion_point: u32,
-        rollback_data: &mut Vec<RollbackOperation>,
+        _cluster_key: (u64, u64),
+        _edge_record: &CompactEdgeRecord,
+        _insertion_point: u32,
+        _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         // TODO: Implement proper edge insertion
         warn!("Edge insert replay not yet implemented - placeholder");
@@ -681,11 +833,11 @@ impl V2GraphFileReplayer {
 
     fn replay_edge_update(
         &self,
-        cluster_key: (u64, u64),
-        new_edge: &CompactEdgeRecord,
-        position: u32,
-        old_edge: Option<&CompactEdgeRecord>,
-        rollback_data: &mut Vec<RollbackOperation>,
+        _cluster_key: (u64, u64),
+        _new_edge: &CompactEdgeRecord,
+        _position: u32,
+        _old_edge: Option<&CompactEdgeRecord>,
+        _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         // TODO: Implement proper edge update
         warn!("Edge update replay not yet implemented - placeholder");
@@ -694,10 +846,10 @@ impl V2GraphFileReplayer {
 
     fn replay_edge_delete(
         &self,
-        cluster_key: (u64, u64),
-        position: u32,
-        old_edge: Option<&CompactEdgeRecord>,
-        rollback_data: &mut Vec<RollbackOperation>,
+        _cluster_key: (u64, u64),
+        _position: u32,
+        _old_edge: Option<&CompactEdgeRecord>,
+        _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         // TODO: Implement proper edge deletion
         warn!("Edge delete replay not yet implemented - placeholder");
@@ -706,9 +858,9 @@ impl V2GraphFileReplayer {
 
     fn replay_string_insert(
         &self,
-        string_id: u64,
-        string_value: &str,
-        rollback_data: &mut Vec<RollbackOperation>,
+        _string_id: u64,
+        _string_value: &str,
+        _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         // TODO: Implement proper string table operations
         warn!("String insert replay not yet implemented - placeholder");
@@ -717,10 +869,10 @@ impl V2GraphFileReplayer {
 
     fn replay_free_space_allocate(
         &self,
-        block_offset: u64,
-        block_size: u64,
-        block_type: u8,
-        rollback_data: &mut Vec<RollbackOperation>,
+        _block_offset: u64,
+        _block_size: u64,
+        _block_type: u8,
+        _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         // TODO: Implement proper free space allocation
         warn!("Free space allocate replay not yet implemented - placeholder");
@@ -729,10 +881,10 @@ impl V2GraphFileReplayer {
 
     fn replay_free_space_deallocate(
         &self,
-        block_offset: u64,
-        block_size: u64,
-        block_type: u8,
-        rollback_data: &mut Vec<RollbackOperation>,
+        _block_offset: u64,
+        _block_size: u64,
+        _block_type: u8,
+        _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         // TODO: Implement proper free space deallocation
         warn!("Free space deallocate replay not yet implemented - placeholder");
@@ -741,10 +893,10 @@ impl V2GraphFileReplayer {
 
     fn replay_header_update(
         &self,
-        header_offset: u64,
-        new_data: &[u8],
-        old_data: Option<&[u8]>,
-        rollback_data: &mut Vec<RollbackOperation>,
+        _header_offset: u64,
+        _new_data: &[u8],
+        _old_data: Option<&[u8]>,
+        _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
         // TODO: Implement proper header updates
         warn!("Header update replay not yet implemented - placeholder");
@@ -783,17 +935,23 @@ pub enum RollbackOperation {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::backend::native::GraphFile;
-    use std::path::PathBuf;
     use crate::backend::native::v2::wal::recovery::errors::RecoveryErrorKind;
+    use std::path::PathBuf;
+    use tempfile::tempdir;
 
     #[test]
     fn test_replay_config_default() {
         let config = ReplayConfig::default();
         assert!(config.strict_validation);
-        assert_eq!(config.max_batch_size, v2::MAX_NODE_RECORD_OPERATIONS_PER_RECOVERY);
-        assert_eq!(config.operation_timeout_ms, validation::CONSISTENCY_CHECK_TIMEOUT_MS);
+        assert_eq!(
+            config.max_batch_size,
+            v2::MAX_NODE_RECORD_OPERATIONS_PER_RECOVERY
+        );
+        assert_eq!(
+            config.operation_timeout_ms,
+            validation::CONSISTENCY_CHECK_TIMEOUT_MS
+        );
         assert!(!config.create_backup);
         assert_eq!(config.progress_interval, RECOVERY_PROGRESS_INTERVAL);
     }
@@ -855,6 +1013,9 @@ mod tests {
         // Test that V2 graph operations maintain integrity
         // This would be expanded with comprehensive integrity tests
         let config = ReplayConfig::default();
-        assert!(config.strict_validation, "Strict validation should be enabled by default");
+        assert!(
+            config.strict_validation,
+            "Strict validation should be enabled by default"
+        );
     }
 }

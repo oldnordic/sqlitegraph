@@ -4,7 +4,7 @@
 //! including ID allocation, validation, and max ID tracking.
 
 use crate::backend::native::graph_file::GraphFile;
-use crate::backend::native::types::{NativeResult, NativeEdgeId, FileOffset, NativeNodeId};
+use crate::backend::native::types::{FileOffset, NativeEdgeId, NativeNodeId, NativeResult};
 
 /// Edge ID manager for allocating and managing edge identifiers
 pub struct EdgeIdManager<'a> {
@@ -66,18 +66,22 @@ impl<'a> EdgeIdManager<'a> {
     /// `Ok(())` if the ID is valid, `Err` with details if invalid
     pub fn validate_edge_id(&self, edge_id: NativeEdgeId) -> NativeResult<()> {
         if edge_id <= 0 {
-            return Err(crate::backend::native::types::NativeBackendError::InvalidEdgeId {
-                id: edge_id,
-                max_id: 0,
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::InvalidEdgeId {
+                    id: edge_id,
+                    max_id: 0,
+                },
+            );
         }
 
         let max_id = self.max_edge_id();
         if edge_id > max_id {
-            return Err(crate::backend::native::types::NativeBackendError::InvalidEdgeId {
-                id: edge_id,
-                max_id,
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::InvalidEdgeId {
+                    id: edge_id,
+                    max_id,
+                },
+            );
         }
 
         Ok(())
@@ -225,10 +229,12 @@ impl<'a> AdjacencyAllocator<'a> {
     /// `Ok(())` if parameters are valid, `Err` with details if invalid
     pub fn validate_allocation_params(count: u32, max_edges_per_node: u32) -> NativeResult<()> {
         if count > max_edges_per_node {
-            return Err(crate::backend::native::types::NativeBackendError::RecordTooLarge {
-                size: count,
-                max_size: max_edges_per_node,
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::RecordTooLarge {
+                    size: count,
+                    max_size: max_edges_per_node,
+                },
+            );
         }
         Ok(())
     }
@@ -399,7 +405,7 @@ mod tests {
         // Manually set the edge count to maximum value
         graph_file.persistent_header_mut().edge_count = u64::MAX;
 
-        let mut id_manager = EdgeIdManager::new(&mut graph_file);
+        let id_manager = EdgeIdManager::new(&mut graph_file);
 
         // This test checks the edge ID manager behavior with maximum edge count
         // In production, this situation should be handled by proper limits and validation

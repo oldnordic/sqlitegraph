@@ -4,11 +4,12 @@
 //! data, identifying patterns, detecting anomalies, and generating actionable insights for
 //! optimization and troubleshooting.
 
-use std::collections::HashMap;
 
-use crate::backend::native::v2::wal::metrics::core::{V2WALMetrics, WALPerformanceCounters};
-use crate::backend::native::v2::wal::metrics::reporting::{ResourceTracker, ClusterPerformanceMetrics, ErrorTracker};
 use crate::backend::native::v2::wal::metrics::aggregation::{LatencyHistogram, ThroughputTracker};
+use crate::backend::native::v2::wal::metrics::core::{V2WALMetrics, WALPerformanceCounters};
+use crate::backend::native::v2::wal::metrics::reporting::{
+    ClusterPerformanceMetrics, ErrorTracker, ResourceTracker,
+};
 
 /// Performance analysis result containing insights and recommendations.
 ///
@@ -163,12 +164,22 @@ impl PartialOrd for IssueSeverity {
             (_, IssueSeverity::Critical) => Some(Ordering::Less),
 
             (IssueSeverity::High, IssueSeverity::High) => Some(Ordering::Equal),
-            (IssueSeverity::High, IssueSeverity::Medium | IssueSeverity::Low | IssueSeverity::Info) => Some(Ordering::Greater),
-            (IssueSeverity::Medium | IssueSeverity::Low | IssueSeverity::Info, IssueSeverity::High) => Some(Ordering::Less),
+            (
+                IssueSeverity::High,
+                IssueSeverity::Medium | IssueSeverity::Low | IssueSeverity::Info,
+            ) => Some(Ordering::Greater),
+            (
+                IssueSeverity::Medium | IssueSeverity::Low | IssueSeverity::Info,
+                IssueSeverity::High,
+            ) => Some(Ordering::Less),
 
             (IssueSeverity::Medium, IssueSeverity::Medium) => Some(Ordering::Equal),
-            (IssueSeverity::Medium, IssueSeverity::Low | IssueSeverity::Info) => Some(Ordering::Greater),
-            (IssueSeverity::Low | IssueSeverity::Info, IssueSeverity::Medium) => Some(Ordering::Less),
+            (IssueSeverity::Medium, IssueSeverity::Low | IssueSeverity::Info) => {
+                Some(Ordering::Greater)
+            }
+            (IssueSeverity::Low | IssueSeverity::Info, IssueSeverity::Medium) => {
+                Some(Ordering::Less)
+            }
 
             (IssueSeverity::Low, IssueSeverity::Low) => Some(Ordering::Equal),
             (IssueSeverity::Low, IssueSeverity::Info) => Some(Ordering::Greater),
@@ -203,23 +214,47 @@ impl PartialOrd for RecommendationPriority {
         // Higher priority should be considered "greater" in ordering
         use std::cmp::Ordering;
         match (self, other) {
-            (RecommendationPriority::Immediate, RecommendationPriority::Immediate) => Some(Ordering::Equal),
+            (RecommendationPriority::Immediate, RecommendationPriority::Immediate) => {
+                Some(Ordering::Equal)
+            }
             (RecommendationPriority::Immediate, _) => Some(Ordering::Greater),
             (_, RecommendationPriority::Immediate) => Some(Ordering::Less),
 
             (RecommendationPriority::High, RecommendationPriority::High) => Some(Ordering::Equal),
-            (RecommendationPriority::High, RecommendationPriority::Medium | RecommendationPriority::Low | RecommendationPriority::Optional) => Some(Ordering::Greater),
-            (RecommendationPriority::Medium | RecommendationPriority::Low | RecommendationPriority::Optional, RecommendationPriority::High) => Some(Ordering::Less),
+            (
+                RecommendationPriority::High,
+                RecommendationPriority::Medium
+                | RecommendationPriority::Low
+                | RecommendationPriority::Optional,
+            ) => Some(Ordering::Greater),
+            (
+                RecommendationPriority::Medium
+                | RecommendationPriority::Low
+                | RecommendationPriority::Optional,
+                RecommendationPriority::High,
+            ) => Some(Ordering::Less),
 
-            (RecommendationPriority::Medium, RecommendationPriority::Medium) => Some(Ordering::Equal),
-            (RecommendationPriority::Medium, RecommendationPriority::Low | RecommendationPriority::Optional) => Some(Ordering::Greater),
-            (RecommendationPriority::Low | RecommendationPriority::Optional, RecommendationPriority::Medium) => Some(Ordering::Less),
+            (RecommendationPriority::Medium, RecommendationPriority::Medium) => {
+                Some(Ordering::Equal)
+            }
+            (
+                RecommendationPriority::Medium,
+                RecommendationPriority::Low | RecommendationPriority::Optional,
+            ) => Some(Ordering::Greater),
+            (
+                RecommendationPriority::Low | RecommendationPriority::Optional,
+                RecommendationPriority::Medium,
+            ) => Some(Ordering::Less),
 
             (RecommendationPriority::Low, RecommendationPriority::Low) => Some(Ordering::Equal),
-            (RecommendationPriority::Low, RecommendationPriority::Optional) => Some(Ordering::Greater),
+            (RecommendationPriority::Low, RecommendationPriority::Optional) => {
+                Some(Ordering::Greater)
+            }
             (RecommendationPriority::Optional, RecommendationPriority::Low) => Some(Ordering::Less),
 
-            (RecommendationPriority::Optional, RecommendationPriority::Optional) => Some(Ordering::Equal),
+            (RecommendationPriority::Optional, RecommendationPriority::Optional) => {
+                Some(Ordering::Equal)
+            }
         }
     }
 }
@@ -357,8 +392,14 @@ impl PerformanceAnalysis {
     ///
     /// Vector of critical issues
     pub fn get_critical_issues(&self) -> Vec<&PerformanceIssue> {
-        self.issues.iter()
-            .filter(|issue| matches!(issue.severity, IssueSeverity::Critical | IssueSeverity::High))
+        self.issues
+            .iter()
+            .filter(|issue| {
+                matches!(
+                    issue.severity,
+                    IssueSeverity::Critical | IssueSeverity::High
+                )
+            })
             .collect()
     }
 
@@ -371,8 +412,14 @@ impl PerformanceAnalysis {
     ///
     /// Vector of immediate recommendations
     pub fn get_immediate_recommendations(&self) -> Vec<&Recommendation> {
-        self.recommendations.iter()
-            .filter(|rec| matches!(rec.priority, RecommendationPriority::Immediate | RecommendationPriority::High))
+        self.recommendations
+            .iter()
+            .filter(|rec| {
+                matches!(
+                    rec.priority,
+                    RecommendationPriority::Immediate | RecommendationPriority::High
+                )
+            })
             .collect()
     }
 }
@@ -394,11 +441,11 @@ impl PerformanceAnalyzer {
                 trend_window: 3600, // 1 hour
                 enable_prediction: true,
                 thresholds: MetricThresholds {
-                    max_write_latency_us: 1000,    // 1ms
-                    max_read_latency_us: 500,      // 0.5ms
-                    min_throughput_rps: 1000.0,    // 1K records/sec
-                    max_error_rate_percent: 1.0,   // 1%
-                    max_memory_usage_percent: 80.0, // 80%
+                    max_write_latency_us: 1000,        // 1ms
+                    max_read_latency_us: 500,          // 0.5ms
+                    min_throughput_rps: 1000.0,        // 1K records/sec
+                    max_error_rate_percent: 1.0,       // 1%
+                    max_memory_usage_percent: 80.0,    // 80%
                     min_buffer_hit_rate_percent: 85.0, // 85%
                 },
             },
@@ -455,8 +502,14 @@ impl PerformanceAnalyzer {
         analysis.overall_score = self.calculate_overall_score(&analysis.category_scores);
 
         // Identify issues and opportunities
-        analysis.issues = self.identify_issues(&counters, &latency_histogram, &resource_tracker, &error_tracker);
-        analysis.opportunities = self.identify_opportunities(&counters, &cluster_metrics, &throughput_tracker);
+        analysis.issues = self.identify_issues(
+            &counters,
+            &latency_histogram,
+            &resource_tracker,
+            &error_tracker,
+        );
+        analysis.opportunities =
+            self.identify_opportunities(&counters, &cluster_metrics, &throughput_tracker);
 
         // Generate recommendations
         analysis.recommendations = self.generate_recommendations(&analysis);
@@ -530,7 +583,7 @@ impl PerformanceAnalyzer {
         };
 
         // Weight read latency more heavily (typical for databases)
-        (write_score * 0.4 + read_score * 0.6)
+        write_score * 0.4 + read_score * 0.6
     }
 
     /// Analyze resource utilization.
@@ -545,24 +598,35 @@ impl PerformanceAnalyzer {
     ///
     /// Resource performance score (0-100)
     fn analyze_resources(&self, tracker: &ResourceTracker) -> f64 {
-        let memory_score = if tracker.memory_usage_bytes <= self.config.thresholds.max_memory_usage_percent as u64 * 1024 * 1024 {
+        let memory_score = if tracker.memory_usage_bytes
+            <= self.config.thresholds.max_memory_usage_percent as u64 * 1024 * 1024
+        {
             100.0
         } else {
             // Penalize excessive memory usage
-            100.0 - ((tracker.memory_usage_bytes as f64 - self.config.thresholds.max_memory_usage_percent as f64 * 1024.0 * 1024.0) / (self.config.thresholds.max_memory_usage_percent as f64 * 1024.0 * 1024.0)) * 100.0
-        }.max(0.0_f64);
+            100.0
+                - ((tracker.memory_usage_bytes as f64
+                    - self.config.thresholds.max_memory_usage_percent as f64 * 1024.0 * 1024.0)
+                    / (self.config.thresholds.max_memory_usage_percent as f64 * 1024.0 * 1024.0))
+                    * 100.0
+        }
+        .max(0.0_f64);
 
-        let buffer_score = if tracker.buffer_pool_hit_rate >= self.config.thresholds.min_buffer_hit_rate_percent / 100.0 {
+        let buffer_score = if tracker.buffer_pool_hit_rate
+            >= self.config.thresholds.min_buffer_hit_rate_percent / 100.0
+        {
             100.0
         } else {
-            (tracker.buffer_pool_hit_rate / (self.config.thresholds.min_buffer_hit_rate_percent / 100.0)) * 100.0
+            (tracker.buffer_pool_hit_rate
+                / (self.config.thresholds.min_buffer_hit_rate_percent / 100.0))
+                * 100.0
         };
 
         // CPU and disk are secondary for database workloads
         let cpu_score = 100.0 - tracker.cpu_usage_percent; // Lower CPU usage is better
         let disk_score = if tracker.disk_iops > 0 { 100.0 } else { 50.0 };
 
-        (memory_score * 0.3 + buffer_score * 0.3 + cpu_score * 0.2 + disk_score * 0.2)
+        memory_score * 0.3 + buffer_score * 0.3 + cpu_score * 0.2 + disk_score * 0.2
     }
 
     /// Analyze reliability based on error rates and patterns.
@@ -577,7 +641,11 @@ impl PerformanceAnalyzer {
     /// # Returns
     ///
     /// Reliability performance score (0-100)
-    fn analyze_reliability(&self, error_tracker: &ErrorTracker, counters: &WALPerformanceCounters) -> f64 {
+    fn analyze_reliability(
+        &self,
+        error_tracker: &ErrorTracker,
+        counters: &WALPerformanceCounters,
+    ) -> f64 {
         let total_operations = counters.records_processed;
         let total_errors: u64 = error_tracker.error_counts.values().sum();
 
@@ -607,13 +675,18 @@ impl PerformanceAnalyzer {
     /// # Returns
     ///
     /// Efficiency performance score (0-100)
-    fn analyze_efficiency(&self, counters: &WALPerformanceCounters, cluster_metrics: &ClusterPerformanceMetrics) -> f64 {
+    fn analyze_efficiency(
+        &self,
+        counters: &WALPerformanceCounters,
+        cluster_metrics: &ClusterPerformanceMetrics,
+    ) -> f64 {
         // Buffer utilization efficiency
         let buffer_efficiency = if counters.buffer_utilization_percent <= 90.0 {
             (counters.buffer_utilization_percent / 90.0) * 100.0
         } else {
             100.0 - ((counters.buffer_utilization_percent - 90.0) / 10.0) * 100.0
-        }.max(0.0_f64);
+        }
+        .max(0.0_f64);
 
         // Cluster efficiency
         let cluster_efficiency = if cluster_metrics.global_metrics.total_clusters > 0 {
@@ -623,10 +696,10 @@ impl PerformanceAnalyzer {
         };
 
         // Operation efficiency (ratio of successful operations)
-        let total_ops = counters.edge_operations.total_inserts +
-                       counters.edge_operations.total_updates +
-                       counters.node_operations.total_inserts +
-                       counters.node_operations.total_updates;
+        let total_ops = counters.edge_operations.total_inserts
+            + counters.edge_operations.total_updates
+            + counters.node_operations.total_inserts
+            + counters.node_operations.total_updates;
 
         let operation_efficiency = if total_ops > 0 {
             // Assume all recorded operations are successful for this calculation
@@ -635,7 +708,7 @@ impl PerformanceAnalyzer {
             100.0 // No operations means no inefficiency
         };
 
-        (buffer_efficiency * 0.4 + cluster_efficiency * 0.3 + operation_efficiency * 0.3)
+        buffer_efficiency * 0.4 + cluster_efficiency * 0.3 + operation_efficiency * 0.3
     }
 
     /// Calculate overall performance score.
@@ -651,11 +724,11 @@ impl PerformanceAnalyzer {
     /// Overall performance score (0-100)
     fn calculate_overall_score(&self, category_scores: &PerformanceCategoryScores) -> f64 {
         // Weight categories by importance for database workloads
-        (category_scores.throughput * 0.25 +
-         category_scores.latency * 0.30 +
-         category_scores.resources * 0.15 +
-         category_scores.reliability * 0.20 +
-         category_scores.efficiency * 0.10)
+        category_scores.throughput * 0.25
+            + category_scores.latency * 0.30
+            + category_scores.resources * 0.15
+            + category_scores.reliability * 0.20
+            + category_scores.efficiency * 0.10
     }
 
     /// Identify performance issues.
@@ -699,7 +772,8 @@ impl PerformanceAnalyzer {
 
         // Check for memory pressure
         let memory_mb = resource_tracker.memory_usage_bytes / (1024 * 1024);
-        if memory_mb > 1024 { // > 1GB
+        if memory_mb > 1024 {
+            // > 1GB
             issues.push(PerformanceIssue {
                 severity: IssueSeverity::Medium,
                 category: "Memory".to_string(),
@@ -844,7 +918,11 @@ impl PerformanceAnalyzer {
     ///
     /// Data quality assessment
     fn assess_data_quality(&self, counters: &WALPerformanceCounters) -> DataQuality {
-        let completeness = if counters.records_processed > 0 { 1.0 } else { 0.0 };
+        let completeness = if counters.records_processed > 0 {
+            1.0
+        } else {
+            0.0
+        };
         let freshness = 1.0; // Assume data is fresh (would check timestamps in production)
         let consistency = 1.0; // Assume data is consistent (would validate in production)
 
@@ -1074,6 +1152,9 @@ mod tests {
 
         let immediate_recs = analysis.get_immediate_recommendations();
         assert_eq!(immediate_recs.len(), 1);
-        assert_eq!(immediate_recs[0].priority, RecommendationPriority::Immediate);
+        assert_eq!(
+            immediate_recs[0].priority,
+            RecommendationPriority::Immediate
+        );
     }
 }

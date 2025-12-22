@@ -4,8 +4,8 @@
 //! including size-based, time-based, transaction-based, and adaptive strategies.
 //! Each strategy is optimized for V2 clustered edge graph file workloads.
 
-use crate::backend::native::v2::wal::checkpoint::constants::*;
 use crate::backend::native::v2::wal::checkpoint::constants::strategies::*;
+use crate::backend::native::v2::wal::checkpoint::constants::*;
 use crate::backend::native::v2::wal::checkpoint::errors::{CheckpointError, CheckpointResult};
 use crate::backend::native::v2::wal::{V2WALConfig, V2WALReader};
 use std::time::{Duration, SystemTime};
@@ -75,76 +75,96 @@ impl StrategyValidator {
         match strategy {
             CheckpointStrategy::SizeThreshold(max_size) => {
                 if *max_size < MIN_SIZE_THRESHOLD {
-                    return Err(CheckpointError::configuration(
-                        format!("Size threshold {} below minimum {}", max_size, MIN_SIZE_THRESHOLD)
-                    ));
+                    return Err(CheckpointError::configuration(format!(
+                        "Size threshold {} below minimum {}",
+                        max_size, MIN_SIZE_THRESHOLD
+                    )));
                 }
                 if *max_size > MAX_SIZE_THRESHOLD {
-                    return Err(CheckpointError::configuration(
-                        format!("Size threshold {} above maximum {}", max_size, MAX_SIZE_THRESHOLD)
-                    ));
+                    return Err(CheckpointError::configuration(format!(
+                        "Size threshold {} above maximum {}",
+                        max_size, MAX_SIZE_THRESHOLD
+                    )));
                 }
                 Ok(())
             }
 
             CheckpointStrategy::TransactionCount(max_tx) => {
                 if *max_tx < MIN_TRANSACTION_THRESHOLD {
-                    return Err(CheckpointError::configuration(
-                        format!("Transaction threshold {} below minimum {}", max_tx, MIN_TRANSACTION_THRESHOLD)
-                    ));
+                    return Err(CheckpointError::configuration(format!(
+                        "Transaction threshold {} below minimum {}",
+                        max_tx, MIN_TRANSACTION_THRESHOLD
+                    )));
                 }
                 if *max_tx > MAX_TRANSACTION_THRESHOLD {
-                    return Err(CheckpointError::configuration(
-                        format!("Transaction threshold {} above maximum {}", max_tx, MAX_TRANSACTION_THRESHOLD)
-                    ));
+                    return Err(CheckpointError::configuration(format!(
+                        "Transaction threshold {} above maximum {}",
+                        max_tx, MAX_TRANSACTION_THRESHOLD
+                    )));
                 }
                 Ok(())
             }
 
             CheckpointStrategy::TimeInterval(interval) => {
                 if *interval < Duration::from_secs(MIN_TIME_INTERVAL_SECONDS) {
-                    return Err(CheckpointError::configuration(
-                        format!("Time interval {:?} below minimum {:?}", interval, Duration::from_secs(MIN_TIME_INTERVAL_SECONDS))
-                    ));
+                    return Err(CheckpointError::configuration(format!(
+                        "Time interval {:?} below minimum {:?}",
+                        interval,
+                        Duration::from_secs(MIN_TIME_INTERVAL_SECONDS)
+                    )));
                 }
                 if *interval > Duration::from_secs(MAX_TIME_INTERVAL_SECONDS) {
-                    return Err(CheckpointError::configuration(
-                        format!("Time interval {:?} above maximum {:?}", interval, Duration::from_secs(MAX_TIME_INTERVAL_SECONDS))
-                    ));
+                    return Err(CheckpointError::configuration(format!(
+                        "Time interval {:?} above maximum {:?}",
+                        interval,
+                        Duration::from_secs(MAX_TIME_INTERVAL_SECONDS)
+                    )));
                 }
                 Ok(())
             }
 
-            CheckpointStrategy::Adaptive { min_interval, max_wal_size, max_transactions } => {
+            CheckpointStrategy::Adaptive {
+                min_interval,
+                max_wal_size,
+                max_transactions,
+            } => {
                 // Validate min_interval
                 if *min_interval < Duration::from_secs(ADAPTIVE_MIN_INTERVAL_SECONDS) {
-                    return Err(CheckpointError::configuration(
-                        format!("Adaptive min interval {:?} below minimum {:?}", min_interval, Duration::from_secs(ADAPTIVE_MIN_INTERVAL_SECONDS))
-                    ));
+                    return Err(CheckpointError::configuration(format!(
+                        "Adaptive min interval {:?} below minimum {:?}",
+                        min_interval,
+                        Duration::from_secs(ADAPTIVE_MIN_INTERVAL_SECONDS)
+                    )));
                 }
 
                 // Validate max_wal_size
                 if *max_wal_size < MIN_SIZE_THRESHOLD {
-                    return Err(CheckpointError::configuration(
-                        format!("Adaptive max WAL size {} below minimum {}", max_wal_size, MIN_SIZE_THRESHOLD)
-                    ));
+                    return Err(CheckpointError::configuration(format!(
+                        "Adaptive max WAL size {} below minimum {}",
+                        max_wal_size, MIN_SIZE_THRESHOLD
+                    )));
                 }
                 if *max_wal_size > MAX_SIZE_THRESHOLD * ADAPTIVE_MAX_WAL_SIZE_MULTIPLIER as u64 {
-                    return Err(CheckpointError::configuration(
-                        format!("Adaptive max WAL size {} too large", max_wal_size)
-                    ));
+                    return Err(CheckpointError::configuration(format!(
+                        "Adaptive max WAL size {} too large",
+                        max_wal_size
+                    )));
                 }
 
                 // Validate max_transactions
                 if *max_transactions < MIN_TRANSACTION_THRESHOLD {
-                    return Err(CheckpointError::configuration(
-                        format!("Adaptive max transactions {} below minimum {}", max_transactions, MIN_TRANSACTION_THRESHOLD)
-                    ));
+                    return Err(CheckpointError::configuration(format!(
+                        "Adaptive max transactions {} below minimum {}",
+                        max_transactions, MIN_TRANSACTION_THRESHOLD
+                    )));
                 }
-                if *max_transactions > MAX_TRANSACTION_THRESHOLD as u64 * ADAPTIVE_MAX_TX_MULTIPLIER as u64 {
-                    return Err(CheckpointError::configuration(
-                        format!("Adaptive max transactions {} too large", max_transactions)
-                    ));
+                if *max_transactions
+                    > MAX_TRANSACTION_THRESHOLD as u64 * ADAPTIVE_MAX_TX_MULTIPLIER as u64
+                {
+                    return Err(CheckpointError::configuration(format!(
+                        "Adaptive max transactions {} too large",
+                        max_transactions
+                    )));
                 }
 
                 Ok(())
@@ -212,16 +232,27 @@ impl StrategyEvaluator {
                 self.evaluate_time_interval(*interval, last_checkpoint_time)?
             }
 
-            CheckpointStrategy::Adaptive { min_interval, max_wal_size, max_transactions } => {
-                self.evaluate_adaptive(*min_interval, *max_wal_size, *max_transactions, last_checkpoint_time, checkpointed_lsn)?
-            }
+            CheckpointStrategy::Adaptive {
+                min_interval,
+                max_wal_size,
+                max_transactions,
+            } => self.evaluate_adaptive(
+                *min_interval,
+                *max_wal_size,
+                *max_transactions,
+                last_checkpoint_time,
+                checkpointed_lsn,
+            )?,
         };
 
         Ok(trigger)
     }
 
     /// Evaluate size-based checkpoint trigger
-    fn evaluate_size_threshold(&self, max_size: u64) -> CheckpointResult<(bool, Option<CheckpointTrigger>)> {
+    fn evaluate_size_threshold(
+        &self,
+        max_size: u64,
+    ) -> CheckpointResult<(bool, Option<CheckpointTrigger>)> {
         let wal_metadata = std::fs::metadata(&self.config.wal_path)
             .map_err(|e| CheckpointError::io(format!("Failed to get WAL file metadata: {}", e)))?;
 
@@ -231,7 +262,10 @@ impl StrategyEvaluator {
         if should_trigger {
             let trigger = CheckpointTrigger {
                 strategy_type: "SizeThreshold".to_string(),
-                reason: format!("WAL size {} bytes exceeded threshold {}", wal_size, max_size),
+                reason: format!(
+                    "WAL size {} bytes exceeded threshold {}",
+                    wal_size, max_size
+                ),
                 wal_size,
                 transaction_count: 0,
                 time_since_last_checkpoint: Duration::ZERO,
@@ -244,9 +278,14 @@ impl StrategyEvaluator {
     }
 
     /// Evaluate transaction-based checkpoint trigger
-    fn evaluate_transaction_count(&self, max_tx: u64, checkpointed_lsn: u64) -> CheckpointResult<(bool, Option<CheckpointTrigger>)> {
-        let reader = V2WALReader::open(&self.config.wal_path)
-            .map_err(|e| CheckpointError::v2_integration(format!("Failed to open WAL reader: {}", e)))?;
+    fn evaluate_transaction_count(
+        &self,
+        max_tx: u64,
+        checkpointed_lsn: u64,
+    ) -> CheckpointResult<(bool, Option<CheckpointTrigger>)> {
+        let reader = V2WALReader::open(&self.config.wal_path).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to open WAL reader: {}", e))
+        })?;
 
         let header = reader.header();
         let transaction_count = header.committed_lsn.saturating_sub(checkpointed_lsn);
@@ -255,7 +294,10 @@ impl StrategyEvaluator {
         if should_trigger {
             let trigger = CheckpointTrigger {
                 strategy_type: "TransactionCount".to_string(),
-                reason: format!("Transaction count {} exceeded threshold {}", transaction_count, max_tx),
+                reason: format!(
+                    "Transaction count {} exceeded threshold {}",
+                    transaction_count, max_tx
+                ),
                 wal_size: 0,
                 transaction_count,
                 time_since_last_checkpoint: Duration::ZERO,
@@ -268,7 +310,11 @@ impl StrategyEvaluator {
     }
 
     /// Evaluate time-based checkpoint trigger
-    fn evaluate_time_interval(&self, interval: Duration, last_checkpoint_time: SystemTime) -> CheckpointResult<(bool, Option<CheckpointTrigger>)> {
+    fn evaluate_time_interval(
+        &self,
+        interval: Duration,
+        last_checkpoint_time: SystemTime,
+    ) -> CheckpointResult<(bool, Option<CheckpointTrigger>)> {
         let elapsed = last_checkpoint_time
             .elapsed()
             .map_err(|e| CheckpointError::state(format!("Invalid checkpoint time: {}", e)))?;
@@ -278,7 +324,10 @@ impl StrategyEvaluator {
         if should_trigger {
             let trigger = CheckpointTrigger {
                 strategy_type: "TimeInterval".to_string(),
-                reason: format!("Time interval {:?} exceeded threshold {:?}", elapsed, interval),
+                reason: format!(
+                    "Time interval {:?} exceeded threshold {:?}",
+                    elapsed, interval
+                ),
                 wal_size: 0,
                 transaction_count: 0,
                 time_since_last_checkpoint: elapsed,
@@ -309,7 +358,10 @@ impl StrategyEvaluator {
 
         if elapsed >= min_interval {
             should_trigger = true;
-            reasons.push(format!("Time interval {:?} exceeded minimum {:?}", elapsed, min_interval));
+            reasons.push(format!(
+                "Time interval {:?} exceeded minimum {:?}",
+                elapsed, min_interval
+            ));
         }
 
         // Check WAL size
@@ -319,19 +371,26 @@ impl StrategyEvaluator {
         let wal_size = wal_metadata.len();
         if wal_size >= max_wal_size {
             should_trigger = true;
-            reasons.push(format!("WAL size {} exceeded maximum {}", wal_size, max_wal_size));
+            reasons.push(format!(
+                "WAL size {} exceeded maximum {}",
+                wal_size, max_wal_size
+            ));
         }
 
         // Check transaction count
-        let reader = V2WALReader::open(&self.config.wal_path)
-            .map_err(|e| CheckpointError::v2_integration(format!("Failed to open WAL reader: {}", e)))?;
+        let reader = V2WALReader::open(&self.config.wal_path).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to open WAL reader: {}", e))
+        })?;
 
         let header = reader.header();
         let transaction_count = header.committed_lsn.saturating_sub(checkpointed_lsn);
 
         if transaction_count >= max_transactions {
             should_trigger = true;
-            reasons.push(format!("Transaction count {} exceeded maximum {}", transaction_count, max_transactions));
+            reasons.push(format!(
+                "Transaction count {} exceeded maximum {}",
+                transaction_count, max_transactions
+            ));
         }
 
         if should_trigger {
@@ -350,12 +409,17 @@ impl StrategyEvaluator {
     }
 
     /// Get current metrics for strategy monitoring
-    pub fn get_strategy_metrics(&self, checkpointed_lsn: u64, last_checkpoint_time: SystemTime) -> CheckpointResult<StrategyMetrics> {
+    pub fn get_strategy_metrics(
+        &self,
+        checkpointed_lsn: u64,
+        last_checkpoint_time: SystemTime,
+    ) -> CheckpointResult<StrategyMetrics> {
         let wal_metadata = std::fs::metadata(&self.config.wal_path)
             .map_err(|e| CheckpointError::io(format!("Failed to get WAL file metadata: {}", e)))?;
 
-        let reader = V2WALReader::open(&self.config.wal_path)
-            .map_err(|e| CheckpointError::v2_integration(format!("Failed to open WAL reader: {}", e)))?;
+        let reader = V2WALReader::open(&self.config.wal_path).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to open WAL reader: {}", e))
+        })?;
 
         let header = reader.header();
         let elapsed = last_checkpoint_time
@@ -395,9 +459,10 @@ impl StrategyMetrics {
     /// Check if metrics indicate urgent checkpoint need
     pub fn is_urgent(&self) -> bool {
         // Urgent if WAL size is very large or many pending transactions
-        self.wal_size > DEFAULT_SIZE_THRESHOLD * 2 ||
-        self.pending_transactions > DEFAULT_TRANSACTION_THRESHOLD * 2 ||
-        self.time_since_last_checkpoint > Duration::from_secs(DEFAULT_TIME_INTERVAL_SECONDS * 2)
+        self.wal_size > DEFAULT_SIZE_THRESHOLD * 2
+            || self.pending_transactions > DEFAULT_TRANSACTION_THRESHOLD * 2
+            || self.time_since_last_checkpoint
+                > Duration::from_secs(DEFAULT_TIME_INTERVAL_SECONDS * 2)
     }
 
     /// Get recommended strategy adjustment
@@ -447,15 +512,21 @@ impl StrategyMetrics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
-    use std::path::PathBuf;
+    use std::time::Duration;
 
     #[test]
     fn test_checkpoint_strategy_default() {
         let strategy = CheckpointStrategy::default();
         match strategy {
-            CheckpointStrategy::Adaptive { min_interval, max_wal_size, max_transactions } => {
-                assert_eq!(min_interval, Duration::from_secs(DEFAULT_TIME_INTERVAL_SECONDS));
+            CheckpointStrategy::Adaptive {
+                min_interval,
+                max_wal_size,
+                max_transactions,
+            } => {
+                assert_eq!(
+                    min_interval,
+                    Duration::from_secs(DEFAULT_TIME_INTERVAL_SECONDS)
+                );
                 assert_eq!(max_wal_size, DEFAULT_SIZE_THRESHOLD);
                 assert_eq!(max_transactions, DEFAULT_TRANSACTION_THRESHOLD);
             }
@@ -500,15 +571,18 @@ mod tests {
     #[test]
     fn test_strategy_validator_time_interval() -> CheckpointResult<()> {
         // Valid time interval
-        let strategy = CheckpointStrategy::TimeInterval(Duration::from_secs(DEFAULT_TIME_INTERVAL_SECONDS));
+        let strategy =
+            CheckpointStrategy::TimeInterval(Duration::from_secs(DEFAULT_TIME_INTERVAL_SECONDS));
         assert!(StrategyValidator::validate_strategy(&strategy).is_ok());
 
         // Too small
-        let strategy = CheckpointStrategy::TimeInterval(Duration::from_secs(MIN_TIME_INTERVAL_SECONDS - 1));
+        let strategy =
+            CheckpointStrategy::TimeInterval(Duration::from_secs(MIN_TIME_INTERVAL_SECONDS - 1));
         assert!(StrategyValidator::validate_strategy(&strategy).is_err());
 
         // Too large
-        let strategy = CheckpointStrategy::TimeInterval(Duration::from_secs(MAX_TIME_INTERVAL_SECONDS + 1));
+        let strategy =
+            CheckpointStrategy::TimeInterval(Duration::from_secs(MAX_TIME_INTERVAL_SECONDS + 1));
         assert!(StrategyValidator::validate_strategy(&strategy).is_err());
 
         Ok(())

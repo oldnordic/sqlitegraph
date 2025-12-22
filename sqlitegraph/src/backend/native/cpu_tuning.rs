@@ -339,7 +339,7 @@ mod tests {
         assert_eq!(generic_resolved, CpuProfile::Generic);
 
         // Test that profiles fall back gracefully if CPU doesn't support features
-        let avx512_resolved = resolve_cpu_profile(CpuProfile::X86Avx512);
+        let _avx512_resolved = resolve_cpu_profile(CpuProfile::X86Avx512);
         // Should not panic, should fall back to best supported profile
     }
 

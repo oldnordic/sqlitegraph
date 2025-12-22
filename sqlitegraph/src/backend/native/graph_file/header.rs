@@ -5,10 +5,10 @@
 //! operations.
 
 use crate::backend::native::{
-    types::NativeResult,
-    persistent_header::PersistentHeaderV2,
-    v2::{V2_MAGIC, V2_FORMAT_VERSION},
     constants::node::NODE_SLOT_SIZE,
+    persistent_header::PersistentHeaderV2,
+    types::NativeResult,
+    v2::{V2_FORMAT_VERSION, V2_MAGIC},
 };
 
 /// Header management utilities for GraphFile
@@ -75,14 +75,22 @@ impl HeaderManager {
 
         // Fix outgoing cluster offset if it's inside node region
         if header.outgoing_cluster_offset < node_region_end {
-            Self::log_cluster_offset_fix("outgoing", header.outgoing_cluster_offset, node_region_end);
+            Self::log_cluster_offset_fix(
+                "outgoing",
+                header.outgoing_cluster_offset,
+                node_region_end,
+            );
             header.outgoing_cluster_offset = node_region_end;
         }
 
         // Position incoming clusters after outgoing clusters with reasonable spacing
         let min_incoming_offset = header.outgoing_cluster_offset + (node_count as u64 * 256);
         if header.incoming_cluster_offset < min_incoming_offset {
-            Self::log_cluster_offset_fix("incoming", header.incoming_cluster_offset, min_incoming_offset);
+            Self::log_cluster_offset_fix(
+                "incoming",
+                header.incoming_cluster_offset,
+                min_incoming_offset,
+            );
             header.incoming_cluster_offset = min_incoming_offset;
         }
 
@@ -93,13 +101,21 @@ impl HeaderManager {
 
         // CRITICAL INVARIANT: Cluster offsets must be outside node region
         if header.outgoing_cluster_offset < node_region_end {
-            Self::log_cluster_offset_fix("outgoing", header.outgoing_cluster_offset, node_region_end);
+            Self::log_cluster_offset_fix(
+                "outgoing",
+                header.outgoing_cluster_offset,
+                node_region_end,
+            );
             header.outgoing_cluster_offset = node_region_end;
         }
 
         if header.incoming_cluster_offset < node_region_end {
             let corrected_incoming_offset = node_region_end + (node_count as u64 * 256);
-            Self::log_cluster_offset_fix("incoming", header.incoming_cluster_offset, corrected_incoming_offset);
+            Self::log_cluster_offset_fix(
+                "incoming",
+                header.incoming_cluster_offset,
+                corrected_incoming_offset,
+            );
             header.incoming_cluster_offset = corrected_incoming_offset;
         }
 
@@ -116,51 +132,67 @@ impl HeaderManager {
     pub fn validate_header_invariants(header: &PersistentHeaderV2) -> NativeResult<()> {
         // Check basic header validity
         if header.magic != V2_MAGIC {
-            return Err(crate::backend::native::types::NativeBackendError::InvalidHeader {
-                field: "magic".to_string(),
-                reason: format!("Invalid magic bytes: expected {:x?}, got {:x?}", V2_MAGIC, header.magic),
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::InvalidHeader {
+                    field: "magic".to_string(),
+                    reason: format!(
+                        "Invalid magic bytes: expected {:x?}, got {:x?}",
+                        V2_MAGIC, header.magic
+                    ),
+                },
+            );
         }
 
         if header.version != V2_FORMAT_VERSION {
-            return Err(crate::backend::native::types::NativeBackendError::InvalidHeader {
-                field: "version".to_string(),
-                reason: format!("Unsupported version: expected {}, got {}", V2_FORMAT_VERSION, header.version),
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::InvalidHeader {
+                    field: "version".to_string(),
+                    reason: format!(
+                        "Unsupported version: expected {}, got {}",
+                        V2_FORMAT_VERSION, header.version
+                    ),
+                },
+            );
         }
 
         // Validate offset ordering
         if header.node_data_offset >= header.edge_data_offset {
-            return Err(crate::backend::native::types::NativeBackendError::InvalidHeader {
-                field: "offsets".to_string(),
-                reason: format!(
-                    "node_data_offset ({}) must be < edge_data_offset ({})",
-                    header.node_data_offset, header.edge_data_offset
-                ),
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::InvalidHeader {
+                    field: "offsets".to_string(),
+                    reason: format!(
+                        "node_data_offset ({}) must be < edge_data_offset ({})",
+                        header.node_data_offset, header.edge_data_offset
+                    ),
+                },
+            );
         }
 
         // Validate cluster offsets are outside node region
         let node_region_end = header.node_data_offset + (header.node_count as u64 * NODE_SLOT_SIZE);
 
         if header.outgoing_cluster_offset < node_region_end {
-            return Err(crate::backend::native::types::NativeBackendError::InvalidHeader {
-                field: "outgoing_cluster_offset".to_string(),
-                reason: format!(
-                    "outgoing_cluster_offset ({}) must be >= node_region_end ({})",
-                    header.outgoing_cluster_offset, node_region_end
-                ),
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::InvalidHeader {
+                    field: "outgoing_cluster_offset".to_string(),
+                    reason: format!(
+                        "outgoing_cluster_offset ({}) must be >= node_region_end ({})",
+                        header.outgoing_cluster_offset, node_region_end
+                    ),
+                },
+            );
         }
 
         if header.incoming_cluster_offset < node_region_end {
-            return Err(crate::backend::native::types::NativeBackendError::InvalidHeader {
-                field: "incoming_cluster_offset".to_string(),
-                reason: format!(
-                    "incoming_cluster_offset ({}) must be >= node_region_end ({})",
-                    header.incoming_cluster_offset, node_region_end
-                ),
-            });
+            return Err(
+                crate::backend::native::types::NativeBackendError::InvalidHeader {
+                    field: "incoming_cluster_offset".to_string(),
+                    reason: format!(
+                        "incoming_cluster_offset ({}) must be >= node_region_end ({})",
+                        header.incoming_cluster_offset, node_region_end
+                    ),
+                },
+            );
         }
 
         Ok(())
@@ -210,7 +242,10 @@ impl HeaderManager {
     }
 
     /// Get header statistics for debugging
-    pub fn get_header_statistics(header: &PersistentHeaderV2, reserved_node_region_bytes: u64) -> HeaderStatistics {
+    pub fn get_header_statistics(
+        header: &PersistentHeaderV2,
+        reserved_node_region_bytes: u64,
+    ) -> HeaderStatistics {
         let node_region_end = header.node_data_offset + (header.node_count as u64 * NODE_SLOT_SIZE);
 
         HeaderStatistics {
@@ -227,9 +262,7 @@ impl HeaderManager {
     }
 
     /// Get node statistics from persistent header
-    pub fn get_node_statistics(
-        header: &PersistentHeaderV2,
-    ) -> NativeResult<ClusterUtilization> {
+    pub fn get_node_statistics(header: &PersistentHeaderV2) -> NativeResult<ClusterUtilization> {
         Ok(ClusterUtilization {
             outgoing_cluster_start: header.outgoing_cluster_offset,
             incoming_cluster_start: header.incoming_cluster_offset,
@@ -239,9 +272,7 @@ impl HeaderManager {
     }
 
     /// Get edge statistics from persistent header
-    pub fn get_edge_statistics(
-        header: &PersistentHeaderV2,
-    ) -> NativeResult<ClusterUtilization> {
+    pub fn get_edge_statistics(header: &PersistentHeaderV2) -> NativeResult<ClusterUtilization> {
         Ok(ClusterUtilization {
             outgoing_cluster_start: header.outgoing_cluster_offset,
             incoming_cluster_start: header.incoming_cluster_offset,
@@ -309,7 +340,13 @@ mod tests {
         let default_node_data_start = 1024;
         let reserved_node_region_bytes = 8 * 1024 * 1024;
 
-        HeaderManager::initialize_v2_header(&mut header, node_count, default_node_data_start, reserved_node_region_bytes).unwrap();
+        HeaderManager::initialize_v2_header(
+            &mut header,
+            node_count,
+            default_node_data_start,
+            reserved_node_region_bytes,
+        )
+        .unwrap();
 
         assert_eq!(header.magic, V2_MAGIC);
         assert_eq!(header.version, V2_FORMAT_VERSION);

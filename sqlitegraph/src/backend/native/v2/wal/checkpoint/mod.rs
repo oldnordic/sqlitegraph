@@ -29,28 +29,43 @@
 //! - Cluster-aware dirty block tracking
 
 pub use self::core::{
-    V2WALCheckpointManager, CheckpointState, DirtyBlockTracker, CheckpointProgress,
+    CheckpointProgress, CheckpointState, DirtyBlockTracker, V2WALCheckpointManager,
 };
+// Re-export from the new modularized structure
+pub use self::coordinator::CheckpointExecutor;
+pub use self::io::BlockFlusher;
+pub use self::record::V2GraphIntegrator;
 pub use self::strategies::{
-    CheckpointStrategy, CheckpointTrigger, StrategyValidator, StrategyEvaluator, StrategyMetrics,
-};
-pub use self::operations::{
-    CheckpointExecutor, BlockFlusher, V2GraphIntegrator,
+    CheckpointStrategy, CheckpointTrigger, StrategyEvaluator, StrategyMetrics, StrategyValidator,
 };
 pub use self::validation::{
-    CheckpointValidator, CheckpointMetrics as V2CheckpointMetrics, CheckpointCleanup,
+    CheckpointCleanup,
+    CheckpointMetrics as V2CheckpointMetrics,
+    CheckpointValidationReport,
+    CheckpointValidator,
+    CheckpointValidatorFactory,
+    ConsistencyResult,
+    ConsistencySeverity,
+    ConsistencyViolation,
+    PerformanceMetrics,
+    V2InvariantResult,
+    V2InvariantViolation,
+    ValidationComponents,
+    ValidationConfig,
     // Extended validation types from the new modular structure
-    ValidationRule, ValidationRuleEngine, ValidationSeverity, ValidationConfig,
-    ConsistencyResult, ConsistencyViolation, ConsistencySeverity,
-    V2InvariantResult, V2InvariantViolation,
-    CheckpointValidationReport, ValidationStatus, PerformanceMetrics,
-    CheckpointValidatorFactory, ValidationComponents,
+    ValidationRule,
+    ValidationRuleEngine,
+    ValidationSeverity,
+    ValidationStatus,
 };
 
 /// Checkpoint module re-exports for backward compatibility
 pub mod core;
-pub mod strategies;
 pub mod operations;
+pub mod coordinator;
+pub mod io;
+pub mod record;
+pub mod strategies;
 pub mod validation;
 
 /// Checkpoint module constants and utilities
@@ -59,20 +74,23 @@ pub mod constants;
 /// Checkpoint module errors and diagnostics
 pub mod errors;
 
-use crate::backend::native::{NativeBackendError, NativeResult};
 use crate::backend::native::v2::wal::V2WALConfig;
 use std::path::Path;
 
 // Re-export error types from the errors module
-pub use self::errors::{CheckpointError, CheckpointResult, ErrorSeverity, RecoverySuggestion, CheckpointErrorKind};
-
+pub use self::errors::{
+    CheckpointError, CheckpointErrorKind, CheckpointResult, ErrorSeverity, RecoverySuggestion,
+};
 
 /// Checkpoint module factory for creating checkpoint components
 pub struct CheckpointFactory;
 
 impl CheckpointFactory {
     /// Create a checkpoint manager with default configuration
-    pub fn create_manager(config: V2WALConfig, strategy: CheckpointStrategy) -> CheckpointResult<V2WALCheckpointManager> {
+    pub fn create_manager(
+        config: V2WALConfig,
+        strategy: CheckpointStrategy,
+    ) -> CheckpointResult<V2WALCheckpointManager> {
         V2WALCheckpointManager::create(config, strategy).map_err(Into::into)
     }
 
@@ -92,7 +110,9 @@ impl CheckpointFactory {
     }
 
     /// Create a checkpoint manager optimized for V2 graph workloads
-    pub fn create_v2_optimized_manager(config: V2WALConfig) -> CheckpointResult<V2WALCheckpointManager> {
+    pub fn create_v2_optimized_manager(
+        config: V2WALConfig,
+    ) -> CheckpointResult<V2WALCheckpointManager> {
         // V2 graph workloads benefit from size-based checkpointing
         // due to clustered edge I/O patterns
         let strategy = CheckpointStrategy::SizeThreshold(config.max_wal_size / 4);
@@ -127,9 +147,12 @@ pub mod utils {
     }
 
     /// Estimate checkpoint duration based on WAL size and strategy
-    pub fn estimate_checkpoint_duration(wal_size: u64, strategy: &CheckpointStrategy) -> std::time::Duration {
+    pub fn estimate_checkpoint_duration(
+        wal_size: u64,
+        strategy: &CheckpointStrategy,
+    ) -> std::time::Duration {
         let base_duration = std::time::Duration::from_millis(
-            ((wal_size / (1024 * 1024)) as u64) * 100 // 100ms per MB baseline
+            ((wal_size / (1024 * 1024)) as u64) * 100, // 100ms per MB baseline
         );
 
         match strategy {
@@ -152,7 +175,9 @@ pub mod utils {
 
         // Basic validation: file should not be empty
         if metadata.len() == 0 {
-            return Err(CheckpointError::validation("Checkpoint file is empty".to_string()));
+            return Err(CheckpointError::validation(
+                "Checkpoint file is empty".to_string(),
+            ));
         }
 
         // File should have a reasonable size (not too small, not too large)
@@ -160,11 +185,15 @@ pub mod utils {
         let max_size = 1024 * 1024 * 1024; // 1GB maximum for single checkpoint
 
         if metadata.len() < min_size {
-            return Err(CheckpointError::validation("Checkpoint file too small".to_string()));
+            return Err(CheckpointError::validation(
+                "Checkpoint file too small".to_string(),
+            ));
         }
 
         if metadata.len() > max_size {
-            return Err(CheckpointError::validation("Checkpoint file too large".to_string()));
+            return Err(CheckpointError::validation(
+                "Checkpoint file too large".to_string(),
+            ));
         }
 
         Ok(true)
@@ -174,9 +203,10 @@ pub mod utils {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
-    use std::time::Duration;
+    use crate::backend::native::NativeBackendError;
     use crate::backend::native::GraphFile;
+    use std::time::Duration;
+    use tempfile::tempdir;
 
     #[test]
     fn test_checkpoint_factory_create_manager() -> CheckpointResult<()> {
@@ -184,8 +214,9 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .map_err(|e| CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e)))?;
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e))
+        })?;
 
         let config = V2WALConfig {
             wal_path: temp_dir.path().join("test.wal"),
@@ -205,8 +236,9 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .map_err(|e| CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e)))?;
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e))
+        })?;
 
         let config = V2WALConfig {
             wal_path: temp_dir.path().join("test.wal"),
@@ -227,15 +259,19 @@ mod tests {
     #[test]
     fn test_checkpoint_utils_calculate_optimal_size() {
         let test_sizes = vec![
-            (16 * 1024 * 1024, 4 * 1024 * 1024),   // 16MB WAL -> 4MB checkpoint
-            (64 * 1024 * 1024, 16 * 1024 * 1024),  // 64MB WAL -> 16MB checkpoint
+            (16 * 1024 * 1024, 4 * 1024 * 1024), // 16MB WAL -> 4MB checkpoint
+            (64 * 1024 * 1024, 16 * 1024 * 1024), // 64MB WAL -> 16MB checkpoint
             (256 * 1024 * 1024, 64 * 1024 * 1024), // 256MB WAL -> 64MB checkpoint
-            (512, 1024 * 1024),                   // Small WAL -> 1MB minimum
+            (512, 1024 * 1024),                  // Small WAL -> 1MB minimum
         ];
 
         for (wal_size, expected) in test_sizes {
             let result = utils::calculate_optimal_checkpoint_size(wal_size);
-            assert_eq!(result, expected, "Incorrect optimal checkpoint size for WAL size {}", wal_size);
+            assert_eq!(
+                result, expected,
+                "Incorrect optimal checkpoint size for WAL size {}",
+                wal_size
+            );
         }
     }
 
@@ -249,7 +285,8 @@ mod tests {
 
     #[test]
     fn test_checkpoint_error_from_native() {
-        let native_error = NativeBackendError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "test"));
+        let native_error =
+            NativeBackendError::Io(std::io::Error::new(std::io::ErrorKind::NotFound, "test"));
         let checkpoint_error: CheckpointError = native_error.into();
         assert_eq!(checkpoint_error.kind, CheckpointErrorKind::Io);
         assert!(checkpoint_error.message.contains("I/O error"));

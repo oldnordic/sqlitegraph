@@ -4,7 +4,7 @@
 //! to prevent "Attempted read beyond end of file" errors.
 
 use crate::backend::native::graph_file::GraphFile;
-use crate::backend::native::types::{NativeResult, NativeEdgeId};
+use crate::backend::native::types::{NativeEdgeId, NativeResult};
 
 /// Coordinates edge ID allocation with file capacity management
 pub struct EdgeCapacityCoordinator<'a> {
@@ -97,19 +97,35 @@ impl<'a> EdgeCapacityCoordinator<'a> {
         match required_size {
             0..=4096 => {
                 // For small sizes, grow to 4KB
-                if current_size < 4096 { 4096 - current_size } else { 0 }
+                if current_size < 4096 {
+                    4096 - current_size
+                } else {
+                    0
+                }
             }
             4097..=16384 => {
                 // For medium sizes, grow to 16KB
-                if current_size < 16384 { 16384 - current_size } else { 0 }
+                if current_size < 16384 {
+                    16384 - current_size
+                } else {
+                    0
+                }
             }
             16385..=65536 => {
                 // For larger sizes, grow to 64KB
-                if current_size < 65536 { 65536 - current_size } else { 0 }
+                if current_size < 65536 {
+                    65536 - current_size
+                } else {
+                    0
+                }
             }
             65537..=262144 => {
                 // For even larger sizes, grow to 256KB
-                if current_size < 262144 { 262144 - current_size } else { 0 }
+                if current_size < 262144 {
+                    262144 - current_size
+                } else {
+                    0
+                }
             }
             _ => {
                 // For very large sizes, grow to next multiple of 1MB
@@ -173,7 +189,10 @@ mod tests {
         assert_eq!(coordinator.calculate_edge_offset(2), base_offset + 256);
 
         // Edge ID 10 should be at base offset + 9 * 256
-        assert_eq!(coordinator.calculate_edge_offset(10), base_offset + (9 * 256));
+        assert_eq!(
+            coordinator.calculate_edge_offset(10),
+            base_offset + (9 * 256)
+        );
     }
 
     #[test]
@@ -189,13 +208,22 @@ mod tests {
         assert_eq!(coordinator.calculate_growth_amount(4000, 4096), 0);
 
         // Test medium growth (20000 requires 64KB growth, not 16KB)
-        assert_eq!(coordinator.calculate_growth_amount(20000, 4096), 65536 - 4096);
+        assert_eq!(
+            coordinator.calculate_growth_amount(20000, 4096),
+            65536 - 4096
+        );
 
         // Test large growth
-        assert_eq!(coordinator.calculate_growth_amount(100000, 65536), 262144 - 65536);
+        assert_eq!(
+            coordinator.calculate_growth_amount(100000, 65536),
+            262144 - 65536
+        );
 
         // Test very large growth (1MB boundaries)
-        assert_eq!(coordinator.calculate_growth_amount(2000000, 1048576), 2097152 - 1048576);
+        assert_eq!(
+            coordinator.calculate_growth_amount(2000000, 1048576),
+            2097152 - 1048576
+        );
     }
 
     #[test]
@@ -204,7 +232,8 @@ mod tests {
         let mut graph_file = GraphFile::create(temp_file.path()).unwrap();
         let coordinator = EdgeCapacityCoordinator::new(&mut graph_file);
 
-        let (current_size, allocated_edges, max_supported) = coordinator.get_capacity_statistics().unwrap();
+        let (current_size, allocated_edges, max_supported) =
+            coordinator.get_capacity_statistics().unwrap();
 
         // Should have initial capacity
         assert!(current_size > 0);

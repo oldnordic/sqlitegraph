@@ -1,6 +1,6 @@
 //! Core V2 node record structure and basic constructor
 
-use crate::backend::native::{NativeBackendError, NativeResult, NodeFlags};
+use crate::backend::native::NodeFlags;
 
 /// V2 node record with direct references to adjacency clusters.
 #[derive(Debug, Clone)]

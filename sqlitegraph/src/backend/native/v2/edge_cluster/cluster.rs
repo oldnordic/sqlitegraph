@@ -1,7 +1,9 @@
 //! Cluster container that stores a node's adjacency in contiguous storage.
 
-use super::cluster_trace::{Direction, TraceContext, TraceGuard, strict_mode_enabled, with_trace_context, current_trace_context, format_strict_reason};
-use super::cluster_serialization::{serialize_cluster, verify_serialized_layout, deserialize_cluster};
+use super::cluster_serialization::{
+    deserialize_cluster, serialize_cluster, verify_serialized_layout,
+};
+use super::cluster_trace::Direction;
 use super::compact_record::CompactEdgeRecord;
 use crate::backend::native::v2::string_table::StringTable;
 use crate::backend::native::{EdgeRecord, FileOffset, NativeBackendError, NativeResult};
@@ -40,8 +42,10 @@ impl EdgeCluster {
 
             // DEBUG: Print neighbor_id calculation
             if std::env::var("EDGE_DEBUG").is_ok() {
-                println!("[EDGE_DEBUG] create_from_edges: node_id={}, direction={:?}, edge.from_id={}, edge.to_id={}, calculated_neighbor_id={}",
-                    node_id, direction, edge.from_id, edge.to_id, neighbor_id);
+                println!(
+                    "[EDGE_DEBUG] create_from_edges: node_id={}, direction={:?}, edge.from_id={}, edge.to_id={}, calculated_neighbor_id={}",
+                    node_id, direction, edge.from_id, edge.to_id, neighbor_id
+                );
             }
 
             if neighbor_id <= 0 {
@@ -86,7 +90,7 @@ impl EdgeCluster {
     }
 
     /// Rebuild a cluster from raw bytes.
-  /// Rebuild a cluster from raw bytes.
+    /// Rebuild a cluster from raw bytes.
     pub fn deserialize(bytes: &[u8]) -> NativeResult<Self> {
         let (edges, payload_size) = deserialize_cluster(bytes)?;
         Ok(Self {

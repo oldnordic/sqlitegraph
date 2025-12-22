@@ -4,18 +4,16 @@
 //! file operations, ensuring atomicity, consistency, and durability for all V2
 //! clustered edge operations with automatic WAL transaction management.
 
-use crate::backend::native::{NativeBackendError, NativeResult};
 use crate::backend::native::v2::wal::{
-    V2WALManager, V2WALRecord, V2WALConfig, TransactionIsolation,
+    TransactionIsolation, V2WALConfig, V2WALManager, V2WALRecord,
 };
 use crate::backend::native::v2::{
-    NodeRecordV2, EdgeCluster, CompactEdgeRecord, Direction, FreeSpaceManager, StringTable,
+    CompactEdgeRecord, Direction, NodeRecordV2,
 };
-use crate::backend::native::transaction_state::TransactionState;
+use crate::backend::native::{NativeBackendError, NativeResult};
 use parking_lot::RwLock;
-use std::sync::Arc;
-use std::path::Path;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// V2 WAL integration manager for graph file operations
 pub struct V2GraphWALIntegrator {
@@ -123,7 +121,10 @@ impl Default for GraphWALIntegrationConfig {
 
 impl V2GraphWALIntegrator {
     /// Create a new V2 graph WAL integrator
-    pub fn create(wal_config: V2WALConfig, integration_config: GraphWALIntegrationConfig) -> NativeResult<Self> {
+    pub fn create(
+        wal_config: V2WALConfig,
+        integration_config: GraphWALIntegrationConfig,
+    ) -> NativeResult<Self> {
         let wal_manager = Arc::new(V2WALManager::create(wal_config)?);
 
         Ok(Self {
@@ -173,7 +174,8 @@ impl V2GraphWALIntegrator {
         };
 
         let lsn = if let Some(tx_id) = tx_id {
-            self.wal_manager.write_transaction_record(tx_id, wal_record)?
+            self.wal_manager
+                .write_transaction_record(tx_id, wal_record)?
         } else {
             self.wal_manager.write_record(wal_record)?
         };
@@ -232,7 +234,8 @@ impl V2GraphWALIntegrator {
         };
 
         let lsn = if let Some(tx_id) = tx_id {
-            self.wal_manager.write_transaction_record(tx_id, wal_record)?
+            self.wal_manager
+                .write_transaction_record(tx_id, wal_record)?
         } else {
             self.wal_manager.write_record(wal_record)?
         };
@@ -285,7 +288,8 @@ impl V2GraphWALIntegrator {
         };
 
         let lsn = if let Some(tx_id) = tx_id {
-            self.wal_manager.write_transaction_record(tx_id, wal_record)?
+            self.wal_manager
+                .write_transaction_record(tx_id, wal_record)?
         } else {
             self.wal_manager.write_record(wal_record)?
         };
@@ -334,7 +338,8 @@ impl V2GraphWALIntegrator {
         };
 
         let lsn = if let Some(tx_id) = tx_id {
-            self.wal_manager.write_transaction_record(tx_id, wal_record)?
+            self.wal_manager
+                .write_transaction_record(tx_id, wal_record)?
         } else {
             self.wal_manager.write_record(wal_record)?
         };
@@ -390,7 +395,8 @@ impl V2GraphWALIntegrator {
             tx_id: Some(tx_id),
             metrics: OperationMetrics {
                 duration_us: duration.as_micros() as u64,
-                wal_records_written: graph_tx.modified_nodes.len() as u64 + graph_tx.modified_clusters.len() as u64,
+                wal_records_written: graph_tx.modified_nodes.len() as u64
+                    + graph_tx.modified_clusters.len() as u64,
                 bytes_written: 0, // Calculated by WAL manager
                 nodes_affected: graph_tx.modified_nodes.len() as u32,
                 clusters_affected: graph_tx.modified_clusters.len() as u32,
@@ -535,7 +541,9 @@ mod tests {
         let integrator = V2GraphWALIntegrator::create(wal_config, integration_config).unwrap();
 
         // Begin transaction
-        let tx_id = integrator.begin_transaction(TransactionIsolation::ReadCommitted).unwrap();
+        let tx_id = integrator
+            .begin_transaction(TransactionIsolation::ReadCommitted)
+            .unwrap();
         assert!(tx_id > 0);
         assert_eq!(integrator.get_active_transaction_count(), 1);
 
@@ -564,7 +572,12 @@ mod tests {
         let integrator = V2GraphWALIntegrator::create(wal_config, integration_config).unwrap();
 
         // Create a dummy node record
-        let node_record = NodeRecordV2::new(42, "test".to_string(), "test_node".to_string(), serde_json::Value::Null);
+        let node_record = NodeRecordV2::new(
+            42,
+            "test".to_string(),
+            "test_node".to_string(),
+            serde_json::Value::Null,
+        );
 
         // Insert node outside transaction
         let result = integrator.insert_node(None, 42, &node_record).unwrap();
@@ -591,7 +604,9 @@ mod tests {
         let integrator = V2GraphWALIntegrator::create(wal_config, integration_config).unwrap();
 
         // Begin transaction
-        let tx_id = integrator.begin_transaction(TransactionIsolation::Serializable).unwrap();
+        let tx_id = integrator
+            .begin_transaction(TransactionIsolation::Serializable)
+            .unwrap();
         assert_eq!(integrator.get_active_transaction_count(), 1);
 
         // Rollback transaction

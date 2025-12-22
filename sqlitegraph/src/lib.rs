@@ -135,8 +135,8 @@ pub mod bench_meta; // Public for tests
 pub mod bench_regression; // Public for tests
 pub mod bench_utils; // Public for tests
 pub mod dsl; // Public for examples
-pub mod pattern; // Public for binary
-pub mod hnsw; // HNSW vector search capabilities
+pub mod hnsw;
+pub mod pattern; // Public for binary // HNSW vector search capabilities
 
 // Re-export cache statistics for benchmarking
 pub use cache::CacheStats;

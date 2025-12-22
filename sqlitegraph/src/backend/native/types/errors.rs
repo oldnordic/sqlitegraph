@@ -1,6 +1,6 @@
 //! Comprehensive error type for native backend operations
 
-use super::{NativeNodeId, NativeEdgeId};
+use super::{NativeEdgeId, NativeNodeId};
 
 /// Comprehensive error type for native backend operations
 #[derive(Debug, thiserror::Error)]
@@ -128,10 +128,7 @@ pub enum NativeBackendError {
     },
 
     #[error("Invalid configuration for {parameter}: {reason}")]
-    InvalidConfiguration {
-        parameter: String,
-        reason: String,
-    },
+    InvalidConfiguration { parameter: String, reason: String },
 
     #[error("Version mismatch: expected {expected}, found {found}")]
     VersionMismatch {
@@ -141,10 +138,7 @@ pub enum NativeBackendError {
     },
 
     #[error("Invalid transaction {tx_id}: {reason}")]
-    InvalidTransaction {
-        tx_id: u64,
-        reason: String,
-    },
+    InvalidTransaction { tx_id: u64, reason: String },
 
     #[error("I/O error during {context}: {source}")]
     IoError {
@@ -153,30 +147,23 @@ pub enum NativeBackendError {
         source: std::io::Error,
     },
 
+    #[error("Recovery error: {0}")]
+    Recovery(String),
+
     #[error("Node {node_id} already exists")]
-    NodeExists {
-        node_id: NativeNodeId,
-    },
+    NodeExists { node_id: NativeNodeId },
 
     #[error("Edge {edge_id} already exists")]
-    EdgeExists {
-        edge_id: NativeEdgeId,
-    },
+    EdgeExists { edge_id: NativeEdgeId },
 
     #[error("Edge {edge_id} not found")]
-    EdgeNotFound {
-        edge_id: NativeEdgeId,
-    },
+    EdgeNotFound { edge_id: NativeEdgeId },
 
     #[error("Transaction {tx_id} not found")]
-    TransactionNotFound {
-        tx_id: u64,
-    },
+    TransactionNotFound { tx_id: u64 },
 
     #[error("Savepoint {savepoint_id} not found")]
-    SavepointNotFound {
-        savepoint_id: String,
-    },
+    SavepointNotFound { savepoint_id: String },
 
     #[error("Deadlock detected involving transaction {tx_id}")]
     DeadlockDetected {
@@ -185,10 +172,7 @@ pub enum NativeBackendError {
     },
 
     #[error("Invalid transaction state: {state}")]
-    InvalidTransactionState {
-        tx_id: u64,
-        state: String,
-    },
+    InvalidTransactionState { tx_id: u64, state: String },
 }
 
 // Add conversion from SystemTimeError
@@ -202,11 +186,21 @@ impl From<std::time::SystemTimeError> for NativeBackendError {
 }
 
 // Add conversion from CheckpointError
-impl From<crate::backend::native::v2::wal::checkpoint::errors::CheckpointError> for NativeBackendError {
+impl From<crate::backend::native::v2::wal::checkpoint::errors::CheckpointError>
+    for NativeBackendError
+{
     fn from(error: crate::backend::native::v2::wal::checkpoint::errors::CheckpointError) -> Self {
         Self::InvalidState {
             context: format!("Checkpoint error: {:?}", error),
             source: None,
         }
+    }
+}
+
+impl From<crate::backend::native::v2::wal::recovery::errors::RecoveryError>
+    for NativeBackendError
+{
+    fn from(error: crate::backend::native::v2::wal::recovery::errors::RecoveryError) -> Self {
+        Self::Recovery(format!("{:?}: {}", error.kind, error.message))
     }
 }

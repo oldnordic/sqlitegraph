@@ -32,16 +32,14 @@
 //! - Maintains full backward compatibility with single-layer mode
 //! - Provides feature flags for safe migration
 
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use std::collections::HashMap;
 use std::mem;
-use rand::{Rng, SeedableRng};
-use rand::rngs::StdRng;
 
-use crate::{
-    hnsw::{
-        config::HnswConfig,
-        errors::{HnswError, HnswMultiLayerError},
-    },
+use crate::hnsw::{
+    config::HnswConfig,
+    errors::{HnswError, HnswMultiLayerError},
 };
 
 /// Bidirectional mapping system for multi-layer HNSW
@@ -90,9 +88,7 @@ impl LayerMappings {
     pub fn new(max_layers: usize) -> Self {
         Self {
             global_to_local: HashMap::new(),
-            local_to_global: (0..max_layers)
-                .map(|_| HashMap::new())
-                .collect(),
+            local_to_global: (0..max_layers).map(|_| HashMap::new()).collect(),
             next_local_id: vec![0; max_layers],
         }
     }
@@ -133,12 +129,15 @@ impl LayerMappings {
                     layer_id,
                     local_id,
                     expected: self.local_to_global[layer_id].len() as u64,
-                }
+                },
             ));
         }
 
         // Update global → local mapping
-        let entry = self.global_to_local.entry(global_id).or_insert_with(Vec::new);
+        let entry = self
+            .global_to_local
+            .entry(global_id)
+            .or_insert_with(Vec::new);
         while entry.len() <= layer_id {
             entry.push(None);
         }
@@ -213,10 +212,7 @@ impl LayerMappings {
             return Vec::new();
         }
 
-        let mut vectors: Vec<u64> = self.local_to_global[layer_id]
-            .values()
-            .copied()
-            .collect();
+        let mut vectors: Vec<u64> = self.local_to_global[layer_id].values().copied().collect();
         vectors.sort(); // Sort for deterministic ordering
         vectors
     }
@@ -239,7 +235,7 @@ impl LayerMappings {
                                     layer_id,
                                     local_id: id,
                                     mapped_global,
-                                }
+                                },
                             ));
                         }
                     }
@@ -258,7 +254,7 @@ impl LayerMappings {
                                 layer_id,
                                 local_id,
                                 mapped_global: global_id, // We don't have a different global, so use the same
-                            }
+                            },
                         ));
                     }
                 } else {
@@ -269,7 +265,7 @@ impl LayerMappings {
                             layer_id,
                             local_id,
                             mapped_global: u64::MAX, // Use sentinel value to indicate missing reverse mapping
-                        }
+                        },
                     ));
                 }
             }
@@ -284,7 +280,7 @@ impl LayerMappings {
                         layer_id,
                         expected_nodes: expected_count,
                         actual_nodes: mapping.len(),
-                    }
+                    },
                 ));
             }
         }
@@ -300,15 +296,16 @@ impl LayerMappings {
     pub fn memory_usage(&self) -> usize {
         let base_overhead = mem::size_of::<Self>();
 
-        let global_to_local_size = self.global_to_local.len() * (
-            mem::size_of::<u64>() + // key
+        let global_to_local_size = self.global_to_local.len()
+            * (mem::size_of::<u64>() + // key
             mem::size_of::<Vec<Option<u64>>>() + // value type overhead
             self.global_to_local.iter()
                 .map(|(_, v)| v.len() * mem::size_of::<Option<u64>>())
-                .sum::<usize>()
-        );
+                .sum::<usize>());
 
-        let local_to_global_size = self.local_to_global.iter()
+        let local_to_global_size = self
+            .local_to_global
+            .iter()
             .map(|m| m.len() * (mem::size_of::<u64>() + mem::size_of::<u64>()))
             .sum::<usize>();
 
@@ -560,7 +557,10 @@ impl MultiLayerNodeManager {
     ///
     /// Tuple of (highest_level, layer_assignments) where layer_assignments
     /// is a vector of (layer_id, local_id) pairs
-    pub fn insert_vector(&mut self, vector_id: u64) -> Result<(usize, Vec<(usize, u64)>), HnswError> {
+    pub fn insert_vector(
+        &mut self,
+        vector_id: u64,
+    ) -> Result<(usize, Vec<(usize, u64)>), HnswError> {
         // Determine insertion level using exponential distribution
         let highest_level = self.distributor.sample_level_internal();
 
@@ -689,8 +689,7 @@ impl MultiLayerNodeManager {
 mod tests {
     use super::*;
     use crate::hnsw::hnsw_config;
-    use rand::SeedableRng;
-    use rand::rngs::StdRng;
+  use rand::rngs::StdRng;
 
     #[test]
     fn test_layer_mappings_basic_operations() {
@@ -765,9 +764,9 @@ mod tests {
 
         // Test probability calculations
         assert_eq!(distributor.level_probability(0), 1.0);
-        assert_eq!(distributor.level_probability(1), 1.0/16.0);
-        assert_eq!(distributor.level_probability(2), 1.0/256.0);
-        assert_eq!(distributor.level_probability(3), 1.0/4096.0);
+        assert_eq!(distributor.level_probability(1), 1.0 / 16.0);
+        assert_eq!(distributor.level_probability(2), 1.0 / 256.0);
+        assert_eq!(distributor.level_probability(3), 1.0 / 4096.0);
 
         // Test expected distribution
         let total_vectors = 10000;
@@ -818,10 +817,7 @@ mod tests {
 
     #[test]
     fn test_multilayer_node_manager_statistics() {
-        let config = hnsw_config()
-            .max_layers(4)
-            .build()
-            .unwrap();
+        let config = hnsw_config().max_layers(4).build().unwrap();
 
         let mut manager = MultiLayerNodeManager::new(config).unwrap();
 
@@ -847,9 +843,7 @@ mod tests {
 
     #[test]
     fn test_multilayer_node_manager_consistency() {
-        let config = hnsw_config()
-            .build()
-            .unwrap();
+        let config = hnsw_config().build().unwrap();
 
         let mut manager = MultiLayerNodeManager::new(config).unwrap();
 
@@ -871,9 +865,7 @@ mod tests {
 
     #[test]
     fn test_multilayer_node_manager_removal() {
-        let config = hnsw_config()
-            .build()
-            .unwrap();
+        let config = hnsw_config().build().unwrap();
 
         let mut manager = MultiLayerNodeManager::new(config).unwrap();
 

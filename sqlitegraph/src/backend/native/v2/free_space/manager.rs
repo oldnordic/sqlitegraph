@@ -60,7 +60,7 @@ impl FreeSpaceManager {
     }
 
     fn find_suitable_block(&self, requested_size: u32) -> NativeResult<usize> {
-        let mut candidates: Vec<usize> = self
+        let candidates: Vec<usize> = self
             .free_blocks
             .iter()
             .enumerate()
@@ -78,12 +78,16 @@ impl FreeSpaceManager {
                 .iter()
                 .min_by_key(|&&i| self.free_blocks[i].size)
                 .copied()
-                .unwrap(),
+                .ok_or_else(|| NativeBackendError::CorruptFreeSpace {
+                    reason: "BestFit strategy failed to find minimum block in non-empty candidates".to_string(),
+                })?,
             AllocationStrategy::WorstFit => candidates
                 .iter()
                 .max_by_key(|&&i| self.free_blocks[i].size)
                 .copied()
-                .unwrap(),
+                .ok_or_else(|| NativeBackendError::CorruptFreeSpace {
+                    reason: "WorstFit strategy failed to find maximum block in non-empty candidates".to_string(),
+                })?,
         };
         Ok(selected)
     }

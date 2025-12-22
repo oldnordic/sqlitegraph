@@ -292,7 +292,8 @@ impl LatencyHistogram {
                 }
 
                 let position_in_bucket = (target - prev_cumulative) as f64 / count as f64;
-                let interpolated_value = bucket_start as f64 + (bucket_end - bucket_start) as f64 * position_in_bucket;
+                let interpolated_value =
+                    bucket_start as f64 + (bucket_end - bucket_start) as f64 * position_in_bucket;
 
                 return interpolated_value as u64;
             }
@@ -342,7 +343,7 @@ impl ThroughputTracker {
             bytes_per_second: VecDeque::new(),
             transactions_per_second: VecDeque::new(),
             time_window_seconds: 60, // 1 minute window
-            max_samples: 300,      // 5 minutes of data
+            max_samples: 300,        // 5 minutes of data
         }
     }
 
@@ -466,19 +467,31 @@ impl ThroughputTracker {
         let records_per_sec = if self.records_per_second.is_empty() {
             0.0
         } else {
-            self.records_per_second.iter().map(|(_, count)| *count).sum::<u64>() as f64 / self.time_window_seconds as f64
+            self.records_per_second
+                .iter()
+                .map(|(_, count)| *count)
+                .sum::<u64>() as f64
+                / self.time_window_seconds as f64
         };
 
         let bytes_per_sec = if self.bytes_per_second.is_empty() {
             0.0
         } else {
-            self.bytes_per_second.iter().map(|(_, bytes)| *bytes).sum::<u64>() as f64 / self.time_window_seconds as f64
+            self.bytes_per_second
+                .iter()
+                .map(|(_, bytes)| *bytes)
+                .sum::<u64>() as f64
+                / self.time_window_seconds as f64
         };
 
         let tx_per_sec = if self.transactions_per_second.is_empty() {
             0.0
         } else {
-            self.transactions_per_second.iter().map(|(_, count)| *count).sum::<u64>() as f64 / self.time_window_seconds as f64
+            self.transactions_per_second
+                .iter()
+                .map(|(_, count)| *count)
+                .sum::<u64>() as f64
+                / self.time_window_seconds as f64
         };
 
         (records_per_sec, bytes_per_sec, tx_per_sec)
@@ -494,7 +507,11 @@ impl ThroughputTracker {
     /// Tuple containing (peak_records_per_sec, peak_bytes_per_sec, peak_transactions_per_sec)
     pub fn get_peak_throughput(&self) -> (f64, f64, f64) {
         let peak_records_per_sec = self.records_per_second.len() as f64;
-        let peak_bytes_per_sec = self.bytes_per_second.iter().map(|(_, bytes)| *bytes).sum::<u64>() as f64;
+        let peak_bytes_per_sec = self
+            .bytes_per_second
+            .iter()
+            .map(|(_, bytes)| *bytes)
+            .sum::<u64>() as f64;
         let peak_tx_per_sec = self.transactions_per_second.len() as f64;
 
         (peak_records_per_sec, peak_bytes_per_sec, peak_tx_per_sec)
@@ -540,8 +557,8 @@ mod tests {
     fn test_latency_histogram_recording() {
         let mut histogram = LatencyHistogram::new();
 
-        histogram.record_write_latency(5);   // Goes in bucket 0 (<=1)
-        histogram.record_write_latency(15);  // Goes in bucket 1 (<=10)
+        histogram.record_write_latency(5); // Goes in bucket 0 (<=1)
+        histogram.record_write_latency(15); // Goes in bucket 1 (<=10)
         histogram.record_write_latency(5000); // Goes in bucket 6 (<=5000)
 
         let total_samples: u64 = histogram.write_buckets.iter().sum();
@@ -642,11 +659,12 @@ mod tests {
 
         // Add sample data
         for i in 1..=50 {
-            histogram.record_write_latency(i * 10);  // 10us to 500us
-            histogram.record_read_latency(i * 5);    // 5us to 250us
+            histogram.record_write_latency(i * 10); // 10us to 500us
+            histogram.record_read_latency(i * 5); // 5us to 250us
         }
 
-        let (p50_write, p95_write, p99_write, p50_read, p95_read, p99_read) = histogram.get_comprehensive_stats();
+        let (p50_write, p95_write, p99_write, p50_read, p95_read, p99_read) =
+            histogram.get_comprehensive_stats();
 
         // Verify reasonable percentile relationships
         assert!(p50_write <= p95_write);
@@ -660,10 +678,10 @@ mod tests {
         let histogram = LatencyHistogram::new();
 
         // Test boundary conditions
-        assert_eq!(histogram.get_bucket_index(0), 0);     // Below first boundary
-        assert_eq!(histogram.get_bucket_index(1), 0);     // Exactly at first boundary
-        assert_eq!(histogram.get_bucket_index(10), 1);    // Exactly at second boundary
-        assert_eq!(histogram.get_bucket_index(1000), 5);  // Mid-range boundary
+        assert_eq!(histogram.get_bucket_index(0), 0); // Below first boundary
+        assert_eq!(histogram.get_bucket_index(1), 0); // Exactly at first boundary
+        assert_eq!(histogram.get_bucket_index(10), 1); // Exactly at second boundary
+        assert_eq!(histogram.get_bucket_index(1000), 5); // Mid-range boundary
         assert_eq!(histogram.get_bucket_index(100000), 9); // Above maximum boundary
     }
 }

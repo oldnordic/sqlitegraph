@@ -4,17 +4,15 @@
 //! writers, readers, checkpointing, recovery operations, and transaction
 //! management with advanced group commit and cluster-affinity optimization.
 
-use crate::backend::native::{NativeBackendError, NativeResult};
 use crate::backend::native::v2::wal::{
-    V2WALConfig, V2WALHeader, V2WALRecord, V2WALWriter, V2WALReader,
-    V2WALCheckpointManager, lsn, V2WALRecordType,
+    V2WALCheckpointManager, V2WALConfig, V2WALHeader, V2WALReader, V2WALRecord,
+    V2WALWriter,
 };
-use crate::backend::native::transaction_state::TransactionState;
-use parking_lot::{Mutex, RwLock, Condvar};
+use crate::backend::native::{NativeBackendError, NativeResult};
+use parking_lot::{Mutex, RwLock};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use std::path::Path;
 
 /// Active transaction state for coordination
 #[derive(Debug, Clone)]
@@ -170,10 +168,14 @@ impl V2WALManager {
         let reader = Arc::new(Mutex::new(None));
 
         // Create checkpoint manager with default strategy
-        let checkpoint_strategy = crate::backend::native::v2::wal::checkpoint::CheckpointStrategy::SizeThreshold(
-            config.max_wal_size / 4
-        );
-        let checkpoint_manager = Arc::new(V2WALCheckpointManager::create(config.clone(), checkpoint_strategy)?);
+        let checkpoint_strategy =
+            crate::backend::native::v2::wal::checkpoint::CheckpointStrategy::SizeThreshold(
+                config.max_wal_size / 4,
+            );
+        let checkpoint_manager = Arc::new(V2WALCheckpointManager::create(
+            config.clone(),
+            checkpoint_strategy,
+        )?);
 
         // Initialize header from writer
         let header = Arc::new(RwLock::new(writer.get_header()));
@@ -317,10 +319,18 @@ impl V2WALManager {
         // Add to cluster organizer for optimal I/O
         if let Some(key) = cluster_key {
             let mut organizer = self.cluster_organizer.lock();
-            organizer.cluster_groups
+            organizer
+                .cluster_groups
                 .entry(key)
                 .or_insert_with(Vec::new)
                 .push(record_for_cluster);
+        }
+
+        // Synchronize writer metrics with manager metrics
+        {
+            let writer_metrics = self.writer.get_metrics();
+            let mut manager_metrics = self.metrics.write();
+            manager_metrics.total_records_written = writer_metrics.records_written;
         }
 
         Ok(lsn)
@@ -365,7 +375,8 @@ impl V2WALManager {
             let duration_us = start_time.elapsed().as_micros() as u64;
             let total_tx = metrics.committed_transactions;
             metrics.avg_transaction_duration_us =
-                ((metrics.avg_transaction_duration_us * (total_tx - 1) as u64) + duration_us) / total_tx;
+                ((metrics.avg_transaction_duration_us * (total_tx - 1) as u64) + duration_us)
+                    / total_tx;
         }
 
         // Trigger group commit if needed
@@ -409,12 +420,30 @@ impl V2WALManager {
 
     /// Write a single WAL record (outside transaction)
     pub fn write_record(&self, record: V2WALRecord) -> NativeResult<u64> {
-        self.writer.write_record(record)
+        let result = self.writer.write_record(record)?;
+
+        // Synchronize writer metrics with manager metrics
+        {
+            let writer_metrics = self.writer.get_metrics();
+            let mut manager_metrics = self.metrics.write();
+            manager_metrics.total_records_written = writer_metrics.records_written;
+        }
+
+        Ok(result)
     }
 
     /// Write multiple records in a batch
     pub fn write_records_batch(&self, records: Vec<V2WALRecord>) -> NativeResult<Vec<u64>> {
-        self.writer.write_records_batch(records)
+        let result = self.writer.write_records_batch(records)?;
+
+        // Synchronize writer metrics with manager metrics
+        {
+            let writer_metrics = self.writer.get_metrics();
+            let mut manager_metrics = self.metrics.write();
+            manager_metrics.total_records_written = writer_metrics.records_written;
+        }
+
+        Ok(result)
     }
 
     /// Flush all pending writes
@@ -460,8 +489,8 @@ impl V2WALManager {
         let header = self.header.read();
         let wal_size = self.estimate_wal_size();
 
-        wal_size > self.config.max_wal_size ||
-        (header.current_lsn - header.checkpointed_lsn) > self.config.checkpoint_interval
+        wal_size > self.config.max_wal_size
+            || (header.current_lsn - header.checkpointed_lsn) > self.config.checkpoint_interval
     }
 
     /// Generate unique transaction ID
@@ -514,9 +543,9 @@ impl V2WALManager {
     ) {
         let mut coord = coordinator.lock();
 
-        if coord.pending_transactions.len() >= coord.max_group_size ||
-           coord.last_group_commit.elapsed() >= coord.group_timeout {
-
+        if coord.pending_transactions.len() >= coord.max_group_size
+            || coord.last_group_commit.elapsed() >= coord.group_timeout
+        {
             let batch_size = coord.pending_transactions.len().min(coord.max_group_size);
             let batch: Vec<_> = coord.pending_transactions.drain(..batch_size).collect();
 
@@ -559,6 +588,26 @@ impl V2WALManager {
     fn estimate_wal_size(&self) -> u64 {
         let metrics = self.writer.get_metrics();
         metrics.bytes_written + std::mem::size_of::<V2WALHeader>() as u64
+    }
+
+    // Bulk ingest mode methods
+
+    /// Enable bulk ingest mode with optimized parameters
+    pub fn enable_bulk_mode(
+        &self,
+        config: &super::bulk_ingest::BulkIngestConfig,
+    ) -> NativeResult<()> {
+        self.writer.enable_bulk_mode(config)
+    }
+
+    /// Disable bulk ingest mode and restore original configuration
+    pub fn disable_bulk_mode(&self) -> NativeResult<()> {
+        self.writer.disable_bulk_mode()
+    }
+
+    /// Check if bulk mode is currently active
+    pub fn is_bulk_mode_active(&self) -> bool {
+        self.writer.is_bulk_mode_active()
     }
 
     /// Shutdown WAL manager gracefully
@@ -611,8 +660,8 @@ impl Default for WALManagerMetrics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::backend::native::GraphFile;
+    use tempfile::tempdir;
 
     #[test]
     fn test_enhanced_wal_manager_create() {
@@ -625,8 +674,8 @@ mod tests {
 
         // Create a minimal V2 graph file for the checkpoint manager
         let v2_graph_path = temp_dir.path().join("test.v2");
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .expect("Failed to create V2 graph file for test");
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create V2 graph file for test");
 
         let manager = V2WALManager::create(config);
         assert!(manager.is_ok());
@@ -651,13 +700,15 @@ mod tests {
 
         // Create a minimal V2 graph file for the checkpoint manager
         let v2_graph_path = temp_dir.path().join("test.v2");
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .expect("Failed to create V2 graph file for test");
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create V2 graph file for test");
 
         let manager = V2WALManager::create(config).unwrap();
 
         // Begin transaction
-        let tx_id = manager.begin_transaction(TransactionIsolation::ReadCommitted).unwrap();
+        let tx_id = manager
+            .begin_transaction(TransactionIsolation::ReadCommitted)
+            .unwrap();
         assert!(tx_id > 0);
         assert_eq!(manager.get_active_transaction_count(), 1);
 
@@ -692,13 +743,15 @@ mod tests {
 
         // Create a minimal V2 graph file for the checkpoint manager
         let v2_graph_path = temp_dir.path().join("test.v2");
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .expect("Failed to create V2 graph file for test");
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create V2 graph file for test");
 
         let manager = V2WALManager::create(config).unwrap();
 
         // Begin transaction
-        let tx_id = manager.begin_transaction(TransactionIsolation::Serializable).unwrap();
+        let tx_id = manager
+            .begin_transaction(TransactionIsolation::Serializable)
+            .unwrap();
         assert_eq!(manager.get_active_transaction_count(), 1);
 
         // Write record within transaction
@@ -723,9 +776,18 @@ mod tests {
 
     #[test]
     fn test_isolation_levels() {
-        assert_eq!(TransactionIsolation::ReadCommitted, TransactionIsolation::ReadCommitted);
-        assert_ne!(TransactionIsolation::ReadCommitted, TransactionIsolation::Serializable);
-        assert_ne!(TransactionIsolation::Serializable, TransactionIsolation::Snapshot);
+        assert_eq!(
+            TransactionIsolation::ReadCommitted,
+            TransactionIsolation::ReadCommitted
+        );
+        assert_ne!(
+            TransactionIsolation::ReadCommitted,
+            TransactionIsolation::Serializable
+        );
+        assert_ne!(
+            TransactionIsolation::Serializable,
+            TransactionIsolation::Snapshot
+        );
     }
 
     #[test]
@@ -789,18 +851,25 @@ mod tests {
 
         // Create a minimal V2 graph file for the checkpoint manager
         let v2_graph_path = temp_dir.path().join("test.v2");
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .expect("Failed to create V2 graph file for test");
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create V2 graph file for test");
 
         let manager = V2WALManager::create(config).unwrap();
 
         // Begin a transaction to test cleanup
-        let tx_id = manager.begin_transaction(TransactionIsolation::ReadCommitted).unwrap();
-        manager.write_transaction_record(tx_id, V2WALRecord::NodeInsert {
-            node_id: 44,
-            slot_offset: 3072,
-            node_data: vec![7, 8, 9],
-        }).unwrap();
+        let tx_id = manager
+            .begin_transaction(TransactionIsolation::ReadCommitted)
+            .unwrap();
+        manager
+            .write_transaction_record(
+                tx_id,
+                V2WALRecord::NodeInsert {
+                    node_id: 44,
+                    slot_offset: 3072,
+                    node_data: vec![7, 8, 9],
+                },
+            )
+            .unwrap();
 
         // Shutdown should clean up properly
         let shutdown_result = manager.shutdown();

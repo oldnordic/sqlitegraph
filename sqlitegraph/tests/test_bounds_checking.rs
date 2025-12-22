@@ -3,8 +3,8 @@
 //! This test specifically verifies that our bounds checking works correctly
 //! and prevents the out-of-bounds panic.
 
-use sqlitegraph::backend::native::{decode_persistent_header, get_slice_safe};
 use sqlitegraph::backend::native::types::NativeBackendError;
+use sqlitegraph::backend::native::{decode_persistent_header, get_slice_safe};
 
 #[test]
 fn test_get_slice_safe_bounds_checking() {
@@ -92,20 +92,18 @@ fn test_no_panic_on_any_input() {
     // Test that decode_persistent_header never panics, regardless of input
 
     let test_cases = vec![
-        vec![],                           // Empty
-        vec![0u8; 10],                   // Too small
-        vec![0u8; 79],                   // One byte too small
-        vec![0u8; 80],                   // Exactly right size
-        vec![0u8; 81],                   // One byte too large
-        vec![0xFF; 100],                 // Large with non-zero data
+        vec![],          // Empty
+        vec![0u8; 10],   // Too small
+        vec![0u8; 79],   // One byte too small
+        vec![0u8; 80],   // Exactly right size
+        vec![0u8; 81],   // One byte too large
+        vec![0xFF; 100], // Large with non-zero data
     ];
 
     for (i, test_data) in test_cases.iter().enumerate() {
         println!("Test case {}: {} bytes", i, test_data.len());
 
-        let result = std::panic::catch_unwind(|| {
-            decode_persistent_header(test_data)
-        });
+        let result = std::panic::catch_unwind(|| decode_persistent_header(test_data));
 
         match result {
             Ok(Ok(_)) => {
@@ -115,8 +113,12 @@ fn test_no_panic_on_any_input() {
                 println!("  → Error (acceptable): {:?}", e);
             }
             Err(panic_info) => {
-                panic!("PANIC in test case {} with {} bytes: {:?}",
-                      i, test_data.len(), panic_info);
+                panic!(
+                    "PANIC in test case {} with {} bytes: {:?}",
+                    i,
+                    test_data.len(),
+                    panic_info
+                );
             }
         }
     }

@@ -12,18 +12,18 @@
 //! - ✅ Real NodeRecordV2, EdgeCluster, StringTable, FreeSpaceManager validation
 //! - ✅ Production-grade error handling and resource management
 
-use crate::backend::native::v2::wal::V2WALRecord;
-use crate::backend::native::v2::wal::recovery::errors::{RecoveryError, RecoveryResult};
-use crate::backend::native::v2::wal::recovery::core::TransactionState;
-use crate::backend::native::{GraphFile, NodeStore, EdgeStore, types::FileOffset};
-use crate::backend::native::v2::node_record_v2::{NodeRecordV2, NodeRecordV2Ext};
-use crate::backend::native::v2::edge_cluster::{EdgeCluster};
 use crate::backend::native::v2::Direction;
-use crate::backend::native::v2::string_table::StringTable;
+use crate::backend::native::v2::edge_cluster::EdgeCluster;
 use crate::backend::native::v2::free_space::FreeSpaceManager;
+use crate::backend::native::v2::node_record_v2::NodeRecordV2;
+use crate::backend::native::v2::string_table::StringTable;
+use crate::backend::native::v2::wal::V2WALRecord;
+use crate::backend::native::v2::wal::recovery::core::TransactionState;
+use crate::backend::native::v2::wal::recovery::errors::{RecoveryError, RecoveryResult};
+use crate::backend::native::{EdgeStore, GraphFile, NodeStore};
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 /// Validation result for a single operation
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,10 +131,12 @@ impl TransactionValidator {
     /// Initialize validator with real V2 graph file access
     pub fn initialize(&mut self) -> RecoveryResult<()> {
         // Open V2 graph file for validation
-        let mut graph_file = GraphFile::open(&self.graph_file_path)
-            .map_err(|e| RecoveryError::validation(format!(
-                "Failed to open V2 graph file for validation: {}", e
-            )))?;
+        let mut graph_file = GraphFile::open(&self.graph_file_path).map_err(|e| {
+            RecoveryError::validation(format!(
+                "Failed to open V2 graph file for validation: {}",
+                e
+            ))
+        })?;
 
         // Create V2 backend components with real integration
         // NOTE: Using unsafe static lifetime extension - this is a production pattern
@@ -148,16 +150,50 @@ impl TransactionValidator {
 
         // Create edge store separately to avoid borrow conflicts
         // This creates a new store that will be initialized later when needed
-        let edge_store = EdgeStore::new(unsafe { std::mem::transmute::<&mut GraphFile, &'static mut GraphFile>(&mut graph_file) });
+        let edge_store = EdgeStore::new(unsafe {
+            std::mem::transmute::<&mut GraphFile, &'static mut GraphFile>(&mut graph_file)
+        });
         let string_table = StringTable::new();
-        let free_space_manager = FreeSpaceManager::new(crate::backend::native::v2::free_space::AllocationStrategy::FirstFit);
+        let free_space_manager = FreeSpaceManager::new(
+            crate::backend::native::v2::free_space::AllocationStrategy::FirstFit,
+        );
 
         // Store components for validation operations
-        *self.graph_file.lock().unwrap() = Some(graph_file);
-        *self.node_store.lock().unwrap() = Some(node_store);
-        *self.edge_store.lock().unwrap() = Some(edge_store);
-        *self.string_table.lock().unwrap() = Some(string_table);
-        *self.free_space_manager.lock().unwrap() = Some(free_space_manager);
+        match self.graph_file.lock() {
+            Ok(mut guard) => *guard = Some(graph_file),
+            Err(poisoned) => {
+                eprintln!("WARNING: Graph file mutex poisoned during validator initialization. Recovering...");
+                *poisoned.into_inner() = Some(graph_file);
+            }
+        }
+        match self.node_store.lock() {
+            Ok(mut guard) => *guard = Some(node_store),
+            Err(poisoned) => {
+                eprintln!("WARNING: Node store mutex poisoned during validator initialization. Recovering...");
+                *poisoned.into_inner() = Some(node_store);
+            }
+        }
+        match self.edge_store.lock() {
+            Ok(mut guard) => *guard = Some(edge_store),
+            Err(poisoned) => {
+                eprintln!("WARNING: Edge store mutex poisoned during validator initialization. Recovering...");
+                *poisoned.into_inner() = Some(edge_store);
+            }
+        }
+        match self.string_table.lock() {
+            Ok(mut guard) => *guard = Some(string_table),
+            Err(poisoned) => {
+                eprintln!("WARNING: String table mutex poisoned during validator initialization. Recovering...");
+                *poisoned.into_inner() = Some(string_table);
+            }
+        }
+        match self.free_space_manager.lock() {
+            Ok(mut guard) => *guard = Some(free_space_manager),
+            Err(poisoned) => {
+                eprintln!("WARNING: Free space manager mutex poisoned during validator initialization. Recovering...");
+                *poisoned.into_inner() = Some(free_space_manager);
+            }
+        }
 
         Ok(())
     }
@@ -183,11 +219,17 @@ impl TransactionValidator {
                     // Update internal caches for cross-record validation
                     self.update_validation_cache(record)?;
                 }
-                ValidationResult::Recoverable { issues: ref record_issues, .. } => {
+                ValidationResult::Recoverable {
+                    issues: ref record_issues,
+                    ..
+                } => {
                     stats.recoverable_records += 1;
                     issues.extend(record_issues.clone());
                 }
-                ValidationResult::Invalid { errors: ref record_errors, critical_error: ref critical } => {
+                ValidationResult::Invalid {
+                    errors: ref record_errors,
+                    critical_error: ref critical,
+                } => {
                     stats.invalid_records += 1;
                     errors.push(format!("Record {}: {}", i, critical));
                     errors.extend(record_errors.clone());
@@ -227,36 +269,51 @@ impl TransactionValidator {
     /// Validate a single WAL record with real V2 backend checks
     fn validate_record(&self, record: &V2WALRecord, lsn: u64) -> RecoveryResult<ValidationResult> {
         match record {
-            V2WALRecord::NodeInsert { node_id, node_data, .. } => {
-                self.validate_node_insert(*node_id, node_data, lsn)
-            }
-            V2WALRecord::NodeUpdate { node_id, old_data, new_data, .. } => {
-                self.validate_node_update(*node_id, old_data, new_data, lsn)
-            }
-            V2WALRecord::NodeDelete { node_id, old_data, .. } => {
-                self.validate_node_delete(*node_id, old_data, lsn)
-            }
-            V2WALRecord::ClusterCreate { node_id, direction, cluster_offset, cluster_size, edge_data, .. } => {
-                self.validate_cluster_create(*node_id, *direction, *cluster_offset, *cluster_size, edge_data, lsn)
-            }
-            V2WALRecord::EdgeInsert { .. } => {
-                self.validate_edge_insert(record, lsn)
-            }
-            V2WALRecord::EdgeUpdate { .. } => {
-                self.validate_edge_update(record, lsn)
-            }
-            V2WALRecord::EdgeDelete { .. } => {
-                self.validate_edge_delete(record, lsn)
-            }
-            V2WALRecord::StringInsert { string_id, string_value, .. } => {
-                self.validate_string_insert(*string_id, string_value, lsn)
-            }
-            V2WALRecord::FreeSpaceAllocate { block_offset, block_size, .. } => {
-                self.validate_free_space_allocate(*block_offset, *block_size, lsn)
-            }
-            V2WALRecord::FreeSpaceDeallocate { block_offset, block_size, .. } => {
-                self.validate_free_space_deallocate(*block_offset, *block_size, lsn)
-            }
+            V2WALRecord::NodeInsert {
+                node_id, node_data, ..
+            } => self.validate_node_insert(*node_id, node_data, lsn),
+            V2WALRecord::NodeUpdate {
+                node_id,
+                old_data,
+                new_data,
+                ..
+            } => self.validate_node_update(*node_id, old_data, new_data, lsn),
+            V2WALRecord::NodeDelete {
+                node_id, old_data, ..
+            } => self.validate_node_delete(*node_id, old_data, lsn),
+            V2WALRecord::ClusterCreate {
+                node_id,
+                direction,
+                cluster_offset,
+                cluster_size,
+                edge_data,
+                ..
+            } => self.validate_cluster_create(
+                *node_id,
+                *direction,
+                *cluster_offset,
+                *cluster_size,
+                edge_data,
+                lsn,
+            ),
+            V2WALRecord::EdgeInsert { .. } => self.validate_edge_insert(record, lsn),
+            V2WALRecord::EdgeUpdate { .. } => self.validate_edge_update(record, lsn),
+            V2WALRecord::EdgeDelete { .. } => self.validate_edge_delete(record, lsn),
+            V2WALRecord::StringInsert {
+                string_id,
+                string_value,
+                ..
+            } => self.validate_string_insert(*string_id, string_value, lsn),
+            V2WALRecord::FreeSpaceAllocate {
+                block_offset,
+                block_size,
+                ..
+            } => self.validate_free_space_allocate(*block_offset, *block_size, lsn),
+            V2WALRecord::FreeSpaceDeallocate {
+                block_offset,
+                block_size,
+                ..
+            } => self.validate_free_space_deallocate(*block_offset, *block_size, lsn),
             // Transaction control records don't need V2-specific validation
             V2WALRecord::TransactionBegin { .. }
             | V2WALRecord::TransactionCommit { .. }
@@ -274,14 +331,17 @@ impl TransactionValidator {
             | V2WALRecord::StatisticsUpdate { .. }
             | V2WALRecord::Checkpoint { .. }
             | V2WALRecord::HeaderUpdate { .. }
-            | V2WALRecord::SegmentEnd { .. } => {
-                Ok(ValidationResult::Valid)
-            }
+            | V2WALRecord::SegmentEnd { .. } => Ok(ValidationResult::Valid),
         }
     }
 
     /// Validate node insertion with real NodeRecordV2 deserialization and checks
-    fn validate_node_insert(&self, node_id: i64, node_data: &[u8], lsn: u64) -> RecoveryResult<ValidationResult> {
+    fn validate_node_insert(
+        &self,
+        node_id: i64,
+        node_data: &[u8],
+        _lsn: u64,
+    ) -> RecoveryResult<ValidationResult> {
         let mut issues = Vec::new();
 
         // Basic validation
@@ -336,7 +396,8 @@ impl TransactionValidator {
                 issues.push("Node claims outgoing edges but has no cluster metadata".to_string());
             }
 
-            if node_record.outgoing_cluster_size != node_record.outgoing_edge_count * 58 { // Estimated edge size
+            if node_record.outgoing_cluster_size != node_record.outgoing_edge_count * 58 {
+                // Estimated edge size
                 issues.push(format!(
                     "Outgoing cluster size inconsistency: size={}, edge_count={}",
                     node_record.outgoing_cluster_size, node_record.outgoing_edge_count
@@ -355,7 +416,8 @@ impl TransactionValidator {
         if node_data.len() > MAX_NODE_RECORD_SIZE {
             issues.push(format!(
                 "Node record exceeds maximum size: {} > {}",
-                node_data.len(), MAX_NODE_RECORD_SIZE
+                node_data.len(),
+                MAX_NODE_RECORD_SIZE
             ));
         }
 
@@ -415,11 +477,13 @@ impl TransactionValidator {
 
         // Validate V2 cluster metadata changes are consistent
         if old_record.has_outgoing_edges() && !new_record.has_outgoing_edges() {
-            issues.push("Outgoing edges disappeared in update without explicit deletion".to_string());
+            issues
+                .push("Outgoing edges disappeared in update without explicit deletion".to_string());
         }
 
         if old_record.has_incoming_edges() && !new_record.has_incoming_edges() {
-            issues.push("Incoming edges disappeared in update without explicit deletion".to_string());
+            issues
+                .push("Incoming edges disappeared in update without explicit deletion".to_string());
         }
 
         Ok(if issues.is_empty() {
@@ -433,7 +497,12 @@ impl TransactionValidator {
     }
 
     /// Validate node deletion with proper cleanup checks
-    fn validate_node_delete(&self, node_id: i64, old_data: &[u8], lsn: u64) -> RecoveryResult<ValidationResult> {
+    fn validate_node_delete(
+        &self,
+        node_id: i64,
+        old_data: &[u8],
+        lsn: u64,
+    ) -> RecoveryResult<ValidationResult> {
         let mut issues = Vec::new();
 
         // Deserialize old node record for validation
@@ -441,7 +510,10 @@ impl TransactionValidator {
             Ok(record) => record,
             Err(e) => {
                 return Ok(ValidationResult::Invalid {
-                    errors: vec![format!("Old NodeRecordV2 deserialization failed in delete: {}", e)],
+                    errors: vec![format!(
+                        "Old NodeRecordV2 deserialization failed in delete: {}",
+                        e
+                    )],
                     critical_error: "V2 node delete format error".to_string(),
                 });
             }
@@ -461,7 +533,9 @@ impl TransactionValidator {
         }
 
         if old_record.has_incoming_edges() {
-            issues.push("Node with incoming edges deleted - inbound references may be orphaned".to_string());
+            issues.push(
+                "Node with incoming edges deleted - inbound references may be orphaned".to_string(),
+            );
         }
 
         Ok(if issues.is_empty() {
@@ -571,8 +645,18 @@ impl TransactionValidator {
     }
 
     /// Validate edge insertion with cluster compatibility checks
-    fn validate_edge_insert(&self, record: &V2WALRecord, lsn: u64) -> RecoveryResult<ValidationResult> {
-        if let V2WALRecord::EdgeInsert { cluster_key, edge_record, insertion_point, .. } = record {
+    fn validate_edge_insert(
+        &self,
+        record: &V2WALRecord,
+        lsn: u64,
+    ) -> RecoveryResult<ValidationResult> {
+        if let V2WALRecord::EdgeInsert {
+            cluster_key,
+            edge_record,
+            insertion_point,
+            ..
+        } = record
+        {
             let mut issues = Vec::new();
 
             // Validate cluster key
@@ -603,7 +687,8 @@ impl TransactionValidator {
             if edge_record.size_bytes() > MAX_EDGE_RECORD_SIZE {
                 issues.push(format!(
                     "Edge record exceeds maximum size: {} > {}",
-                    edge_record.size_bytes(), MAX_EDGE_RECORD_SIZE
+                    edge_record.size_bytes(),
+                    MAX_EDGE_RECORD_SIZE
                 ));
             }
 
@@ -624,8 +709,18 @@ impl TransactionValidator {
     }
 
     /// Validate edge update with compatibility checks
-    fn validate_edge_update(&self, record: &V2WALRecord, lsn: u64) -> RecoveryResult<ValidationResult> {
-        if let V2WALRecord::EdgeUpdate { old_edge, new_edge, position, .. } = record {
+    fn validate_edge_update(
+        &self,
+        record: &V2WALRecord,
+        lsn: u64,
+    ) -> RecoveryResult<ValidationResult> {
+        if let V2WALRecord::EdgeUpdate {
+            old_edge,
+            new_edge,
+            position,
+            ..
+        } = record
+        {
             let mut issues = Vec::new();
 
             // Validate position
@@ -638,14 +733,17 @@ impl TransactionValidator {
 
             // Validate edge records have same neighbor
             if old_edge.neighbor_id != new_edge.neighbor_id {
-                issues.push("Edge update changed neighbor ID - should use delete + insert".to_string());
+                issues.push(
+                    "Edge update changed neighbor ID - should use delete + insert".to_string(),
+                );
             }
 
             // Validate size constraints
             if new_edge.size_bytes() > MAX_EDGE_RECORD_SIZE {
                 issues.push(format!(
                     "New edge record exceeds maximum size: {} > {}",
-                    new_edge.size_bytes(), MAX_EDGE_RECORD_SIZE
+                    new_edge.size_bytes(),
+                    MAX_EDGE_RECORD_SIZE
                 ));
             }
 
@@ -666,8 +764,15 @@ impl TransactionValidator {
     }
 
     /// Validate edge deletion with reference consistency
-    fn validate_edge_delete(&self, record: &V2WALRecord, lsn: u64) -> RecoveryResult<ValidationResult> {
-        if let V2WALRecord::EdgeDelete { old_edge, position, .. } = record {
+    fn validate_edge_delete(
+        &self,
+        record: &V2WALRecord,
+        lsn: u64,
+    ) -> RecoveryResult<ValidationResult> {
+        if let V2WALRecord::EdgeDelete {
+            old_edge, position, ..
+        } = record
+        {
             let mut issues = Vec::new();
 
             // Validate position
@@ -703,7 +808,12 @@ impl TransactionValidator {
     }
 
     /// Validate string table insertion with uniqueness checks
-    fn validate_string_insert(&self, string_id: u32, string_value: &str, lsn: u64) -> RecoveryResult<ValidationResult> {
+    fn validate_string_insert(
+        &self,
+        string_id: u32,
+        string_value: &str,
+        lsn: u64,
+    ) -> RecoveryResult<ValidationResult> {
         let mut issues = Vec::new();
 
         // Basic validation
@@ -725,7 +835,8 @@ impl TransactionValidator {
         if string_value.len() > MAX_STRING_LENGTH {
             issues.push(format!(
                 "String exceeds maximum length: {} > {}",
-                string_value.len(), MAX_STRING_LENGTH
+                string_value.len(),
+                MAX_STRING_LENGTH
             ));
         }
 
@@ -750,7 +861,12 @@ impl TransactionValidator {
     }
 
     /// Validate free space allocation with region consistency
-    fn validate_free_space_allocate(&self, block_offset: u64, block_size: u32, lsn: u64) -> RecoveryResult<ValidationResult> {
+    fn validate_free_space_allocate(
+        &self,
+        block_offset: u64,
+        block_size: u32,
+        lsn: u64,
+    ) -> RecoveryResult<ValidationResult> {
         let mut issues = Vec::new();
 
         // Basic validation
@@ -798,8 +914,13 @@ impl TransactionValidator {
     }
 
     /// Validate free space deallocation with region existence checks
-    fn validate_free_space_deallocate(&self, block_offset: u64, block_size: u32, lsn: u64) -> RecoveryResult<ValidationResult> {
-        let mut issues = Vec::new();
+    fn validate_free_space_deallocate(
+        &self,
+        block_offset: u64,
+        block_size: u32,
+        lsn: u64,
+    ) -> RecoveryResult<ValidationResult> {
+        let issues = Vec::new();
 
         // Basic validation
         if block_size == 0 {
@@ -837,12 +958,20 @@ impl TransactionValidator {
     /// Update internal validation caches for cross-record validation
     fn update_validation_cache(&mut self, record: &V2WALRecord) -> RecoveryResult<()> {
         match record {
-            V2WALRecord::NodeInsert { node_id, node_data, .. } => {
+            V2WALRecord::NodeInsert {
+                node_id, node_data, ..
+            } => {
                 if let Ok(node_record) = NodeRecordV2::deserialize(node_data) {
                     self.node_cache.insert(*node_id, node_record);
                 }
             }
-            V2WALRecord::ClusterCreate { node_id, direction, cluster_offset, cluster_size, .. } => {
+            V2WALRecord::ClusterCreate {
+                node_id,
+                direction,
+                cluster_offset,
+                cluster_size,
+                ..
+            } => {
                 let metadata = ClusterMetadata {
                     offset: *cluster_offset,
                     size: *cluster_size,
@@ -850,16 +979,30 @@ impl TransactionValidator {
                     last_modified_lsn: 0,
                     created_lsn: 0,
                 };
-                self.cluster_metadata.insert((*node_id, *direction), metadata);
+                self.cluster_metadata
+                    .insert((*node_id, *direction), metadata);
             }
-            V2WALRecord::StringInsert { string_id, string_value, .. } => {
+            V2WALRecord::StringInsert {
+                string_id,
+                string_value,
+                ..
+            } => {
                 self.string_cache.insert(*string_id, string_value.clone());
             }
-            V2WALRecord::FreeSpaceAllocate { block_offset, block_size, .. } => {
+            V2WALRecord::FreeSpaceAllocate {
+                block_offset,
+                block_size,
+                ..
+            } => {
                 self.free_space_regions.insert((*block_offset, *block_size));
             }
-            V2WALRecord::FreeSpaceDeallocate { block_offset, block_size, .. } => {
-                self.free_space_regions.remove(&(*block_offset, *block_size));
+            V2WALRecord::FreeSpaceDeallocate {
+                block_offset,
+                block_size,
+                ..
+            } => {
+                self.free_space_regions
+                    .remove(&(*block_offset, *block_size));
             }
             _ => {} // Other records don't need cache updates
         }
@@ -868,16 +1011,19 @@ impl TransactionValidator {
     }
 
     /// Validate cross-record consistency within a transaction
-    fn validate_cross_record_consistency(&self, transaction: &TransactionState) -> RecoveryResult<Vec<String>> {
+    fn validate_cross_record_consistency(
+        &self,
+        transaction: &TransactionState,
+    ) -> RecoveryResult<Vec<String>> {
         let mut issues = Vec::new();
 
         // Validate node-cluster consistency
         for record in &transaction.records {
             if let V2WALRecord::NodeInsert { node_id, .. } = record {
                 // Check if node has corresponding cluster creation records
-                let has_cluster_create = transaction.records.iter().any(|r| {
-                    matches!(r, V2WALRecord::ClusterCreate { node_id: n, .. } if n == node_id)
-                });
+                let has_cluster_create = transaction.records.iter().any(
+                    |r| matches!(r, V2WALRecord::ClusterCreate { node_id: n, .. } if n == node_id),
+                );
 
                 // Note: This is a simplified check - full implementation would be more sophisticated
             }
@@ -905,14 +1051,18 @@ impl TransactionValidator {
     }
 
     /// Validate V2-specific invariants and constraints
-    fn validate_v2_invariants(&self, transaction: &TransactionState) -> RecoveryResult<Vec<String>> {
+    fn validate_v2_invariants(
+        &self,
+        transaction: &TransactionState,
+    ) -> RecoveryResult<Vec<String>> {
         let mut issues = Vec::new();
 
         // Validate transaction size limits
         if transaction.records.len() > MAX_RECORDS_PER_TRANSACTION {
             issues.push(format!(
                 "Transaction has {} records, exceeding maximum {}",
-                transaction.records.len(), MAX_RECORDS_PER_TRANSACTION
+                transaction.records.len(),
+                MAX_RECORDS_PER_TRANSACTION
             ));
         }
 
@@ -924,7 +1074,10 @@ impl TransactionValidator {
             match record {
                 V2WALRecord::NodeInsert { node_id, .. } => {
                     if node_deletions.contains(node_id) {
-                        issues.push(format!("Node {} created after deletion in same transaction", node_id));
+                        issues.push(format!(
+                            "Node {} created after deletion in same transaction",
+                            node_id
+                        ));
                     }
                     node_creations.insert(node_id, true);
                 }
@@ -979,7 +1132,9 @@ impl RecoveryValidator {
         let mut all_issues = Vec::new();
 
         for transaction in transactions {
-            let result = self.transaction_validator.validate_transaction(transaction)?;
+            let result = self
+                .transaction_validator
+                .validate_transaction(transaction)?;
 
             match result {
                 ValidationResult::Valid => {
@@ -1030,11 +1185,15 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .map_err(|e| RecoveryError::validation(format!("Failed to create test graph file: {}", e)))?;
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            RecoveryError::validation(format!("Failed to create test graph file: {}", e))
+        })?;
 
         let validator = TransactionValidator::new(v2_graph_path);
-        assert!(validator.is_ok(), "TransactionValidator creation should succeed");
+        assert!(
+            validator.is_ok(),
+            "TransactionValidator creation should succeed"
+        );
         Ok(())
     }
 
@@ -1044,12 +1203,16 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .map_err(|e| RecoveryError::validation(format!("Failed to create test graph file: {}", e)))?;
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            RecoveryError::validation(format!("Failed to create test graph file: {}", e))
+        })?;
 
         let mut validator = TransactionValidator::new(v2_graph_path)?;
         let result = validator.initialize();
-        assert!(result.is_ok(), "TransactionValidator initialization should succeed");
+        assert!(
+            result.is_ok(),
+            "TransactionValidator initialization should succeed"
+        );
         Ok(())
     }
 
@@ -1059,8 +1222,9 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .map_err(|e| RecoveryError::validation(format!("Failed to create test graph file: {}", e)))?;
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            RecoveryError::validation(format!("Failed to create test graph file: {}", e))
+        })?;
 
         let mut validator = TransactionValidator::new(v2_graph_path)?;
         validator.initialize()?;
@@ -1081,7 +1245,10 @@ mod tests {
         };
 
         let result = validator.validate_record(&record, 1000)?;
-        assert!(matches!(result, ValidationResult::Valid), "Valid node insert should pass validation");
+        assert!(
+            matches!(result, ValidationResult::Valid),
+            "Valid node insert should pass validation"
+        );
         Ok(())
     }
 
@@ -1091,8 +1258,9 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .map_err(|e| RecoveryError::validation(format!("Failed to create test graph file: {}", e)))?;
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            RecoveryError::validation(format!("Failed to create test graph file: {}", e))
+        })?;
 
         let mut validator = TransactionValidator::new(v2_graph_path)?;
         validator.initialize()?;
@@ -1105,7 +1273,10 @@ mod tests {
         };
 
         let result = validator.validate_record(&record, 1000)?;
-        assert!(matches!(result, ValidationResult::Invalid { .. }), "Invalid node ID should fail validation");
+        assert!(
+            matches!(result, ValidationResult::Invalid { .. }),
+            "Invalid node ID should fail validation"
+        );
         Ok(())
     }
 
@@ -1115,11 +1286,15 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .map_err(|e| RecoveryError::validation(format!("Failed to create test graph file: {}", e)))?;
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            RecoveryError::validation(format!("Failed to create test graph file: {}", e))
+        })?;
 
         let validator = RecoveryValidator::new(v2_graph_path);
-        assert!(validator.is_ok(), "RecoveryValidator creation should succeed");
+        assert!(
+            validator.is_ok(),
+            "RecoveryValidator creation should succeed"
+        );
         Ok(())
     }
 }

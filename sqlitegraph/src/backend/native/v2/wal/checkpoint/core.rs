@@ -6,15 +6,13 @@
 //! strategy decisions to the strategies module and execution details to the operations module.
 
 use crate::backend::native::v2::wal::checkpoint::{
-    constants::*, errors::*, strategies::CheckpointStrategy,
-    operations::CheckpointExecutor,
+    constants::*, errors::*, operations::CheckpointExecutor, strategies::CheckpointStrategy,
 };
-use crate::backend::native::v2::wal::{V2WALReader, V2WALConfig};
-use parking_lot::{Mutex, Condvar};
+use crate::backend::native::v2::wal::V2WALConfig;
+use parking_lot::{Condvar, Mutex};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -248,10 +246,7 @@ impl V2WALCheckpointManager {
     ///
     /// let manager = V2WALCheckpointManager::create(config, CheckpointStrategy::TimeInterval(Duration::from_secs(300)))?;
     /// ```
-    pub fn create(
-        config: V2WALConfig,
-        strategy: CheckpointStrategy,
-    ) -> CheckpointResult<Self> {
+    pub fn create(config: V2WALConfig, strategy: CheckpointStrategy) -> CheckpointResult<Self> {
         // Validate configuration first
         Self::validate_configuration(&config)?;
 
@@ -305,7 +300,11 @@ impl V2WALCheckpointManager {
     /// Get checkpoint completion statistics
     pub fn get_checkpoint_statistics(&self) -> (u64, u64, u64) {
         let state = self.state.lock();
-        (state.completed_checkpoints, state.failed_attempts, state.current_operation_id)
+        (
+            state.completed_checkpoints,
+            state.failed_attempts,
+            state.current_operation_id,
+        )
     }
 
     /// Mark a block as dirty for checkpointing
@@ -318,7 +317,11 @@ impl V2WALCheckpointManager {
     /// # Returns
     ///
     /// * `CheckpointResult<()>` - Result indicating success or error
-    pub fn mark_block_dirty(&self, block_offset: u64, cluster_key: Option<i64>) -> CheckpointResult<()> {
+    pub fn mark_block_dirty(
+        &self,
+        block_offset: u64,
+        cluster_key: Option<i64>,
+    ) -> CheckpointResult<()> {
         let mut dirty_blocks = self.dirty_blocks.lock();
 
         // Validate block parameters
@@ -327,9 +330,10 @@ impl V2WALCheckpointManager {
         }
 
         if block_offset % v2::V2_GRAPH_BLOCK_SIZE != 0 {
-            return Err(CheckpointError::validation(
-                format!("Block offset {} is not aligned to V2 graph block size", block_offset)
-            ));
+            return Err(CheckpointError::validation(format!(
+                "Block offset {} is not aligned to V2 graph block size",
+                block_offset
+            )));
         }
 
         let timestamp = SystemTime::now()
@@ -360,17 +364,24 @@ impl V2WALCheckpointManager {
     /// # Returns
     ///
     /// * `CheckpointResult<u64>` - Number of blocks successfully marked
-    pub fn mark_blocks_dirty<I>(&self, block_offsets: I, cluster_key: Option<i64>) -> CheckpointResult<u64>
+    pub fn mark_blocks_dirty<I>(
+        &self,
+        block_offsets: I,
+        cluster_key: Option<i64>,
+    ) -> CheckpointResult<u64>
     where
         I: IntoIterator<Item = u64>,
     {
-        let mut dirty_blocks = self.dirty_blocks.lock();
+        let mut _dirty_blocks = self.dirty_blocks.lock();
         let mut marked_count = 0;
 
         for block_offset in block_offsets {
             if let Err(e) = self.mark_block_dirty(block_offset, cluster_key) {
                 // Log error but continue with other blocks
-                eprintln!("Warning: Failed to mark block {} as dirty: {}", block_offset, e);
+                eprintln!(
+                    "Warning: Failed to mark block {} as dirty: {}",
+                    block_offset, e
+                );
                 continue;
             }
             marked_count += 1;
@@ -464,7 +475,9 @@ impl V2WALCheckpointManager {
 
         // Check if checkpoint should be performed
         if !self.should_checkpoint()? {
-            return Err(CheckpointError::state("Checkpoint not required based on strategy"));
+            return Err(CheckpointError::state(
+                "Checkpoint not required based on strategy",
+            ));
         }
 
         // Transition to collecting state
@@ -548,7 +561,9 @@ impl V2WALCheckpointManager {
         // Wait for any in-progress checkpoint to complete
         if self.is_checkpoint_in_progress() {
             if !self.wait_for_checkpoint(Duration::from_secs(30)) {
-                return Err(CheckpointError::timeout("Checkpoint did not complete during shutdown"));
+                return Err(CheckpointError::timeout(
+                    "Checkpoint did not complete during shutdown",
+                ));
             }
         }
 
@@ -560,8 +575,9 @@ impl V2WALCheckpointManager {
         // Flush and close checkpoint file
         {
             let mut checkpoint_file = self.checkpoint_file.lock();
-            checkpoint_file.flush()
-                .map_err(|e| CheckpointError::io(format!("Failed to flush checkpoint file: {}", e)))?;
+            checkpoint_file.flush().map_err(|e| {
+                CheckpointError::io(format!("Failed to flush checkpoint file: {}", e))
+            })?;
         }
 
         Ok(())
@@ -571,12 +587,14 @@ impl V2WALCheckpointManager {
 
     /// Validate checkpoint configuration
     fn validate_configuration(config: &V2WALConfig) -> CheckpointResult<()> {
-        config.validate().map_err(|e| CheckpointError::configuration(e.to_string()))?;
+        config
+            .validate()
+            .map_err(|e| CheckpointError::configuration(e.to_string()))?;
 
         // Validate checkpoint path
         if config.checkpoint_path.as_path().parent().is_none() {
             return Err(CheckpointError::configuration(
-                "Checkpoint path must have a valid parent directory"
+                "Checkpoint path must have a valid parent directory",
             ));
         }
 
@@ -604,7 +622,11 @@ impl V2WALCheckpointManager {
     }
 
     /// Execute checkpoint operation (internal implementation)
-    fn execute_checkpoint(&self, start_time: Instant, force: bool) -> CheckpointResult<CheckpointProgress> {
+    fn execute_checkpoint(
+        &self,
+        _start_time: Instant,
+        _force: bool,
+    ) -> CheckpointResult<CheckpointProgress> {
         // Transition to processing state
         {
             let mut state = self.state.lock();
@@ -615,7 +637,13 @@ impl V2WALCheckpointManager {
         let executor = self.executor.lock();
         let manager_state = self.state.lock();
         let dirty_blocks = self.dirty_blocks.lock();
-        let progress = executor.execute_incremental_checkpoint(&manager_state.current_state, &*dirty_blocks, 0, u64::MAX)
+        let progress = executor
+            .execute_incremental_checkpoint(
+                &manager_state.current_state,
+                &*dirty_blocks,
+                0,
+                u64::MAX,
+            )
             .map_err(|e| {
                 // Transition to failed state on error
                 drop(manager_state); // Release the lock before reacquiring
@@ -631,7 +659,7 @@ impl V2WALCheckpointManager {
     fn evaluate_checkpoint_strategy(
         &self,
         strategy: &CheckpointStrategy,
-        dirty_blocks: &DirtyBlockTracker,
+        _dirty_blocks: &DirtyBlockTracker,
         state: &CheckpointManagerState,
     ) -> CheckpointResult<bool> {
         // This method will delegate to the strategies module
@@ -644,10 +672,10 @@ impl V2WALCheckpointManager {
                     Ok(true) // First checkpoint
                 }
             }
-            CheckpointStrategy::TransactionCount(threshold) => {
+            CheckpointStrategy::TransactionCount(_threshold) => {
                 Ok(false) // TODO: Implement transaction count checking
             }
-            CheckpointStrategy::SizeThreshold(threshold) => {
+            CheckpointStrategy::SizeThreshold(_threshold) => {
                 Ok(false) // TODO: Implement size threshold checking
             }
             CheckpointStrategy::Adaptive { .. } => {
@@ -676,17 +704,19 @@ impl DirtyBlockTracker {
         &mut self,
         cluster_key: i64,
         block_offset: u64,
-        timestamp: u64,
+        _timestamp: u64,
     ) -> CheckpointResult<()> {
-        let cluster_blocks = self.cluster_dirty_blocks
+        let cluster_blocks = self
+            .cluster_dirty_blocks
             .entry(cluster_key)
             .or_insert_with(HashSet::new);
 
         // Enforce capacity limits
         if cluster_blocks.len() >= self.max_blocks_per_cluster {
-            return Err(CheckpointError::resource(
-                format!("Maximum dirty blocks per cluster exceeded for cluster {}", cluster_key)
-            ));
+            return Err(CheckpointError::resource(format!(
+                "Maximum dirty blocks per cluster exceeded for cluster {}",
+                cluster_key
+            )));
         }
 
         cluster_blocks.insert(block_offset);
@@ -697,11 +727,13 @@ impl DirtyBlockTracker {
     pub fn mark_global_block_dirty(
         &mut self,
         block_offset: u64,
-        timestamp: u64,
+        _timestamp: u64,
     ) -> CheckpointResult<()> {
         // Enforce capacity limits
         if self.global_dirty_blocks.len() >= self.max_global_blocks {
-            return Err(CheckpointError::resource("Maximum global dirty blocks exceeded"));
+            return Err(CheckpointError::resource(
+                "Maximum global dirty blocks exceeded",
+            ));
         }
 
         self.global_dirty_blocks.insert(block_offset);
@@ -753,12 +785,17 @@ impl DirtyBlockTracker {
         }
 
         // Remove empty cluster entries
-        self.cluster_dirty_blocks.retain(|_, blocks| !blocks.is_empty());
+        self.cluster_dirty_blocks
+            .retain(|_, blocks| !blocks.is_empty());
     }
 
     /// Get dirty block statistics
     pub fn get_statistics(&self) -> (usize, usize) {
-        let cluster_blocks: usize = self.cluster_dirty_blocks.values().map(|set| set.len()).sum();
+        let cluster_blocks: usize = self
+            .cluster_dirty_blocks
+            .values()
+            .map(|set| set.len())
+            .sum();
         let global_blocks = self.global_dirty_blocks.len();
         (cluster_blocks, global_blocks)
     }
@@ -786,22 +823,22 @@ mod tests {
     use std::time::Duration;
     use tempfile::tempdir;
 
-    
     #[test]
     fn test_checkpoint_manager_creation() -> CheckpointResult<()> {
         let temp_dir = tempdir().unwrap();
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing (same as working test)
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .map_err(|e| CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e)))?;
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e))
+        })?;
 
         let wal_path = temp_dir.path().join("test.wal");
         let config = V2WALConfig {
             wal_path,
             checkpoint_path: temp_dir.path().join("test.checkpoint"),
             max_wal_size: 64 * 1024 * 1024, // 64MB
-            buffer_size: 1024 * 1024,        // 1MB
+            buffer_size: 1024 * 1024,       // 1MB
             checkpoint_interval: 100,
             enable_compression: false,
             ..Default::default()
@@ -823,14 +860,15 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing (same as working test)
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .map_err(|e| CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e)))?;
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e))
+        })?;
 
         let config = V2WALConfig {
             wal_path: temp_dir.path().join("test.wal"),
             checkpoint_path: temp_dir.path().join("test.checkpoint"),
             max_wal_size: 64 * 1024 * 1024, // 64MB
-            buffer_size: 1024 * 1024,        // 1MB
+            buffer_size: 1024 * 1024,       // 1MB
             checkpoint_interval: 100,
             enable_compression: false,
             ..Default::default()
@@ -858,14 +896,14 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing (same as working test)
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .expect("Failed to create test V2 graph file");
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create test V2 graph file");
 
         let config = V2WALConfig {
             wal_path: temp_dir.path().join("test.wal"),
             checkpoint_path: temp_dir.path().join("test.checkpoint"),
             max_wal_size: 64 * 1024 * 1024, // 64MB
-            buffer_size: 1024 * 1024,        // 1MB
+            buffer_size: 1024 * 1024,       // 1MB
             checkpoint_interval: 100,
             enable_compression: false,
             ..Default::default()
@@ -877,7 +915,10 @@ mod tests {
         // Try to mark invalid block offset (not aligned)
         let result = manager.mark_block_dirty(100, Some(42));
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err().kind, CheckpointErrorKind::Validation));
+        assert!(matches!(
+            result.unwrap_err().kind,
+            CheckpointErrorKind::Validation
+        ));
     }
 
     #[test]
@@ -886,14 +927,15 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing (same as working test)
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .map_err(|e| CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e)))?;
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e))
+        })?;
 
         let config = V2WALConfig {
             wal_path: temp_dir.path().join("test.wal"),
             checkpoint_path: temp_dir.path().join("test.checkpoint"),
             max_wal_size: 64 * 1024 * 1024, // 64MB
-            buffer_size: 1024 * 1024,        // 1MB
+            buffer_size: 1024 * 1024,       // 1MB
             checkpoint_interval: 100,
             enable_compression: false,
             ..Default::default()
@@ -964,14 +1006,14 @@ mod tests {
         let v2_graph_path = temp_dir.path().join("test.v2");
 
         // Create a minimal V2 graph file for testing (same as working test)
-        let _graph_file = GraphFile::create(&v2_graph_path)
-            .expect("Failed to create test V2 graph file");
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create test V2 graph file");
 
         let config = V2WALConfig {
             wal_path: temp_dir.path().join("test.wal"),
             checkpoint_path: temp_dir.path().join("test.checkpoint"),
             max_wal_size: 64 * 1024 * 1024, // 64MB
-            buffer_size: 1024 * 1024,        // 1MB
+            buffer_size: 1024 * 1024,       // 1MB
             checkpoint_interval: 100,
             enable_compression: false,
             ..Default::default()

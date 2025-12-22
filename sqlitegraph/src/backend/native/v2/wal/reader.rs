@@ -4,11 +4,9 @@
 //! checkpointing, and log analysis. It supports sequential reading, random access
 //! by LSN, and filtered reading based on record types and cluster affinity.
 
-use crate::backend::native::{NativeBackendError, NativeResult};
-use crate::backend::native::v2::wal::{
-    V2WALRecord, V2WALHeader, V2WALRecordType,
-};
 use crate::backend::native::v2::wal::record::V2WALSerializer;
+use crate::backend::native::v2::wal::{V2WALHeader, V2WALRecord, V2WALRecordType};
+use crate::backend::native::{NativeBackendError, NativeResult};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
@@ -192,11 +190,10 @@ impl V2WALReader {
         let mut header_bytes = vec![0u8; header_size];
 
         {
-            let file = Arc::get_mut(&mut self.file)
-                .ok_or(NativeBackendError::InvalidHeader {
-                    field: "file_access".to_string(),
-                    reason: "Cannot get mutable reference to WAL file".to_string(),
-                })?;
+            let file = Arc::get_mut(&mut self.file).ok_or(NativeBackendError::InvalidHeader {
+                field: "file_access".to_string(),
+                reason: "Cannot get mutable reference to WAL file".to_string(),
+            })?;
 
             file.seek(SeekFrom::Start(0))
                 .map_err(NativeBackendError::Io)?;
@@ -206,9 +203,8 @@ impl V2WALReader {
         }
 
         // Parse header
-        self.header = unsafe {
-            std::ptr::read_unaligned(header_bytes.as_ptr() as *const V2WALHeader)
-        };
+        self.header =
+            unsafe { std::ptr::read_unaligned(header_bytes.as_ptr() as *const V2WALHeader) };
 
         // Validate header
         self.header.validate()?;
@@ -218,14 +214,14 @@ impl V2WALReader {
 
     /// Determine the end position of WAL data
     fn determine_wal_end(&mut self) -> NativeResult<()> {
-        let file = Arc::get_mut(&mut self.file)
-            .ok_or(NativeBackendError::InvalidHeader {
-                field: "file_access".to_string(),
-                reason: "Cannot get mutable reference to WAL file".to_string(),
-            })?;
+        let file = Arc::get_mut(&mut self.file).ok_or(NativeBackendError::InvalidHeader {
+            field: "file_access".to_string(),
+            reason: "Cannot get mutable reference to WAL file".to_string(),
+        })?;
 
         // Seek to end of file
-        let file_size = file.seek(SeekFrom::End(0))
+        let file_size = file
+            .seek(SeekFrom::End(0))
             .map_err(NativeBackendError::Io)?;
 
         self.wal_end = file_size;
@@ -240,11 +236,10 @@ impl V2WALReader {
             return Ok(None); // End of WAL
         }
 
-        let file = Arc::get_mut(&mut self.file)
-            .ok_or(NativeBackendError::InvalidHeader {
-                field: "file_access".to_string(),
-                reason: "Cannot get mutable reference to WAL file".to_string(),
-            })?;
+        let file = Arc::get_mut(&mut self.file).ok_or(NativeBackendError::InvalidHeader {
+            field: "file_access".to_string(),
+            reason: "Cannot get mutable reference to WAL file".to_string(),
+        })?;
 
         file.seek(SeekFrom::Start(self.current_position))
             .map_err(NativeBackendError::Io)?;
@@ -255,7 +250,12 @@ impl V2WALReader {
             .map_err(NativeBackendError::Io)?;
 
         let record_type = V2WALRecordType::try_from(header_bytes[0])?;
-        let record_size = u32::from_le_bytes([header_bytes[1], header_bytes[2], header_bytes[3], header_bytes[4]]) as usize;
+        let record_size = u32::from_le_bytes([
+            header_bytes[1],
+            header_bytes[2],
+            header_bytes[3],
+            header_bytes[4],
+        ]) as usize;
 
         if self.current_position + 5 + record_size as u64 > self.wal_end {
             return Err(NativeBackendError::RecordTooLarge {
@@ -287,9 +287,12 @@ impl V2WALReader {
     }
 
     /// Read all records matching the given filter
-    pub fn read_filtered_records(&mut self, filter: &WALReadFilter) -> NativeResult<Vec<(u64, V2WALRecord)>> {
+    pub fn read_filtered_records(
+        &mut self,
+        filter: &WALReadFilter,
+    ) -> NativeResult<Vec<(u64, V2WALRecord)>> {
         let mut records = Vec::new();
-        let mut current_pos = std::mem::size_of::<V2WALHeader>() as u64;
+        let current_pos = std::mem::size_of::<V2WALHeader>() as u64;
 
         // Reset position to start of records
         self.current_position = current_pos;
@@ -479,8 +482,8 @@ impl<'a> Iterator for WALRecordIterator<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use crate::backend::native::v2::wal::writer::V2WALWriter;
+    use tempfile::tempdir;
 
     #[test]
     fn test_wal_reader_create() {

@@ -4,16 +4,14 @@
 //! edge architecture, implementing group commit, write buffering, and cluster-affinity
 //! organization for optimal I/O locality and throughput.
 
-use crate::backend::native::{NativeBackendError, NativeResult};
-use crate::backend::native::v2::wal::{
-    V2WALRecord, V2WALHeader, lsn, V2WALConfig,
-};
+use super::bulk_ingest::BulkIngestConfig;
 use crate::backend::native::v2::wal::record::V2WALSerializer;
-use parking_lot::{Mutex, Condvar};
+use crate::backend::native::v2::wal::{V2WALConfig, V2WALHeader, V2WALRecord, lsn};
+use crate::backend::native::{NativeBackendError, NativeResult};
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -39,6 +37,9 @@ pub struct V2WALWriter {
 
     /// Cluster-affinity record grouping
     cluster_groups: Arc<Mutex<HashMap<i64, Vec<V2WALRecord>>>>,
+
+    /// Bulk ingest mode state
+    bulk_mode: Arc<Mutex<BulkModeState>>,
 }
 
 /// Write buffer for batching WAL records
@@ -95,6 +96,25 @@ struct GroupCommitState {
     active_transactions: u32,
 }
 
+/// Bulk ingest mode state
+#[derive(Debug)]
+struct BulkModeState {
+    /// Whether bulk mode is currently active
+    active: bool,
+
+    /// Original configuration to restore
+    original_config: Option<V2WALConfig>,
+
+    /// Records written during bulk session
+    records_written: u64,
+
+    /// Bulk session start time
+    session_start: Instant,
+
+    /// Bulk mode configuration
+    bulk_config: Option<BulkIngestConfig>,
+}
+
 /// Writer performance metrics
 #[derive(Debug, Default)]
 pub struct WriterMetrics {
@@ -139,7 +159,7 @@ impl V2WALWriter {
             let mut file = std::fs::OpenOptions::new()
                 .create(true)
                 .write(true)
-                .truncate(true)  // Start with empty file
+                .truncate(true) // Start with empty file
                 .open(&config.wal_path)
                 .map_err(NativeBackendError::Io)?;
 
@@ -147,10 +167,11 @@ impl V2WALWriter {
             let header_bytes = unsafe {
                 std::slice::from_raw_parts(
                     &header as *const V2WALHeader as *const u8,
-                    std::mem::size_of::<V2WALHeader>()
+                    std::mem::size_of::<V2WALHeader>(),
                 )
             };
-            file.write_all(header_bytes).map_err(NativeBackendError::Io)?;
+            file.write_all(header_bytes)
+                .map_err(NativeBackendError::Io)?;
             file.flush().map_err(NativeBackendError::Io)?;
         }
 
@@ -177,6 +198,14 @@ impl V2WALWriter {
             active_transactions: 0,
         };
 
+        let bulk_mode = BulkModeState {
+            active: false,
+            original_config: None,
+            records_written: 0,
+            session_start: Instant::now(),
+            bulk_config: None,
+        };
+
         Ok(Self {
             config,
             file: Arc::new(Mutex::new(BufWriter::new(file))),
@@ -185,6 +214,7 @@ impl V2WALWriter {
             group_commit: Arc::new(Mutex::new(group_commit)),
             metrics: Arc::new(Mutex::new(WriterMetrics::default())),
             cluster_groups: Arc::new(Mutex::new(HashMap::new())),
+            bulk_mode: Arc::new(Mutex::new(bulk_mode)),
         })
     }
 
@@ -203,7 +233,10 @@ impl V2WALWriter {
         // Group by cluster for optimal I/O locality
         if let Some(cluster_key) = record.cluster_key() {
             let mut cluster_groups = self.cluster_groups.lock();
-            cluster_groups.entry(cluster_key).or_insert_with(Vec::new).push(record.clone());
+            cluster_groups
+                .entry(cluster_key)
+                .or_insert_with(Vec::new)
+                .push(record.clone());
         }
 
         // Add to write buffer
@@ -227,12 +260,13 @@ impl V2WALWriter {
                 let mut metrics = self.metrics.lock();
                 metrics.records_written += 1;
                 metrics.bytes_written += serialized.len() as u64;
-                metrics.buffer_utilization = (write_buffer.buffer.len() as f64 / write_buffer.max_size as f64) * 100.0;
+                metrics.buffer_utilization =
+                    (write_buffer.buffer.len() as f64 / write_buffer.max_size as f64) * 100.0;
             }
 
             // Check if buffer needs flushing
-            let should_flush = write_buffer.buffer.len() >= write_buffer.max_size ||
-                             start_time.elapsed() >= write_buffer.flush_timeout;
+            let should_flush = write_buffer.buffer.len() >= write_buffer.max_size
+                || start_time.elapsed() >= write_buffer.flush_timeout;
 
             if should_flush {
                 drop(write_buffer); // Release lock before flush
@@ -277,8 +311,8 @@ impl V2WALWriter {
             }
 
             // Check if group commit should trigger
-            let should_commit = group_commit.pending_records.len() >= group_commit.max_batch_size ||
-                              start_time.elapsed() >= group_commit.timeout;
+            let should_commit = group_commit.pending_records.len() >= group_commit.max_batch_size
+                || start_time.elapsed() >= group_commit.timeout;
 
             if should_commit {
                 let records_to_commit = std::mem::take(&mut group_commit.pending_records);
@@ -315,15 +349,17 @@ impl V2WALWriter {
             file.write_all(&buffer_data)
                 .map_err(NativeBackendError::Io)?;
 
-            file.flush()
-                .map_err(NativeBackendError::Io)?;
+            file.flush().map_err(NativeBackendError::Io)?;
         }
 
         // Update metrics
         {
             let mut metrics = self.metrics.lock();
             metrics.flush_count += 1;
-            metrics.avg_records_per_flush = ((metrics.avg_records_per_flush * (metrics.flush_count - 1) as f64) + record_count as f64) / metrics.flush_count as f64;
+            metrics.avg_records_per_flush = ((metrics.avg_records_per_flush
+                * (metrics.flush_count - 1) as f64)
+                + record_count as f64)
+                / metrics.flush_count as f64;
         }
 
         Ok(())
@@ -347,15 +383,17 @@ impl V2WALWriter {
         // Flush to ensure durability
         {
             let mut file = self.file.lock();
-            file.flush()
-                .map_err(NativeBackendError::Io)?;
+            file.flush().map_err(NativeBackendError::Io)?;
         }
 
         // Update metrics
         {
             let mut metrics = self.metrics.lock();
             metrics.group_commit_count += 1;
-            metrics.avg_group_commit_size = ((metrics.avg_group_commit_size * (metrics.group_commit_count - 1) as f64) + records.len() as f64) / metrics.group_commit_count as f64;
+            metrics.avg_group_commit_size = ((metrics.avg_group_commit_size
+                * (metrics.group_commit_count - 1) as f64)
+                + records.len() as f64)
+                / metrics.group_commit_count as f64;
             metrics.records_written += records.len() as u64;
             metrics.bytes_written += total_bytes as u64;
         }
@@ -371,9 +409,12 @@ impl V2WALWriter {
         // For simplicity, update with exponential smoothing
         const ALPHA: f64 = 0.1;
 
-        metrics.write_latency_p50 = ((100.0 - ALPHA) * metrics.write_latency_p50 as f64 + ALPHA * latency_us as f64) as u64;
-        metrics.write_latency_p95 = ((100.0 - ALPHA) * metrics.write_latency_p95 as f64 + ALPHA * (latency_us * 95 / 50) as f64) as u64;
-        metrics.write_latency_p99 = ((100.0 - ALPHA) * metrics.write_latency_p99 as f64 + ALPHA * (latency_us * 99 / 50) as f64) as u64;
+        metrics.write_latency_p50 =
+            ((100.0 - ALPHA) * metrics.write_latency_p50 as f64 + ALPHA * latency_us as f64) as u64;
+        metrics.write_latency_p95 = ((100.0 - ALPHA) * metrics.write_latency_p95 as f64
+            + ALPHA * (latency_us * 95 / 50) as f64) as u64;
+        metrics.write_latency_p99 = ((100.0 - ALPHA) * metrics.write_latency_p99 as f64
+            + ALPHA * (latency_us * 99 / 50) as f64) as u64;
     }
 
     /// Get current performance metrics
@@ -400,8 +441,7 @@ impl V2WALWriter {
         // Sync underlying file
         {
             let file = self.file.lock();
-            file.get_ref().sync_all()
-                .map_err(NativeBackendError::Io)?;
+            file.get_ref().sync_all().map_err(NativeBackendError::Io)?;
         }
 
         Ok(())
@@ -410,6 +450,89 @@ impl V2WALWriter {
     /// Get current WAL header
     pub fn get_header(&self) -> V2WALHeader {
         *self.header.lock()
+    }
+
+    /// Enable bulk ingest mode with optimized parameters
+    pub fn enable_bulk_mode(&self, config: &BulkIngestConfig) -> NativeResult<()> {
+        let mut bulk_mode = self.bulk_mode.lock();
+
+        if bulk_mode.active {
+            return Ok(()); // Already in bulk mode
+        }
+
+        // Store original configuration
+        bulk_mode.original_config = Some(self.config.clone());
+        bulk_mode.bulk_config = Some(config.clone());
+        bulk_mode.records_written = 0;
+        bulk_mode.session_start = Instant::now();
+        bulk_mode.active = true;
+
+        // Modify write buffer behavior for bulk mode
+        {
+            let mut write_buffer = self.write_buffer.lock();
+            write_buffer.max_size = config.max_batch_size_bytes;
+            write_buffer.flush_timeout = Duration::from_millis(config.flush_timeout_ms);
+        }
+
+        // Optimize group commit for bulk operations
+        {
+            let mut group_commit = self.group_commit.lock();
+            group_commit.max_batch_size = config.max_records_per_batch;
+            group_commit.timeout = Duration::from_millis(config.flush_timeout_ms);
+        }
+
+        Ok(())
+    }
+
+    /// Disable bulk ingest mode and restore original configuration
+    pub fn disable_bulk_mode(&self) -> NativeResult<()> {
+        let mut bulk_mode = self.bulk_mode.lock();
+
+        if !bulk_mode.active {
+            return Ok(()); // Not in bulk mode
+        }
+
+        // Flush any pending data before switching back
+        drop(bulk_mode);
+        self.flush_buffer()?;
+
+        // Restore original configuration
+        bulk_mode = self.bulk_mode.lock();
+        if let Some(original_config) = bulk_mode.original_config.take() {
+            {
+                let mut write_buffer = self.write_buffer.lock();
+                write_buffer.max_size = original_config.buffer_size;
+                write_buffer.flush_timeout =
+                    Duration::from_millis(original_config.group_commit_timeout_ms);
+            }
+
+            {
+                let mut group_commit = self.group_commit.lock();
+                group_commit.max_batch_size = original_config.max_group_commit_size;
+                group_commit.timeout =
+                    Duration::from_millis(original_config.group_commit_timeout_ms);
+            }
+        }
+
+        bulk_mode.active = false;
+        bulk_mode.bulk_config = None;
+
+        Ok(())
+    }
+
+    /// Check if bulk mode is currently active
+    pub fn is_bulk_mode_active(&self) -> bool {
+        self.bulk_mode.lock().active
+    }
+
+    /// Get bulk mode statistics
+    pub fn get_bulk_stats(&self) -> (bool, u64, Duration) {
+        let bulk_mode = self.bulk_mode.lock();
+        (
+            bulk_mode.active,
+            bulk_mode.records_written,
+            bulk_mode.session_start.elapsed(),
+        )
     }
 
     /// Shutdown writer gracefully

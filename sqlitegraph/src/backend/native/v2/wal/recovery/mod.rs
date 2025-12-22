@@ -30,31 +30,37 @@
 
 // Re-export core recovery components
 pub use self::core::{
-    V2WALRecoveryEngine, RecoveryState, RecoveryResult,
-    RecoveryProgress, RecoveryOptions,
+    RecoveryOptions, RecoveryProgress, RecoveryResult, V2WALRecoveryEngine,
+};
+
+// Re-export explicit recovery state model
+pub use self::states::{
+    Authority, RecoveryContext, RecoveryState as ExplicitRecoveryState,
+};
+
+// Re-export recovery coordinator
+pub use self::coordinator::{
+    RecoveryCoordinator, RecoveryCoordinatorResult, RecoveryDecision, RecoveryCoordinatorStats,
 };
 
 // Re-export recovery strategy components
-pub use self::scanner::{
-    WALScanner, TransactionScanner, WALScanResult,
-};
+pub use self::scanner::{TransactionScanner, WALScanResult, WALScanner};
 
 // Re-export validation components
-pub use self::validator::{
-    TransactionValidator, RecoveryValidator, ValidationResult,
-};
+pub use self::validator::{RecoveryValidator, TransactionValidator, ValidationResult};
 
 // Re-export replay components
 pub use self::replayer::{
-    V2GraphFileReplayer, ReplayConfig, ReplayResult, ReplayStatistics,
-    RollbackOperation,
+    ReplayConfig, ReplayResult, ReplayStatistics, RollbackOperation, V2GraphFileReplayer,
 };
 
 // Module declarations
+pub mod coordinator;
 pub mod core;
-pub mod scanner;
-pub mod validator;
 pub mod replayer;
+pub mod scanner;
+pub mod states;
+pub mod validator;
 
 // Constants module for recovery-specific constants
 pub mod constants;
@@ -79,8 +85,7 @@ impl RecoveryFactory {
         database_path: PathBuf,
     ) -> RecoveryResult<V2WALRecoveryEngine> {
         let options = RecoveryOptions::default();
-        V2WALRecoveryEngine::create(config, database_path, options)
-            .map_err(RecoveryError::from)
+        V2WALRecoveryEngine::create(config, database_path, options).map_err(RecoveryError::from)
     }
 
     /// Create a recovery engine with custom options
@@ -89,8 +94,7 @@ impl RecoveryFactory {
         database_path: PathBuf,
         options: RecoveryOptions,
     ) -> RecoveryResult<V2WALRecoveryEngine> {
-        V2WALRecoveryEngine::create(config, database_path, options)
-            .map_err(RecoveryError::from)
+        V2WALRecoveryEngine::create(config, database_path, options).map_err(RecoveryError::from)
     }
 
     /// Create a recovery engine optimized for V2 workloads
@@ -100,15 +104,14 @@ impl RecoveryFactory {
     ) -> RecoveryResult<V2WALRecoveryEngine> {
         let options = RecoveryOptions {
             fast_recovery: false, // V2 workloads need thorough recovery
-            max_batch_size: 500,     // Moderate batch size for V2 clustered edge data
+            max_batch_size: 500,  // Moderate batch size for V2 clustered edge data
             recovery_timeout: std::time::Duration::from_secs(600), // 10 minutes
             perform_consistency_checks: true,
             create_backup: true,
             max_recovery_attempts: 5,
             force_recovery: false,
         };
-        V2WALRecoveryEngine::create(config, database_path, options)
-            .map_err(RecoveryError::from)
+        V2WALRecoveryEngine::create(config, database_path, options).map_err(RecoveryError::from)
     }
 
     /// Create a fast recovery engine for emergency scenarios
@@ -125,8 +128,7 @@ impl RecoveryFactory {
             max_recovery_attempts: 1,
             force_recovery: true,
         };
-        V2WALRecoveryEngine::create(config, database_path, options)
-            .map_err(RecoveryError::from)
+        V2WALRecoveryEngine::create(config, database_path, options).map_err(RecoveryError::from)
     }
 
     /// Validate recovery prerequisites
@@ -196,7 +198,7 @@ pub mod utils {
         options: &RecoveryOptions,
     ) -> std::time::Duration {
         let base_duration = std::time::Duration::from_millis(
-            ((database_size_bytes + wal_size_bytes) / (1024 * 1024)) as u64 * 50 // 50ms per MB
+            ((database_size_bytes + wal_size_bytes) / (1024 * 1024)) as u64 * 50, // 50ms per MB
         );
 
         let mut duration = base_duration;
@@ -223,10 +225,10 @@ pub mod utils {
         let size_mb = database_size_bytes / (1024 * 1024);
 
         match size_mb {
-            0..=100 => 100,      // Small databases: small batches
-            101..=500 => 500,    // Medium databases: medium batches
-            501..=1000 => 1000,  // Large databases: large batches
-            _ => 2000,           // Very large databases: very large batches
+            0..=100 => 100,     // Small databases: small batches
+            101..=500 => 500,   // Medium databases: medium batches
+            501..=1000 => 1000, // Large databases: large batches
+            _ => 2000,          // Very large databases: very large batches
         }
     }
 
@@ -235,39 +237,39 @@ pub mod utils {
         // Validate batch size is reasonable
         if options.max_batch_size == 0 {
             return Err(RecoveryError::configuration(
-                "Max batch size cannot be zero".to_string()
+                "Max batch size cannot be zero".to_string(),
             ));
         }
 
         if options.max_batch_size > 10000 {
             return Err(RecoveryError::configuration(
-                "Max batch size too large (>10000)".to_string()
+                "Max batch size too large (>10000)".to_string(),
             ));
         }
 
         // Validate timeout is reasonable
         if options.recovery_timeout.as_secs() == 0 {
             return Err(RecoveryError::configuration(
-                "Recovery timeout cannot be zero".to_string()
+                "Recovery timeout cannot be zero".to_string(),
             ));
         }
 
         if options.recovery_timeout.as_secs() > 3600 {
             return Err(RecoveryError::configuration(
-                "Recovery timeout too large (>1 hour)".to_string()
+                "Recovery timeout too large (>1 hour)".to_string(),
             ));
         }
 
         // Validate recovery attempts
         if options.max_recovery_attempts == 0 {
             return Err(RecoveryError::configuration(
-                "Max recovery attempts cannot be zero".to_string()
+                "Max recovery attempts cannot be zero".to_string(),
             ));
         }
 
         if options.max_recovery_attempts > 10 {
             return Err(RecoveryError::configuration(
-                "Max recovery attempts too many (>10)".to_string()
+                "Max recovery attempts too many (>10)".to_string(),
             ));
         }
 
@@ -378,8 +380,8 @@ impl RecoveryStatistics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::time::Duration;
+    use tempfile::tempdir;
 
     #[test]
     fn test_recovery_factory_create_engine() {
@@ -430,16 +432,25 @@ mod tests {
         let duration = utils::estimate_recovery_duration(database_size, wal_size, &options);
 
         // Should be reasonable duration (150MB * 50ms = 7.5s + checks)
-        assert!(duration.as_secs() >= 5, "Duration should be at least 5 seconds");
-        assert!(duration.as_secs() <= 30, "Duration should be at most 30 seconds");
+        assert!(
+            duration.as_secs() >= 5,
+            "Duration should be at least 5 seconds"
+        );
+        assert!(
+            duration.as_secs() <= 30,
+            "Duration should be at most 30 seconds"
+        );
     }
 
     #[test]
     fn test_optimal_batch_size() {
-        assert_eq!(utils::calculate_optimal_batch_size(50 * 1024 * 1024), 100);  // 50MB
+        assert_eq!(utils::calculate_optimal_batch_size(50 * 1024 * 1024), 100); // 50MB
         assert_eq!(utils::calculate_optimal_batch_size(250 * 1024 * 1024), 500); // 250MB
         assert_eq!(utils::calculate_optimal_batch_size(750 * 1024 * 1024), 1000); // 750MB
-        assert_eq!(utils::calculate_optimal_batch_size(2 * 1024 * 1024 * 1024), 2000); // 2GB
+        assert_eq!(
+            utils::calculate_optimal_batch_size(2 * 1024 * 1024 * 1024),
+            2000
+        ); // 2GB
     }
 
     #[test]

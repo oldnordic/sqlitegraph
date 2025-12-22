@@ -171,7 +171,10 @@ fn test_boundary_conditions_around_node_257() {
                     data: serde_json::json!({"id": i}),
                 })
                 .expect(&format!("Failed to insert node {}", i));
-            println!("DEBUG: Created node with name='node_{}' -> node_id={}", i, node_id);
+            println!(
+                "DEBUG: Created node with name='node_{}' -> node_id={}",
+                i, node_id
+            );
             node_ids.push(node_id);
         }
 

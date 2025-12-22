@@ -1,6 +1,6 @@
 [package]
 name = "sqlitegraph"
-version = "0.2.4"
+version = "0.2.6"
 edition = "2024"
 description = "Deterministic, embedded graph database with SQLite and Native V2 backends"
 license = "GPL-3.0-or-later"
@@ -52,28 +52,7 @@ v2_experimental = ["native-v2"]  # Alias for backwards compatibility
 v2_io_exclusive_mmap = []    # MMAP-based I/O (advanced users)
 v2_io_exclusive_std = []     # std::fs-based I/O (stable)
 
-# Phase 13 Step 5: Safe and portable optimization profiles
-[profile.release]
-# Optimize for performance with portable settings
-opt-level = 3
-codegen-units = 1
-lto = "thin"
-debug = false
-panic = "abort"
-
-[profile.bench]
-# Benchmark profiling with debug symbols for flamegraph analysis
-inherits = "release"
-opt-level = 3
-codegen-units = 1
-lto = "thin"
-debug = true  # Enable debug symbols for flamegraph profiling
-
-[profile.test]
-# Test profile optimized for speed while maintaining debuggability
-opt-level = 2
-codegen-units = 16
-debug = true
+# Note: Profile configurations moved to workspace root Cargo.toml for proper workspace behavior
 
 # Phase 8 Backend Comparison Benchmarks
 [[bench]]

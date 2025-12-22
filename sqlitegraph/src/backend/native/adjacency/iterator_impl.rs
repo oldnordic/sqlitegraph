@@ -1,7 +1,7 @@
 //! Iterator trait implementation for adjacency iteration
 
-use crate::backend::native::types::*;
 use super::AdjacencyIterator;
+use crate::backend::native::types::*;
 
 impl<'a> Iterator for AdjacencyIterator<'a> {
     type Item = NativeNodeId;
@@ -31,8 +31,10 @@ impl<'a> Iterator for AdjacencyIterator<'a> {
                 // This prevents infinite loops when total_count > 0 but cluster initialization fails
                 #[cfg(debug_assertions)]
                 {
-                    println!("DEBUG: Iterator terminating due to V2 cluster initialization error for node {}. total_count={}, current_index={}",
-                             self.node_id, self.total_count, self.current_index);
+                    println!(
+                        "DEBUG: Iterator terminating due to V2 cluster initialization error for node {}. total_count={}, current_index={}",
+                        self.node_id, self.total_count, self.current_index
+                    );
                 }
                 None
             }

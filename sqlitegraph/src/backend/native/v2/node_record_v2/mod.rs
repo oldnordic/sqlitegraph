@@ -9,21 +9,17 @@
 //! - `extensions.rs`: utility functions and trait extensions
 //! - `metrics.rs`: adjacency analytics helpers
 
-mod metrics;
-mod core;
 mod clusters;
-mod serialization;
+mod core;
 mod deserialization;
-mod validation;
 mod extensions;
+mod metrics;
+mod serialization;
+mod validation;
 
-pub use metrics::AdjacencyMetrics;
 pub use core::NodeRecordV2;
-pub use clusters::*;
-pub use serialization::*;
-pub use deserialization::*;
-pub use validation::*;
 pub use extensions::*;
+pub use metrics::AdjacencyMetrics;
 
 #[cfg(all(test, feature = "v2_experimental"))]
 mod tests {
@@ -62,7 +58,6 @@ mod tests {
         assert_eq!(node.outgoing_cluster_offset, 10000);
         assert_eq!(node.incoming_cluster_size, 300);
     }
-
 
     #[test]
     fn test_cluster_size_estimation() {

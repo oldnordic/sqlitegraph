@@ -3,10 +3,7 @@
 //! This module provides memory-mapped file operations including initialization,
 //! resizing, bounds checking, and safe read/write operations with recursion protection.
 
-use crate::backend::native::{
-    types::NativeResult,
-    types::NativeBackendError,
-};
+use crate::backend::native::{types::NativeBackendError, types::NativeResult};
 
 /// Memory mapping management utilities for GraphFile
 pub struct MMapManager;
@@ -45,9 +42,7 @@ impl MMapManager {
                 node_id: -1,
                 reason: format!(
                     "Read beyond mmap region: offset={}, len={}, mmap_size={}",
-                    offset,
-                    buffer_len,
-                    mmap_size
+                    offset, buffer_len, mmap_size
                 ),
             });
         }
@@ -66,9 +61,7 @@ impl MMapManager {
                 node_id: -1,
                 reason: format!(
                     "Write beyond mmap region: offset={}, len={}, mmap_size={}",
-                    offset,
-                    data_len,
-                    mmap_size
+                    offset, data_len, mmap_size
                 ),
             });
         }
@@ -177,8 +170,11 @@ mod tests {
 
         // Check based on feature flag
         let should_enable = cfg!(feature = "v2_experimental");
-        assert_eq!(config.enable_mmap, should_enable,
-            "MMapConfig.enable_mmap should match v2_experimental feature flag state (enabled={})", should_enable);
+        assert_eq!(
+            config.enable_mmap, should_enable,
+            "MMapConfig.enable_mmap should match v2_experimental feature flag state (enabled={})",
+            should_enable
+        );
 
         assert_eq!(config.growth_threshold_kb, 1024);
         assert_eq!(config.max_recursion_depth, 10);

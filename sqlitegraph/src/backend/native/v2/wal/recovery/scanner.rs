@@ -5,12 +5,11 @@
 //! classification, and recovery metadata extraction while maintaining high
 //! performance and memory efficiency.
 
+use super::{constants::*, core::TransactionState, errors::RecoveryError};
 use crate::backend::native::v2::wal::{V2WALReader, V2WALRecord, V2WALRecordType};
-use crate::backend::native::v2::edge_cluster::{CompactEdgeRecord, Direction};
-use super::{errors::RecoveryError, constants::*, core::TransactionState};
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::Mutex;
 
 macro_rules! info { ($($arg:tt)*) => { log::info!($($arg)*); }; }
 macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
@@ -118,7 +117,10 @@ impl WALScanner {
     /// # Returns
     /// * `Ok(WALScanResult)` - Scan results with transactions and statistics
     /// * `Err(RecoveryError)` - Scanning error with detailed information
-    pub async fn scan_wal_file(&self, wal_path: &std::path::Path) -> Result<WALScanResult, RecoveryError> {
+    pub async fn scan_wal_file(
+        &self,
+        wal_path: &std::path::Path,
+    ) -> Result<WALScanResult, RecoveryError> {
         let start_time = std::time::Instant::now();
 
         info!("Starting WAL scan: {:?}", wal_path);
@@ -224,10 +226,8 @@ impl TransactionScanner {
         // Update final statistics
         self.statistics.scan_duration_ms = start_time.elapsed().as_millis() as u64;
         self.statistics.transactions_found = transactions.len() as u64;
-        self.statistics.committed_transactions = transactions
-            .iter()
-            .filter(|tx| tx.committed)
-            .count() as u64;
+        self.statistics.committed_transactions =
+            transactions.iter().filter(|tx| tx.committed).count() as u64;
         self.statistics.rolled_back_transactions = transactions
             .iter()
             .filter(|tx| !tx.committed && tx.commit_lsn.is_some())
@@ -245,8 +245,7 @@ impl TransactionScanner {
 
         info!(
             "WAL scan complete: {} total records, {} transactions",
-            self.statistics.total_records,
-            self.statistics.transactions_found
+            self.statistics.total_records, self.statistics.transactions_found
         );
 
         Ok(result)
@@ -266,7 +265,10 @@ impl TransactionScanner {
             }
             Err(e) => {
                 self.statistics.corrupted_records += 1;
-                Err(RecoveryError::corruption(format!("Failed to read WAL record: {}", e)))
+                Err(RecoveryError::corruption(format!(
+                    "Failed to read WAL record: {}",
+                    e
+                )))
             }
         }
     }
@@ -291,7 +293,12 @@ impl TransactionScanner {
 
             V2WALRecordType::TransactionCommit => {
                 if let V2WALRecord::TransactionCommit { tx_id, timestamp } = record {
-                    Ok(Some(self.handle_transaction_commit(tx_id, lsn, timestamp, &mut warnings)?))
+                    Ok(Some(self.handle_transaction_commit(
+                        tx_id,
+                        lsn,
+                        timestamp,
+                        &mut warnings,
+                    )?))
                 } else {
                     warnings.push("Invalid TransactionCommit record format".to_string());
                     Ok(None)
@@ -300,7 +307,12 @@ impl TransactionScanner {
 
             V2WALRecordType::TransactionRollback => {
                 if let V2WALRecord::TransactionRollback { tx_id, timestamp } = record {
-                    Ok(Some(self.handle_transaction_rollback(tx_id, lsn, timestamp, &mut warnings)?))
+                    Ok(Some(self.handle_transaction_rollback(
+                        tx_id,
+                        lsn,
+                        timestamp,
+                        &mut warnings,
+                    )?))
                 } else {
                     warnings.push("Invalid TransactionRollback record format".to_string());
                     Ok(None)
@@ -344,14 +356,17 @@ impl TransactionScanner {
         }
 
         // Return None since this transaction is still active
-        Ok((TransactionState {
-            tx_id,
-            start_lsn: lsn,
-            commit_lsn: None,
-            records: Vec::new(),
-            committed: false,
-            timestamp,
-        }, warnings))
+        Ok((
+            TransactionState {
+                tx_id,
+                start_lsn: lsn,
+                commit_lsn: None,
+                records: Vec::new(),
+                committed: false,
+                timestamp,
+            },
+            warnings,
+        ))
     }
 
     /// Handle transaction commit record
@@ -373,14 +388,17 @@ impl TransactionScanner {
             warnings.push(format!("Commit for unknown transaction TX {}", tx_id));
 
             // Create a synthetic transaction state for unknown commits
-            Ok((TransactionState {
-                tx_id,
-                start_lsn: 0, // Unknown start
-                commit_lsn: Some(lsn),
-                records: Vec::new(),
-                committed: true,
-                timestamp,
-            }, warnings.clone()))
+            Ok((
+                TransactionState {
+                    tx_id,
+                    start_lsn: 0, // Unknown start
+                    commit_lsn: Some(lsn),
+                    records: Vec::new(),
+                    committed: true,
+                    timestamp,
+                },
+                warnings.clone(),
+            ))
         }
     }
 
@@ -402,14 +420,17 @@ impl TransactionScanner {
             warnings.push(format!("Rollback for unknown transaction TX {}", tx_id));
 
             // Create a synthetic transaction state for unknown rollbacks
-            Ok((TransactionState {
-                tx_id,
-                start_lsn: 0, // Unknown start
-                commit_lsn: Some(lsn),
-                records: Vec::new(),
-                committed: false,
-                timestamp,
-            }, warnings.clone()))
+            Ok((
+                TransactionState {
+                    tx_id,
+                    start_lsn: 0, // Unknown start
+                    commit_lsn: Some(lsn),
+                    records: Vec::new(),
+                    committed: false,
+                    timestamp,
+                },
+                warnings.clone(),
+            ))
         }
     }
 
@@ -418,7 +439,7 @@ impl TransactionScanner {
         &mut self,
         tx_id: u64,
         record: V2WALRecord,
-        lsn: u64,
+        _lsn: u64,
         warnings: &mut Vec<String>,
     ) -> Result<(), RecoveryError> {
         let mut active_tx = self.active_transactions.lock();
@@ -437,17 +458,39 @@ impl TransactionScanner {
     /// Extract transaction ID from WAL record
     fn extract_transaction_id(&self, record: &V2WALRecord) -> Option<u64> {
         match record {
-            V2WALRecord::NodeInsert { node_id, .. } => Some((*node_id as u64).wrapping_add(1_000_000)),
-            V2WALRecord::NodeUpdate { node_id, .. } => Some((*node_id as u64).wrapping_add(2_000_000)),
-            V2WALRecord::ClusterCreate { node_id, .. } => Some((*node_id as u64).wrapping_add(3_000_000)),
-            V2WALRecord::EdgeInsert { cluster_key, .. } => Some((cluster_key.0 as u64).wrapping_add(4_000_000)),
-            V2WALRecord::EdgeUpdate { cluster_key, .. } => Some((cluster_key.0 as u64).wrapping_add(5_000_000)),
-            V2WALRecord::EdgeDelete { cluster_key, .. } => Some((cluster_key.0 as u64).wrapping_add(6_000_000)),
-            V2WALRecord::StringInsert { string_id, .. } => Some((*string_id as u64).wrapping_add(7_000_000)),
-            V2WALRecord::FreeSpaceAllocate { block_offset, .. } => Some(block_offset.wrapping_add(8_000_000)),
-            V2WALRecord::FreeSpaceDeallocate { block_offset, .. } => Some(block_offset.wrapping_add(9_000_000)),
-            V2WALRecord::NodeDelete { node_id, .. } => Some((*node_id as u64).wrapping_add(10_000_000)),
-            V2WALRecord::HeaderUpdate { header_offset, .. } => Some(header_offset.wrapping_add(11_000_000)),
+            V2WALRecord::NodeInsert { node_id, .. } => {
+                Some((*node_id as u64).wrapping_add(1_000_000))
+            }
+            V2WALRecord::NodeUpdate { node_id, .. } => {
+                Some((*node_id as u64).wrapping_add(2_000_000))
+            }
+            V2WALRecord::ClusterCreate { node_id, .. } => {
+                Some((*node_id as u64).wrapping_add(3_000_000))
+            }
+            V2WALRecord::EdgeInsert { cluster_key, .. } => {
+                Some((cluster_key.0 as u64).wrapping_add(4_000_000))
+            }
+            V2WALRecord::EdgeUpdate { cluster_key, .. } => {
+                Some((cluster_key.0 as u64).wrapping_add(5_000_000))
+            }
+            V2WALRecord::EdgeDelete { cluster_key, .. } => {
+                Some((cluster_key.0 as u64).wrapping_add(6_000_000))
+            }
+            V2WALRecord::StringInsert { string_id, .. } => {
+                Some((*string_id as u64).wrapping_add(7_000_000))
+            }
+            V2WALRecord::FreeSpaceAllocate { block_offset, .. } => {
+                Some(block_offset.wrapping_add(8_000_000))
+            }
+            V2WALRecord::FreeSpaceDeallocate { block_offset, .. } => {
+                Some(block_offset.wrapping_add(9_000_000))
+            }
+            V2WALRecord::NodeDelete { node_id, .. } => {
+                Some((*node_id as u64).wrapping_add(10_000_000))
+            }
+            V2WALRecord::HeaderUpdate { header_offset, .. } => {
+                Some(header_offset.wrapping_add(11_000_000))
+            }
             // Control records don't have transaction IDs
             V2WALRecord::TransactionBegin { .. }
             | V2WALRecord::TransactionCommit { .. }
@@ -469,28 +512,45 @@ impl TransactionScanner {
     }
 
     /// Force completion of incomplete transactions
-    fn force_complete_incomplete_transactions(&mut self, transactions: &mut Vec<TransactionState>, warnings: &mut Vec<String>) {
+    fn force_complete_incomplete_transactions(
+        &mut self,
+        transactions: &mut Vec<TransactionState>,
+        warnings: &mut Vec<String>,
+    ) {
         let mut active_tx = self.active_transactions.lock();
         let incomplete_count = active_tx.len();
 
         if incomplete_count > 0 {
-            warn!("Forcing completion of {} incomplete transactions", incomplete_count);
+            warn!(
+                "Forcing completion of {} incomplete transactions",
+                incomplete_count
+            );
 
             for (_, mut tx_state) in active_tx.drain() {
                 tx_state.committed = false; // Mark as incomplete
                 let tx_id = tx_state.tx_id;
                 transactions.push(tx_state);
-                warnings.push(format!("Incomplete transaction TX {} forced to completion", tx_id));
+                warnings.push(format!(
+                    "Incomplete transaction TX {} forced to completion",
+                    tx_id
+                ));
             }
         }
     }
 
     /// Finalize incomplete transactions
-    fn finalize_incomplete_transactions(&mut self, transactions: &mut Vec<TransactionState>, warnings: &mut Vec<String>) {
+    fn finalize_incomplete_transactions(
+        &mut self,
+        transactions: &mut Vec<TransactionState>,
+        warnings: &mut Vec<String>,
+    ) {
         let mut active_tx = self.active_transactions.lock();
 
         for (_, tx_state) in active_tx.drain() {
-            warnings.push(format!("Incomplete transaction TX {} recovered", tx_state.tx_id));
+            warnings.push(format!(
+                "Incomplete transaction TX {} recovered",
+                tx_state.tx_id
+            ));
             transactions.push(tx_state);
         }
     }
@@ -518,8 +578,12 @@ impl TransactionScanner {
             V2WALRecord::NodeInsert { node_data, .. } => base_size + node_data.len() as u64,
             V2WALRecord::NodeUpdate { new_data, .. } => base_size + new_data.len() as u64,
             V2WALRecord::ClusterCreate { edge_data, .. } => base_size + edge_data.len() as u64,
-            V2WALRecord::EdgeInsert { edge_record, .. } => base_size + edge_record.estimated_size() as u64,
-            V2WALRecord::EdgeUpdate { new_edge, .. } => base_size + new_edge.estimated_size() as u64,
+            V2WALRecord::EdgeInsert { edge_record, .. } => {
+                base_size + edge_record.estimated_size() as u64
+            }
+            V2WALRecord::EdgeUpdate { new_edge, .. } => {
+                base_size + new_edge.estimated_size() as u64
+            }
             V2WALRecord::StringInsert { string_value, .. } => base_size + string_value.len() as u64,
             V2WALRecord::HeaderUpdate { new_data, .. } => base_size + new_data.len() as u64,
             // Records with fixed size
@@ -531,15 +595,19 @@ impl TransactionScanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
+    use crate::backend::native::v2::edge_cluster::{CompactEdgeRecord, Direction};
     use std::path::PathBuf;
+    use tempfile::tempdir;
 
     #[test]
     fn test_scanner_config_default() {
         let config = ScannerConfig::default();
         assert!(config.validate_records);
         assert_eq!(config.progress_interval, RECOVERY_PROGRESS_INTERVAL);
-        assert_eq!(config.max_incomplete_transactions, MAX_INCOMPLETE_TRANSACTIONS);
+        assert_eq!(
+            config.max_incomplete_transactions,
+            MAX_INCOMPLETE_TRANSACTIONS
+        );
     }
 
     #[test]
@@ -583,7 +651,9 @@ mod tests {
         };
 
         let node_tx_id = match &node_insert {
-            V2WALRecord::NodeInsert { node_id, .. } => Some((*node_id as u64).wrapping_add(1_000_000)),
+            V2WALRecord::NodeInsert { node_id, .. } => {
+                Some((*node_id as u64).wrapping_add(1_000_000))
+            }
             _ => None,
         };
         assert_eq!(node_tx_id, Some(1000042));
@@ -601,7 +671,9 @@ mod tests {
         };
 
         let edge_tx_id = match &edge_insert {
-            V2WALRecord::EdgeInsert { cluster_key, .. } => Some((cluster_key.0 as u64).wrapping_add(4_000_000)),
+            V2WALRecord::EdgeInsert { cluster_key, .. } => {
+                Some((cluster_key.0 as u64).wrapping_add(4_000_000))
+            }
             _ => None,
         };
         assert_eq!(edge_tx_id, Some(4000123));
@@ -613,12 +685,12 @@ mod tests {
         };
 
         let control_tx_id: Option<u64> = match &tx_begin {
-            V2WALRecord::NodeInsert { .. } |
-            V2WALRecord::NodeUpdate { .. } |
-            V2WALRecord::ClusterCreate { .. } |
-            V2WALRecord::EdgeInsert { .. } |
-            V2WALRecord::EdgeUpdate { .. } |
-            V2WALRecord::EdgeDelete { .. } => None,
+            V2WALRecord::NodeInsert { .. }
+            | V2WALRecord::NodeUpdate { .. }
+            | V2WALRecord::ClusterCreate { .. }
+            | V2WALRecord::EdgeInsert { .. }
+            | V2WALRecord::EdgeUpdate { .. }
+            | V2WALRecord::EdgeDelete { .. } => None,
             _ => None,
         };
         assert_eq!(control_tx_id, None);

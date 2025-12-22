@@ -5,9 +5,7 @@
 //! GraphFile operations.
 
 use crate::backend::native::{
-    types::NativeResult,
-    transaction_state::TransactionState,
-    constants::node::NODE_SLOT_SIZE,
+    constants::node::NODE_SLOT_SIZE, transaction_state::TransactionState, types::NativeResult,
 };
 
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -23,7 +21,9 @@ impl TransactionManager {
     pub fn write_commit_marker_value(file: &mut std::fs::File, value: u64) -> NativeResult<()> {
         use crate::backend::native::graph_file::validation::GraphFileValidator;
 
-        file.seek(SeekFrom::Start(GraphFileValidator::commit_marker_offset() as u64))?;
+        file.seek(SeekFrom::Start(
+            GraphFileValidator::commit_marker_offset() as u64
+        ))?;
         file.write_all(&value.to_be_bytes())?;
         file.sync_all()?;
         Ok(())
@@ -36,7 +36,9 @@ impl TransactionManager {
     pub fn read_commit_marker_value(file: &mut std::fs::File) -> NativeResult<u64> {
         use crate::backend::native::graph_file::validation::GraphFileValidator;
 
-        file.seek(SeekFrom::Start(GraphFileValidator::commit_marker_offset() as u64))?;
+        file.seek(SeekFrom::Start(
+            GraphFileValidator::commit_marker_offset() as u64
+        ))?;
         let mut marker_bytes = [0u8; 8];
         file.read_exact(&mut marker_bytes)?;
         Ok(u64::from_be_bytes(marker_bytes))
@@ -217,7 +219,9 @@ impl TransactionManager {
     /// Clear V2 cluster metadata during rollback
     ///
     /// Phase 75: Skip V2 node slot rewriting during rollback to prevent corruption.
-    pub fn clear_v2_cluster_metadata_on_rollback(tx_modified_nodes: &mut Vec<u64>) -> NativeResult<()> {
+    pub fn clear_v2_cluster_metadata_on_rollback(
+        tx_modified_nodes: &mut Vec<u64>,
+    ) -> NativeResult<()> {
         #[cfg(feature = "trace_v2_io")]
         println!("[phase75] ROLLBACK_CLEANUP: SKIPPING V2 node slot rewrite to prevent corruption");
 
@@ -238,7 +242,11 @@ impl TransactionManager {
         TransactionStatistics {
             tx_id: tx_state.tx_id,
             is_active: tx_state.is_in_progress(),
-            state: if tx_state.is_in_progress() { "InProgress".to_string() } else { "Inactive".to_string() },
+            state: if tx_state.is_in_progress() {
+                "InProgress".to_string()
+            } else {
+                "Inactive".to_string()
+            },
             // Additional fields - initialize with defaults for now
             node_count: 0,
             edge_count: 0,
@@ -274,9 +282,9 @@ impl TransactionStatistics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempfile;
     use crate::backend::native::transaction_state::TransactionState;
     use std::fs::OpenOptions;
+    use tempfile::tempfile;
 
     #[test]
     fn test_write_read_commit_marker() {

@@ -3,11 +3,9 @@
 //! This module provides buffer optimization and access pattern analysis
 //! for optimal memory performance.
 
-use crate::backend::native::{
-    graph_file::buffers::ReadBuffer,
-};
 use super::manager::MemoryResourceManager;
 use super::types::AccessPatternHint;
+use crate::backend::native::graph_file::buffers::ReadBuffer;
 
 impl<'a> MemoryResourceManager<'a> {
     /// Optimize buffer configurations for current workload
@@ -97,7 +95,7 @@ impl<'a> MemoryResourceManager<'a> {
             // Low efficiency - reduce buffer sizes
             let new_capacity = std::cmp::max(
                 self.read_buffer.capacity / 2,
-                ReadBuffer::adaptive_capacity(256)
+                ReadBuffer::adaptive_capacity(256),
             );
             if new_capacity != self.read_buffer.capacity {
                 *self.read_buffer = ReadBuffer::with_capacity(new_capacity);
@@ -106,7 +104,7 @@ impl<'a> MemoryResourceManager<'a> {
             // High efficiency - can afford larger buffers
             let new_capacity = std::cmp::min(
                 self.read_buffer.capacity * 2,
-                ReadBuffer::adaptive_capacity(8192)
+                ReadBuffer::adaptive_capacity(8192),
             );
             if new_capacity != self.read_buffer.capacity {
                 *self.read_buffer = ReadBuffer::with_capacity(new_capacity);

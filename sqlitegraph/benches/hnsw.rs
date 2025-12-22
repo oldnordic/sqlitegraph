@@ -10,9 +10,7 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use sqlitegraph::hnsw::DistanceMetric;
 
 mod bench_utils;
-use bench_utils::{
-    MEASURE, WARM_UP,
-};
+use bench_utils::{MEASURE, WARM_UP};
 
 /// Generate test vectors with specified dimensions and count
 ///
@@ -43,7 +41,11 @@ fn generate_test_vectors(count: usize, dimension: usize) -> Vec<Vec<f32>> {
 /// - 64-256: Small embeddings for efficiency-critical applications
 /// - 512-768: Medium embeddings (BERT, sentence transformers)
 /// - 1536: Large embeddings (OpenAI text-embedding-ada-002, text-embedding-3-small)
-fn create_hnsw_index(dimension: usize, ef_construction: usize, ef_search: usize) -> sqlitegraph::hnsw::HnswIndex {
+fn create_hnsw_index(
+    dimension: usize,
+    ef_construction: usize,
+    ef_search: usize,
+) -> sqlitegraph::hnsw::HnswIndex {
     let config = sqlitegraph::hnsw::hnsw_config()
         .dimension(dimension)
         .m_connections(16)
@@ -68,7 +70,10 @@ fn hnsw_vector_insertion(criterion: &mut Criterion) {
 
     for &dimension in &dimensions {
         for &dataset_size in &dataset_sizes {
-            let bench_id = BenchmarkId::new("insertion", format!("dim{}_size{}", dimension, dataset_size));
+            let bench_id = BenchmarkId::new(
+                "insertion",
+                format!("dim{}_size{}", dimension, dataset_size),
+            );
 
             group.bench_function(bench_id, |b| {
                 b.iter(|| {
@@ -76,7 +81,8 @@ fn hnsw_vector_insertion(criterion: &mut Criterion) {
                     let vectors = generate_test_vectors(dataset_size, dimension);
 
                     for vector in &vectors {
-                        hnsw.insert_vector(&vector, None).expect("Failed to insert vector");
+                        hnsw.insert_vector(&vector, None)
+                            .expect("Failed to insert vector");
                     }
                 })
             });
@@ -100,21 +106,23 @@ fn hnsw_search_performance(criterion: &mut Criterion) {
     for &dimension in &dimensions {
         for &dataset_size in &dataset_sizes {
             for &k in &k_values {
-                let bench_id = BenchmarkId::new("search", format!("dim{}_size{}_k{}", dimension, dataset_size, k));
+                let bench_id = BenchmarkId::new(
+                    "search",
+                    format!("dim{}_size{}_k{}", dimension, dataset_size, k),
+                );
 
                 group.bench_function(bench_id, |b| {
                     // Setup: Create HNSW index and insert vectors
                     let mut hnsw = create_hnsw_index(dimension, 200, 50);
                     let vectors = generate_test_vectors(dataset_size, dimension);
                     for vector in &vectors {
-                        hnsw.insert_vector(&vector, None).expect("Failed to insert vector");
+                        hnsw.insert_vector(&vector, None)
+                            .expect("Failed to insert vector");
                     }
 
                     let query = &vectors[0];
 
-                    b.iter(|| {
-                        hnsw.search(&query, k).expect("Failed to search")
-                    })
+                    b.iter(|| hnsw.search(&query, k).expect("Failed to search"))
                 });
             }
         }
@@ -156,11 +164,13 @@ fn hnsw_distance_metrics(criterion: &mut Criterion) {
                         .build()
                         .expect("HNSW configuration should be valid");
 
-                    let mut hnsw = sqlitegraph::hnsw::HnswIndex::new(config).expect("Failed to create HNSW index");
+                    let mut hnsw = sqlitegraph::hnsw::HnswIndex::new(config)
+                        .expect("Failed to create HNSW index");
 
                     let vectors = generate_test_vectors(dataset_size, dimension);
                     for vector in &vectors {
-                        hnsw.insert_vector(&vector, None).expect("Failed to insert vector");
+                        hnsw.insert_vector(&vector, None)
+                            .expect("Failed to insert vector");
                     }
 
                     let query = &vectors[0];
@@ -185,7 +195,8 @@ fn hnsw_end_to_end_performance(criterion: &mut Criterion) {
 
     for &dimension in &dimensions {
         for &dataset_size in &dataset_sizes {
-            let bench_id = BenchmarkId::new("e2e", format!("dim{}_size{}", dimension, dataset_size));
+            let bench_id =
+                BenchmarkId::new("e2e", format!("dim{}_size{}", dimension, dataset_size));
 
             group.bench_function(bench_id, |b| {
                 b.iter(|| {
@@ -194,7 +205,8 @@ fn hnsw_end_to_end_performance(criterion: &mut Criterion) {
 
                     // Insert vectors
                     for vector in &vectors {
-                        hnsw.insert_vector(&vector, None).expect("Failed to insert vector");
+                        hnsw.insert_vector(&vector, None)
+                            .expect("Failed to insert vector");
                     }
 
                     // Perform multiple searches
@@ -237,14 +249,13 @@ fn hnsw_openai_embeddings(criterion: &mut Criterion) {
 
                 // Insert all vectors
                 for vector in &vectors {
-                    hnsw.insert_vector(&vector, None).expect("Failed to insert vector");
+                    hnsw.insert_vector(&vector, None)
+                        .expect("Failed to insert vector");
                 }
 
                 let query = &vectors[0];
 
-                b.iter(|| {
-                    hnsw.search(&query, k).expect("Failed to search")
-                })
+                b.iter(|| hnsw.search(&query, k).expect("Failed to search"))
             });
         }
     }

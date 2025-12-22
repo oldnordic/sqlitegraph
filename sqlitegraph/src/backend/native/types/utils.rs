@@ -1,6 +1,6 @@
 //! Utility functions and result types for native backend
 
-use super::{NativeBackendError, NativeNodeId, FileOffset};
+use super::{NativeBackendError, NativeNodeId};
 
 /// Calculate the file offset for a given node's slot
 ///

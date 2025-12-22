@@ -4,14 +4,10 @@
 //! and basic file lifecycle operations for GraphFile instances.
 
 use crate::backend::native::{
-    types::NativeResult,
-    types::NativeBackendError,
-    persistent_header::PersistentHeaderV2,
-    transaction_state::TransactionState,
-    constants::FLAG_V2_FRAMED_RECORDS,
-    constants::FLAG_V2_ATOMIC_COMMIT,
-    graph_file::file_ops::FileOperations,
-    graph_file::header::HeaderManager,
+    constants::FLAG_V2_ATOMIC_COMMIT, constants::FLAG_V2_FRAMED_RECORDS,
+    graph_file::file_ops::FileOperations, graph_file::header::HeaderManager,
+    persistent_header::PersistentHeaderV2, transaction_state::TransactionState,
+    types::NativeBackendError, types::NativeResult,
 };
 use std::path::Path;
 
@@ -28,9 +24,8 @@ impl FileLifecycleManager {
     ) -> NativeResult<crate::backend::native::graph_file::GraphFile> {
         use crate::backend::native::graph_file::GraphFile;
         use crate::backend::native::{
-            graph_file::buffers::ReadBuffer,
+            graph_file::TransactionAuditor, graph_file::buffers::ReadBuffer,
             graph_file::buffers::WriteBuffer,
-            graph_file::TransactionAuditor,
         };
 
         let path = path.as_ref();
@@ -49,7 +44,7 @@ impl FileLifecycleManager {
             persistent_header: PersistentHeaderV2::new_v2(),
             transaction_state: TransactionState::new(),
             file_path,
-            read_buffer: ReadBuffer::new(), // Adaptive 256B buffer
+            read_buffer: ReadBuffer::new(),     // Adaptive 256B buffer
             write_buffer: WriteBuffer::new(32), // 32 pending writes
             #[cfg(feature = "v2_experimental")]
             mmap: None,
@@ -80,22 +75,24 @@ impl FileLifecycleManager {
     ) -> NativeResult<crate::backend::native::graph_file::GraphFile> {
         use crate::backend::native::graph_file::GraphFile;
         use crate::backend::native::{
-            graph_file::buffers::ReadBuffer,
+            graph_file::TransactionAuditor, graph_file::buffers::ReadBuffer,
             graph_file::buffers::WriteBuffer,
-            graph_file::TransactionAuditor,
         };
 
         let path = path.as_ref();
         let file_path = path.to_path_buf();
 
-        let file = std::fs::OpenOptions::new().read(true).write(true).open(path)?;
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)?;
 
         let mut graph_file = GraphFile {
             file,
             persistent_header: PersistentHeaderV2::new_v2(), // Will be overwritten by read_header
             transaction_state: TransactionState::new(),
             file_path,
-            read_buffer: ReadBuffer::new(), // Adaptive 256B buffer
+            read_buffer: ReadBuffer::new(),     // Adaptive 256B buffer
             write_buffer: WriteBuffer::new(32), // 32 pending writes
             #[cfg(feature = "v2_experimental")]
             mmap: None,
@@ -146,7 +143,8 @@ impl FileLifecycleManager {
     pub fn read_header(
         graph_file: &mut crate::backend::native::graph_file::GraphFile,
     ) -> NativeResult<()> {
-        graph_file.persistent_header = FileOperations::read_and_validate_header(&mut graph_file.file)?;
+        graph_file.persistent_header =
+            FileOperations::read_and_validate_header(&mut graph_file.file)?;
         Ok(())
     }
 
@@ -209,10 +207,7 @@ impl FileLifecycleManager {
         if marker != GraphFileValidator::clean_commit_marker() {
             return Err(NativeBackendError::CorruptNodeRecord {
                 node_id: -1,
-                reason: format!(
-                    "File has incomplete transaction: commit_marker={}",
-                    marker
-                ),
+                reason: format!("File has incomplete transaction: commit_marker={}", marker),
             });
         }
         Ok(())
@@ -227,9 +222,9 @@ impl FileLifecycleManager {
         // Initialize header with default parameters
         HeaderManager::initialize_v2_header(
             &mut graph_file.persistent_header,
-            0,  // node_count: start with 0 nodes
+            0,    // node_count: start with 0 nodes
             512,  // default_node_data_start: start after header
-            1024,  // reserved_node_region_bytes: reserve initial space
+            1024, // reserved_node_region_bytes: reserve initial space
         )
     }
 
@@ -253,8 +248,8 @@ impl FileLifecycleManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
     use tempfile::tempdir;
-    use std::io::{Write, Read};
 
     #[test]
     fn test_create_new_graph_file() {

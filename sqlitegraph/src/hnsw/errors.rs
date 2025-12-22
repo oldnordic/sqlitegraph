@@ -80,7 +80,10 @@ impl fmt::Display for HnswConfigError {
                 write!(f, "Vector dimension must be greater than 0")
             }
             HnswConfigError::InvalidMParameter => {
-                write!(f, "M parameter (connections per node) must be greater than 0")
+                write!(
+                    f,
+                    "M parameter (connections per node) must be greater than 0"
+                )
             }
             HnswConfigError::InvalidEfConstruction => {
                 write!(f, "ef_construction must be >= M parameter")
@@ -202,7 +205,11 @@ impl fmt::Display for HnswStorageError {
                 write!(f, "Invalid vector dimension: {}", dim)
             }
             HnswStorageError::DimensionMismatch { expected, actual } => {
-                write!(f, "Vector dimension mismatch: expected {}, got {}", expected, actual)
+                write!(
+                    f,
+                    "Vector dimension mismatch: expected {}, got {}",
+                    expected, actual
+                )
             }
             HnswStorageError::InvalidVectorData => {
                 write!(f, "Vector data contains invalid values (NaN, Inf, etc.)")
@@ -217,7 +224,11 @@ impl fmt::Display for HnswStorageError {
                 write!(f, "Storage backend not supported")
             }
             HnswStorageError::VectorTooLarge { size, max_size } => {
-                write!(f, "Vector size {} exceeds maximum allowed size {}", size, max_size)
+                write!(
+                    f,
+                    "Vector size {} exceeds maximum allowed size {}",
+                    size, max_size
+                )
             }
             HnswStorageError::StorageCapacityExceeded => {
                 write!(f, "Storage capacity exceeded")
@@ -539,10 +550,7 @@ mod tests {
         );
 
         let not_found = HnswIndexError::VectorNotFound(99);
-        assert_eq!(
-            not_found.to_string(),
-            "Vector ID 99 not found in index"
-        );
+        assert_eq!(not_found.to_string(), "Vector ID 99 not found in index");
 
         assert_eq!(
             HnswIndexError::IndexNotInitialized.to_string(),
@@ -570,7 +578,11 @@ mod tests {
     fn test_hnsw_error_display() {
         let config_err = HnswError::Config(HnswConfigError::InvalidDimension);
         assert!(config_err.to_string().contains("Configuration error"));
-        assert!(config_err.to_string().contains("Vector dimension must be greater than 0"));
+        assert!(
+            config_err
+                .to_string()
+                .contains("Vector dimension must be greater than 0")
+        );
 
         let index_err = HnswError::Index(HnswIndexError::VectorNotFound(1));
         assert!(index_err.to_string().contains("Index error"));
@@ -581,7 +593,10 @@ mod tests {
     fn test_error_conversions() {
         let config_err = HnswConfigError::InvalidMParameter;
         let hnsw_err: HnswError = config_err.into();
-        assert!(matches!(hnsw_err, HnswError::Config(HnswConfigError::InvalidMParameter)));
+        assert!(matches!(
+            hnsw_err,
+            HnswError::Config(HnswConfigError::InvalidMParameter)
+        ));
 
         let index_err = HnswIndexError::DuplicateVectorId(123);
         let hnsw_err: HnswError = index_err.into();

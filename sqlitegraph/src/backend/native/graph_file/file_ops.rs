@@ -4,14 +4,12 @@
 //! writing, file management, and I/O mode handling for GraphFile operations.
 
 use crate::backend::native::{
-    types::NativeResult,
-    persistent_header::PersistentHeaderV2,
-    types::NativeBackendError,
+    persistent_header::PersistentHeaderV2, types::NativeBackendError, types::NativeResult,
 };
 
 use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
-use std::io::{Read, Seek, Write, SeekFrom};
 
 /// Core file operations utilities for GraphFile
 pub struct FileOperations;
@@ -108,7 +106,8 @@ impl FileOperations {
     /// Read and validate file header
     pub fn read_and_validate_header(file: &mut File) -> NativeResult<PersistentHeaderV2> {
         // Read header bytes
-        let mut header_bytes = vec![0u8; crate::backend::native::persistent_header::PERSISTENT_HEADER_SIZE];
+        let mut header_bytes =
+            vec![0u8; crate::backend::native::persistent_header::PERSISTENT_HEADER_SIZE];
         Self::read_bytes_direct(file, 0, &mut header_bytes)?;
 
         // Decode header
@@ -118,7 +117,8 @@ impl FileOperations {
     /// Write header to file with validation
     pub fn write_header(file: &mut File, header: &PersistentHeaderV2) -> NativeResult<()> {
         // Encode header
-        let header_bytes = crate::backend::native::graph_file::encoding::encode_persistent_header(header)?;
+        let header_bytes =
+            crate::backend::native::graph_file::encoding::encode_persistent_header(header)?;
 
         // Write header bytes
         Self::write_bytes_direct(file, 0, &header_bytes)?;
@@ -131,11 +131,9 @@ impl FileOperations {
 
     /// Open disk file for debugging purposes
     pub fn open_disk_file_for_debug(file_path: &Path) -> NativeResult<File> {
-        std::fs::File::open(file_path).map_err(|e| {
-            NativeBackendError::CorruptNodeRecord {
-                node_id: -1,
-                reason: format!("Failed to open disk file for debug: {}", e),
-            }
+        std::fs::File::open(file_path).map_err(|e| NativeBackendError::CorruptNodeRecord {
+            node_id: -1,
+            reason: format!("Failed to open disk file for debug: {}", e),
         })
     }
 
@@ -198,7 +196,6 @@ impl IOMode {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::{Write, Seek, SeekFrom};
     use tempfile::tempfile;
 
     #[test]
@@ -257,7 +254,10 @@ mod tests {
     fn test_io_mode_detection() {
         let mode = IOMode::current();
         // The mode should be one of the defined variants
-        assert!(matches!(mode, IOMode::Default | IOMode::ExclusiveStd | IOMode::ExclusiveMmap));
+        assert!(matches!(
+            mode,
+            IOMode::Default | IOMode::ExclusiveStd | IOMode::ExclusiveMmap
+        ));
     }
 
     #[test]
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn test_read_node_slot_for_debug() {
-        use std::io::{Write, Seek, SeekFrom};
+        use std::io::{Seek, SeekFrom, Write};
 
         let mut temp_file = tempfile().unwrap();
 
@@ -293,7 +293,8 @@ mod tests {
         temp_file.flush().unwrap();
 
         // Read the node slot back
-        let read_pattern = FileOperations::read_node_slot_for_debug(&mut temp_file, slot_offset).unwrap();
+        let read_pattern =
+            FileOperations::read_node_slot_for_debug(&mut temp_file, slot_offset).unwrap();
         assert_eq!(read_pattern, test_pattern);
     }
 }

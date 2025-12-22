@@ -6,8 +6,8 @@
 
 use sqlitegraph::{
     BackendDirection, NeighborQuery,
-    backend::native::{EdgeStore, GraphFile, NodeStore},
     backend::native::adjacency::{AdjacencyIterator, Direction},
+    backend::native::{EdgeStore, GraphFile, NodeStore},
     config::GraphConfig,
     open_graph,
 };
@@ -31,33 +31,33 @@ fn test_edge_store_iterator_consumption_causes_infinite_reads() {
     let (mut graph, temp_dir) = create_test_graph_for_iterator();
 
     // Create a simple graph: node1 -> node2
-    let node1_id = graph.insert_node(
-        sqlitegraph::NodeSpec {
+    let node1_id = graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Function".to_string(),
             name: "node1".to_string(),
             file_path: Some("/src/node1.rs".to_string()),
             data: serde_json::json!({"lines": 10}),
-        }
-    ).expect("Failed to insert node1");
+        })
+        .expect("Failed to insert node1");
 
-    let node2_id = graph.insert_node(
-        sqlitegraph::NodeSpec {
+    let node2_id = graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Function".to_string(),
             name: "node2".to_string(),
             file_path: Some("/src/node2.rs".to_string()),
             data: serde_json::json!({"lines": 20}),
-        }
-    ).expect("Failed to insert node2");
+        })
+        .expect("Failed to insert node2");
 
     // Create an edge: node1 -> node2
-    graph.insert_edge(
-        sqlitegraph::EdgeSpec {
+    graph
+        .insert_edge(sqlitegraph::EdgeSpec {
             from: node1_id,
             to: node2_id,
             edge_type: "CALLS".to_string(),
             data: serde_json::json!({"line": 5}),
-        }
-    ).expect("Failed to insert edge");
+        })
+        .expect("Failed to insert edge");
 
     // Now test the EdgeStore.iter_neighbors() method directly
     let db_path = temp_dir.path().join("test_adjacency_iterator.db");
@@ -94,8 +94,7 @@ fn test_edge_store_iterator_consumption_causes_infinite_reads() {
     // Verify we found the expected neighbor
     assert_eq!(neighbors_found.len(), 1, "Should find exactly 1 neighbor");
     assert_eq!(
-        neighbors_found[0],
-        node2_id as sqlitegraph::backend::native::types::NativeNodeId,
+        neighbors_found[0], node2_id as sqlitegraph::backend::native::types::NativeNodeId,
         "Should find node2 as neighbor of node1"
     );
 
@@ -114,33 +113,33 @@ fn test_adjacency_iterator_repeated_node_reads_fixed() {
     let (graph, temp_dir) = create_test_graph_for_iterator();
 
     // Create a simple graph for testing
-    let node1_id = graph.insert_node(
-        sqlitegraph::NodeSpec {
+    let node1_id = graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Type".to_string(),
             name: "test_node".to_string(),
             file_path: None,
             data: serde_json::json!({"test": true}),
-        }
-    ).expect("Failed to insert test node");
+        })
+        .expect("Failed to insert test node");
 
-    let node2_id = graph.insert_node(
-        sqlitegraph::NodeSpec {
+    let node2_id = graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Type".to_string(),
             name: "target_node".to_string(),
             file_path: None,
             data: serde_json::json!({"target": true}),
-        }
-    ).expect("Failed to insert target node");
+        })
+        .expect("Failed to insert target node");
 
     // Create an edge to test adjacency
-    graph.insert_edge(
-        sqlitegraph::EdgeSpec {
+    graph
+        .insert_edge(sqlitegraph::EdgeSpec {
             from: node1_id,
             to: node2_id,
             edge_type: "CONNECTS".to_string(),
             data: serde_json::json!({"weight": 1.0}),
-        }
-    ).expect("Failed to insert edge");
+        })
+        .expect("Failed to insert edge");
 
     // Test neighbors through public API - this should work without infinite reads
     let neighbors = graph
@@ -155,7 +154,10 @@ fn test_adjacency_iterator_repeated_node_reads_fixed() {
 
     // Should find exactly 1 neighbor
     assert_eq!(neighbors.len(), 1, "Should find exactly 1 neighbor");
-    assert_eq!(neighbors[0], node2_id, "Should find target_node as neighbor");
+    assert_eq!(
+        neighbors[0], node2_id,
+        "Should find target_node as neighbor"
+    );
 
     println!("✅ Adjacency iterator repeated reads test PASSED - no infinite loops detected");
 }
@@ -169,51 +171,51 @@ fn test_adjacency_iterator_proper_advancement() {
     let (mut graph, temp_dir) = create_test_graph_for_iterator();
 
     // Create nodes and edges
-    let node1_id = graph.insert_node(
-        sqlitegraph::NodeSpec {
+    let node1_id = graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Function".to_string(),
             name: "main".to_string(),
             file_path: Some("/src/main.rs".to_string()),
             data: serde_json::json!({"lines": 100}),
-        }
-    ).expect("Failed to insert main node");
+        })
+        .expect("Failed to insert main node");
 
-    let node2_id = graph.insert_node(
-        sqlitegraph::NodeSpec {
+    let node2_id = graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Function".to_string(),
             name: "helper".to_string(),
             file_path: Some("/src/helper.rs".to_string()),
             data: serde_json::json!({"lines": 50}),
-        }
-    ).expect("Failed to insert helper node");
+        })
+        .expect("Failed to insert helper node");
 
-    let node3_id = graph.insert_node(
-        sqlitegraph::NodeSpec {
+    let node3_id = graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Function".to_string(),
             name: "util".to_string(),
             file_path: Some("/src/util.rs".to_string()),
             data: serde_json::json!({"lines": 75}),
-        }
-    ).expect("Failed to insert util node");
+        })
+        .expect("Failed to insert util node");
 
     // Create multiple edges from main
-    graph.insert_edge(
-        sqlitegraph::EdgeSpec {
+    graph
+        .insert_edge(sqlitegraph::EdgeSpec {
             from: node1_id,
             to: node2_id,
             edge_type: "CALLS".to_string(),
             data: serde_json::json!({"line": 10}),
-        }
-    ).expect("Failed to insert main->helper edge");
+        })
+        .expect("Failed to insert main->helper edge");
 
-    graph.insert_edge(
-        sqlitegraph::EdgeSpec {
+    graph
+        .insert_edge(sqlitegraph::EdgeSpec {
             from: node1_id,
             to: node3_id,
             edge_type: "USES".to_string(),
             data: serde_json::json!({"line": 15}),
-        }
-    ).expect("Failed to insert main->util edge");
+        })
+        .expect("Failed to insert main->util edge");
 
     // Test neighbors through public API (should work)
     let neighbors = graph
@@ -231,5 +233,8 @@ fn test_adjacency_iterator_proper_advancement() {
     assert!(neighbors.contains(&node2_id), "Should find helper");
     assert!(neighbors.contains(&node3_id), "Should find util");
 
-    println!("✅ Adjacency iterator advancement test PASSED - found {} neighbors", neighbors.len());
+    println!(
+        "✅ Adjacency iterator advancement test PASSED - found {} neighbors",
+        neighbors.len()
+    );
 }
