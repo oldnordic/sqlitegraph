@@ -4,3 +4,24 @@ members = [
     "sqlitegraph",
     "sqlitegraph-cli"
 ]
+
+# Phase 13 Step 5: Safe and portable optimization profiles (moved from member package)
+[profile.release]
+# Optimize for performance with portable settings
+opt-level = 3
+codegen-units = 1
+lto = "thin"
+debug = false
+panic = "abort"
+
+[profile.bench]
+# Benchmark profiling with debug symbols for flamegraph analysis
+inherits = "release"
+opt-level = 3
+codegen-units = 1
+lto = "thin"
+debug = true  # Enable debug symbols for flamegraph profiling
+
+[profile.test]
+# Test profile optimized for speed while maintaining debuggability
+opt-level = 2

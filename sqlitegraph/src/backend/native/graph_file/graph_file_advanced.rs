@@ -4,9 +4,7 @@
 //! experimental features, and specialized utilities.
 
 use crate::backend::native::{
-    persistent_header::PersistentHeaderV2,
-    transaction_state::TransactionState,
-    types::{NativeResult, NativeBackendError},
+    types::{NativeBackendError, NativeResult},
 };
 
 use super::GraphFile;
@@ -52,7 +50,10 @@ impl GraphFile {
         if actual_bytes != expected_bytes {
             return Err(NativeBackendError::CorruptNodeRecord {
                 node_id: -1, // Using -1 since this is a header corruption, not a specific node
-                reason: format!("Header verification failed: expected {:?}, got {:?}", expected_bytes, actual_bytes),
+                reason: format!(
+                    "Header verification failed: expected {:?}, got {:?}",
+                    expected_bytes, actual_bytes
+                ),
             });
         }
 
@@ -89,7 +90,10 @@ impl GraphFile {
         if self.persistent_header().free_space_offset > file_size {
             let old_offset = self.persistent_header().free_space_offset;
             self.persistent_header_mut().free_space_offset = file_size;
-            repairs.push(format!("Fixed free space offset: {} -> {}", old_offset, file_size));
+            repairs.push(format!(
+                "Fixed free space offset: {} -> {}",
+                old_offset, file_size
+            ));
         }
 
         // Validate and repair node/edge counts
@@ -135,7 +139,6 @@ impl GraphFile {
         // Basic compaction: truncate to free_space_offset if there's unused space
         let free_space_offset = self.persistent_header().free_space_offset;
         if free_space_offset < original_size {
-            use std::io::Write;
             self.file.set_len(free_space_offset)?;
             Ok(original_size - free_space_offset)
         } else {
@@ -163,7 +166,6 @@ impl GraphFile {
         Ok(())
     }
 
-    
     /// Get debug information
     pub fn get_debug_info(&self) -> DebugInfo {
         DebugInfo {

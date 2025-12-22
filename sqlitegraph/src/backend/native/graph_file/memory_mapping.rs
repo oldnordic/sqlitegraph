@@ -3,15 +3,13 @@
 //! This module provides memory mapping functionality including initialization,
 //! coverage management, and safe read/write operations with proper bounds checking.
 
+#[cfg(feature = "v2_experimental")]
 use crate::backend::native::{
-    types::NativeResult,
-    types::NativeBackendError,
     graph_file::buffers::WriteBuffer,
 };
 
 #[cfg(feature = "v2_experimental")]
 use memmap2::{MmapMut, MmapOptions};
-use std::io::{Write, Seek, SeekFrom};
 
 /// Memory mapping management utilities for GraphFile
 pub struct MemoryMappingManager;
@@ -81,7 +79,12 @@ impl MemoryMappingManager {
             file.flush()?;
         }
 
-        let current_mmap_size = mmap.as_ref().unwrap().len() as u64;
+        let current_mmap_size = mmap.as_ref()
+            .ok_or_else(|| NativeBackendError::InvalidState {
+                context: "Memory mapping not initialized in ensure_mmap_covers".to_string(),
+                source: None,
+            })?
+            .len() as u64;
 
         // PHASE 40 CRITICAL FIX: Remap if we need to cover data outside current mmap
         // This is more aggressive than the 4KB threshold to prevent "Read beyond mmap region" errors
@@ -139,10 +142,12 @@ impl MemoryMappingManager {
         offset: u64,
         buffer: &mut [u8],
     ) -> NativeResult<()> {
-        let mmap = mmap.as_ref().ok_or_else(|| NativeBackendError::CorruptNodeRecord {
-            node_id: -1,
-            reason: "mmap not initialized".to_string(),
-        })?;
+        let mmap = mmap
+            .as_ref()
+            .ok_or_else(|| NativeBackendError::CorruptNodeRecord {
+                node_id: -1,
+                reason: "mmap not initialized".to_string(),
+            })?;
 
         if offset as usize + buffer.len() > mmap.len() {
             return Err(NativeBackendError::CorruptNodeRecord {
@@ -184,10 +189,12 @@ impl MemoryMappingManager {
             mmap,
         )?;
 
-        let mmap_ref = mmap.as_mut().ok_or_else(|| NativeBackendError::CorruptNodeRecord {
-            node_id: -1,
-            reason: "mmap not initialized".to_string(),
-        })?;
+        let mmap_ref = mmap
+            .as_mut()
+            .ok_or_else(|| NativeBackendError::CorruptNodeRecord {
+                node_id: -1,
+                reason: "mmap not initialized".to_string(),
+            })?;
 
         if offset as usize + data.len() > mmap_ref.len() {
             return Err(NativeBackendError::CorruptNodeRecord {
@@ -247,8 +254,6 @@ impl MemoryMappingManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempfile;
-    use std::io::{Write, Read, Seek, SeekFrom};
 
     #[cfg(feature = "v2_experimental")]
     #[test]
@@ -299,7 +304,8 @@ mod tests {
             &mut write_buffer,
             &mut mmap,
             2048,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify file was grown and mmap was remapped
         assert!(mmap.as_ref().unwrap().len() >= 2048);
@@ -367,7 +373,8 @@ mod tests {
             &mut mmap,
             0,
             test_data,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Verify data was written by reading back from file
         let mut buffer = vec![0u8; test_data.len()];
@@ -413,11 +420,7 @@ mod tests {
         temp_file.flush().unwrap();
 
         // Refresh mmap to pick up changes
-        MemoryMappingManager::refresh_mmap(
-            &mut temp_file,
-            &mut write_buffer,
-            &mut mmap,
-        ).unwrap();
+        MemoryMappingManager::refresh_mmap(&mut temp_file, &mut write_buffer, &mut mmap).unwrap();
 
         // Verify mmap was updated
         assert!(mmap.as_ref().unwrap().len() > initial_size);

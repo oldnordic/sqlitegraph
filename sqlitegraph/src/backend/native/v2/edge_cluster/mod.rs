@@ -5,8 +5,8 @@
 //! items from this `mod.rs` re-export rather than submodules directly.
 
 mod cluster;
-mod cluster_trace;
 mod cluster_serialization;
+mod cluster_trace;
 mod compact_record;
 mod record_ext;
 

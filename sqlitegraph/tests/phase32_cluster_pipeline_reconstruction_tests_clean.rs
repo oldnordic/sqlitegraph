@@ -3,11 +3,7 @@
 //! Clean tests using Phase 34 pipeline to verify cluster reconstruction works correctly.
 //! All tests use real sqlitegraph APIs with zero manual cluster manipulation.
 
-use sqlitegraph::{
-    BackendDirection, NeighborQuery,
-    config::GraphConfig,
-    open_graph,
-};
+use sqlitegraph::{BackendDirection, NeighborQuery, config::GraphConfig, open_graph};
 use tempfile::TempDir;
 
 /// Create a simple V2 graph with one edge for testing
@@ -20,34 +16,34 @@ fn create_simple_v2_graph() -> (Box<dyn sqlitegraph::GraphBackend>, u64, u64, Te
     let graph = open_graph(&db_path, &cfg).expect("Failed to create graph");
 
     // Create source node
-    let source_id = graph.insert_node(
-        sqlitegraph::NodeSpec {
+    let source_id = graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Function".to_string(),
             name: "source".to_string(),
             file_path: Some("/src/source.rs".to_string()),
             data: serde_json::json!({"role": "source"}),
-        }
-    ).expect("Failed to insert source node") as u64;
+        })
+        .expect("Failed to insert source node") as u64;
 
     // Create target node
-    let target_id = graph.insert_node(
-        sqlitegraph::NodeSpec {
+    let target_id = graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Function".to_string(),
             name: "target".to_string(),
             file_path: Some("/src/target.rs".to_string()),
             data: serde_json::json!({"role": "target"}),
-        }
-    ).expect("Failed to insert target node") as u64;
+        })
+        .expect("Failed to insert target node") as u64;
 
     // Create edge
-    graph.insert_edge(
-        sqlitegraph::EdgeSpec {
+    graph
+        .insert_edge(sqlitegraph::EdgeSpec {
             from: source_id as i64,
             to: target_id as i64,
             edge_type: "CALLS".to_string(),
             data: serde_json::json!({"line": 5}),
-        }
-    ).expect("Failed to insert edge");
+        })
+        .expect("Failed to insert edge");
 
     (graph, source_id, target_id, temp_dir)
 }
@@ -72,14 +68,14 @@ fn add_node_v2(
     file_path: &str,
     data: serde_json::Value,
 ) -> u64 {
-    graph.insert_node(
-        sqlitegraph::NodeSpec {
+    graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Function".to_string(),
             name: name.to_string(),
             file_path: Some(file_path.to_string()),
             data,
-        }
-    ).expect("Failed to insert node") as u64
+        })
+        .expect("Failed to insert node") as u64
 }
 
 /// Add a V2 edge
@@ -90,18 +86,20 @@ fn add_edge_v2(
     edge_type: &str,
     data: serde_json::Value,
 ) -> u64 {
-    graph.insert_edge(
-        sqlitegraph::EdgeSpec {
+    graph
+        .insert_edge(sqlitegraph::EdgeSpec {
             from: from as i64,
             to: to as i64,
             edge_type: edge_type.to_string(),
             data,
-        }
-    ).expect("Failed to insert edge") as u64
+        })
+        .expect("Failed to insert edge") as u64
 }
 
 /// Create a star V2 graph with one center node connected to many targets
-fn create_star_v2_graph(num_targets: usize) -> (Box<dyn sqlitegraph::GraphBackend>, u64, Vec<u64>, TempDir) {
+fn create_star_v2_graph(
+    num_targets: usize,
+) -> (Box<dyn sqlitegraph::GraphBackend>, u64, Vec<u64>, TempDir) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
 
@@ -110,44 +108,47 @@ fn create_star_v2_graph(num_targets: usize) -> (Box<dyn sqlitegraph::GraphBacken
     let graph = open_graph(&db_path, &cfg).expect("Failed to create graph");
 
     // Create center node
-    let center_id = graph.insert_node(
-        sqlitegraph::NodeSpec {
+    let center_id = graph
+        .insert_node(sqlitegraph::NodeSpec {
             kind: "Function".to_string(),
             name: "center".to_string(),
             file_path: Some("/src/center.rs".to_string()),
             data: serde_json::json!({"role": "center"}),
-        }
-    ).expect("Failed to insert center node") as u64;
+        })
+        .expect("Failed to insert center node") as u64;
 
     // Create target nodes and edges
     let mut target_ids = Vec::new();
     for i in 0..num_targets {
-        let target_id = graph.insert_node(
-            sqlitegraph::NodeSpec {
+        let target_id = graph
+            .insert_node(sqlitegraph::NodeSpec {
                 kind: "Function".to_string(),
                 name: format!("target_{}", i),
                 file_path: Some(format!("/src/target_{}.rs", i)),
                 data: serde_json::json!({"role": "target", "index": i}),
-            }
-        ).expect("Failed to insert target node") as u64;
+            })
+            .expect("Failed to insert target node") as u64;
         target_ids.push(target_id);
 
         // Create edge from center to target
-        graph.insert_edge(
-            sqlitegraph::EdgeSpec {
+        graph
+            .insert_edge(sqlitegraph::EdgeSpec {
                 from: center_id as i64,
                 to: target_id as i64,
                 edge_type: "CALLS".to_string(),
                 data: serde_json::json!({"line": (i + 1) * 5}),
-            }
-        ).expect("Failed to insert edge");
+            })
+            .expect("Failed to insert edge");
     }
 
     (graph, center_id, target_ids, temp_dir)
 }
 
 /// Flush and reopen graph
-fn flush_and_reopen(_graph: Box<dyn sqlitegraph::GraphBackend>, temp_dir: &TempDir) -> Box<dyn sqlitegraph::GraphBackend> {
+fn flush_and_reopen(
+    _graph: Box<dyn sqlitegraph::GraphBackend>,
+    temp_dir: &TempDir,
+) -> Box<dyn sqlitegraph::GraphBackend> {
     // Note: GraphBackend doesn't have explicit flush, but we can reopen
     let db_path = temp_dir.path().join("test.db");
     let cfg = GraphConfig::new(sqlitegraph::BackendKind::Native);
@@ -177,32 +178,62 @@ fn test_single_edge_cluster_clean_creation() {
     let source_node_data = graph.get_node(source_id as i64).unwrap();
     let target_node_data = graph.get_node(target_id as i64).unwrap();
 
-    assert_eq!(source_node_data.name, "source", "Source node should have correct name");
-    assert_eq!(source_node_data.kind, "Function", "Source node should have correct kind");
-    assert_eq!(target_node_data.name, "target", "Target node should have correct name");
-    assert_eq!(target_node_data.kind, "Function", "Target node should have correct kind");
+    assert_eq!(
+        source_node_data.name, "source",
+        "Source node should have correct name"
+    );
+    assert_eq!(
+        source_node_data.kind, "Function",
+        "Source node should have correct kind"
+    );
+    assert_eq!(
+        target_node_data.name, "target",
+        "Target node should have correct name"
+    );
+    assert_eq!(
+        target_node_data.kind, "Function",
+        "Target node should have correct kind"
+    );
 
     // Verify edge direction validation through neighbor queries
-    let source_outgoing = graph.neighbors(
-        source_id as i64,
-        NeighborQuery {
-            direction: BackendDirection::Outgoing,
-            edge_type: None,
-        },
-    ).unwrap();
+    let source_outgoing = graph
+        .neighbors(
+            source_id as i64,
+            NeighborQuery {
+                direction: BackendDirection::Outgoing,
+                edge_type: None,
+            },
+        )
+        .unwrap();
 
-    let target_incoming = graph.neighbors(
-        target_id as i64,
-        NeighborQuery {
-            direction: BackendDirection::Incoming,
-            edge_type: None,
-        },
-    ).unwrap();
+    let target_incoming = graph
+        .neighbors(
+            target_id as i64,
+            NeighborQuery {
+                direction: BackendDirection::Incoming,
+                edge_type: None,
+            },
+        )
+        .unwrap();
 
-    assert_eq!(source_outgoing.len(), 1, "Source should have 1 outgoing neighbor");
-    assert_eq!(target_incoming.len(), 1, "Target should have 1 incoming neighbor");
-    assert_eq!(source_outgoing[0], target_id as i64, "Source should connect to target");
-    assert_eq!(target_incoming[0], source_id as i64, "Target should receive from source");
+    assert_eq!(
+        source_outgoing.len(),
+        1,
+        "Source should have 1 outgoing neighbor"
+    );
+    assert_eq!(
+        target_incoming.len(),
+        1,
+        "Target should have 1 incoming neighbor"
+    );
+    assert_eq!(
+        source_outgoing[0], target_id as i64,
+        "Source should connect to target"
+    );
+    assert_eq!(
+        target_incoming[0], source_id as i64,
+        "Target should receive from source"
+    );
 }
 
 /// Test 2: Verify multi-edge cluster creation with clean Phase 34 pipeline
@@ -221,14 +252,19 @@ fn test_multi_edge_cluster_clean_creation() {
         )
         .unwrap();
 
-    println!("DEBUG: Center ID: {}, Actual neighbor count: {}, Expected: 3", center_id, center_neighbors.len());
+    println!(
+        "DEBUG: Center ID: {}, Actual neighbor count: {}, Expected: 3",
+        center_id,
+        center_neighbors.len()
+    );
     println!("DEBUG: Actual neighbors: {:?}", center_neighbors);
     println!("DEBUG: Target IDs: {:?}", target_ids);
 
     assert_eq!(
         center_neighbors.len(),
         3,
-        "Center should have 3 outgoing neighbors (got {})", center_neighbors.len()
+        "Center should have 3 outgoing neighbors (got {})",
+        center_neighbors.len()
     );
 
     // Sort for comparison since neighbor order isn't guaranteed
@@ -582,7 +618,10 @@ fn v2_cluster_neighbors_match_manual_deserialization() {
 
     // Test 2: Get source node details via GraphBackend API
     let source_node = graph.get_node(source_id as i64).unwrap();
-    println!("DEBUG: Source node details: kind={}, name={}", source_node.kind, source_node.name);
+    println!(
+        "DEBUG: Source node details: kind={}, name={}",
+        source_node.kind, source_node.name
+    );
 
     // Test 3: Validate public API neighbor results
     assert_eq!(
@@ -595,10 +634,19 @@ fn v2_cluster_neighbors_match_manual_deserialization() {
         "Public API neighbor should be the target node"
     );
 
-    println!("DEBUG: Public API validation successful - 1 neighbor found: {}", public_neighbors[0]);
+    println!(
+        "DEBUG: Public API validation successful - 1 neighbor found: {}",
+        public_neighbors[0]
+    );
 
     // Test 4: Validate node metadata consistency
     let target_node = graph.get_node(target_id as i64).unwrap();
-    assert_eq!(target_node.name, "target", "Target node should have correct name");
-    println!("DEBUG: Target node validation successful: kind={}, name={}", target_node.kind, target_node.name);
+    assert_eq!(
+        target_node.name, "target",
+        "Target node should have correct name"
+    );
+    println!(
+        "DEBUG: Target node validation successful: kind={}, name={}",
+        target_node.kind, target_node.name
+    );
 }

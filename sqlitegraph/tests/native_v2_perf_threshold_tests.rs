@@ -43,10 +43,10 @@ fn test_v2_bfs_performance_small() {
     assert!(
         duration_ms <= TARGET_BFS_100_MS,
         "V2 BFS must be ≤{}ms (got {:.2}ms)",
-        TARGET_BFS_100_MS, duration_ms
+        TARGET_BFS_100_MS,
+        duration_ms
     );
 }
-
 
 /// V2 k-hop must not exceed 1.25× SQLite on 100–1k graphs
 #[test]

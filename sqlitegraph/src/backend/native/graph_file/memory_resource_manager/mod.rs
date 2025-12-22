@@ -4,22 +4,20 @@
 //! read buffers, write buffers, memory mapping, and I/O mode selection.
 //! It handles complex memory management workflows and optimization strategies.
 
-use crate::backend::native::{
-    graph_file::buffers::{ReadBuffer, WriteBuffer},
-};
+use crate::backend::native::graph_file::buffers::{ReadBuffer, WriteBuffer};
 
-#[cfg(feature = "v2")]
+#[cfg(feature = "native-v2")]
 use memmap2::MmapMut;
 
 // Public exports
-pub use types::*;
 pub use manager::MemoryResourceManager;
+pub use types::*;
 
 // Module declarations
-mod types;
 mod manager;
 mod operations;
 mod optimization;
+mod types;
 
 /// Memory management utilities for standalone usage
 pub struct MemoryUtils;
@@ -77,13 +75,13 @@ mod tests {
     fn test_memory_manager_creation() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
@@ -96,13 +94,13 @@ mod tests {
     fn test_io_mode_detection() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
@@ -114,13 +112,13 @@ mod tests {
     fn test_buffer_optimization() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let mut manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
@@ -139,13 +137,13 @@ mod tests {
     fn test_header_region_protection() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let mut manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
@@ -158,24 +156,23 @@ mod tests {
     fn test_write_buffer_management() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let mut manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
         // Test adding operations to write buffer
         let mut temp_file = tempfile().unwrap();
-        assert!(manager.memory_aware_write(
-            &mut temp_file,
-            2048,
-            b"test data",
-            || Ok(4096)
-        ).is_ok());
+        assert!(
+            manager
+                .memory_aware_write(&mut temp_file, 2048, b"test data", || Ok(4096))
+                .is_ok()
+        );
 
         // Should have buffered the small write
         let stats = manager.get_statistics();
@@ -191,13 +188,13 @@ mod tests {
     fn test_node_slot_detection() {
         let mut read_buffer = ReadBuffer::new();
         let mut write_buffer = WriteBuffer::new(32);
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         let mut mmap = None;
 
         let mut manager = MemoryResourceManager::new(
             &mut read_buffer,
             &mut write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             &mut mmap,
         );
 
@@ -205,12 +202,16 @@ mod tests {
 
         // Node slot write (4096 bytes at 0x400 + n*4096) should not be buffered
         let node_slot_data = vec![0u8; 4096];
-        assert!(manager.memory_aware_write(
-            &mut temp_file,
-            0x400, // First node slot
-            &node_slot_data,
-            || Ok(8192)
-        ).is_ok());
+        assert!(
+            manager
+                .memory_aware_write(
+                    &mut temp_file,
+                    0x400, // First node slot
+                    &node_slot_data,
+                    || Ok(8192)
+                )
+                .is_ok()
+        );
 
         // Should have 0 pending operations since node slots are written directly
         let stats = manager.get_statistics();

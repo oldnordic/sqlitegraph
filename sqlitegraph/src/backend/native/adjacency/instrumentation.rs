@@ -11,11 +11,11 @@
 //! 4. State Consistency: Validate iterator state invariants
 //! 5. Stack Trace Analysis: Detect deep recursion patterns
 
+#[cfg(debug_assertions)]
+use log::{debug, error, warn};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
-use std::collections::HashMap;
-#[cfg(debug_assertions)]
-use log::{debug, warn, error};
 
 /// Global instrumentation metrics
 pub struct AdjacencyMetrics {
@@ -62,7 +62,7 @@ impl AdjacencyMetrics {
     }
 
     /// Record a V2 node read operation
-    pub fn record_v2_read(&self, node_id: u32) {
+    pub fn record_v2_read(&self, _node_id: u32) {
         let count = self.total_v2_reads.fetch_add(1, Ordering::SeqCst);
 
         // Log V2 read patterns
@@ -77,7 +77,7 @@ impl AdjacencyMetrics {
     }
 
     /// Start timing an operation
-    pub fn start_timing(&self, operation: &str) -> TimingGuard {
+    pub fn start_timing(&self, operation: &str) -> TimingGuard<'_> {
         TimingGuard::new(operation, self)
     }
 
@@ -116,8 +116,7 @@ pub struct MetricsSnapshot {
 impl MetricsSnapshot {
     /// Check if metrics indicate an infinite loop pattern
     pub fn suggests_infinite_loop(&self) -> bool {
-        self.total_iterations > 1000 &&
-        (self.total_iterations > self.total_v2_reads * 10)
+        self.total_iterations > 1000 && (self.total_iterations > self.total_v2_reads * 10)
     }
 
     /// Calculate iteration efficiency
@@ -155,7 +154,10 @@ impl<'a> Drop for TimingGuard<'a> {
 
         // Record timing
         if let Ok(mut timings) = self.metrics.operation_timings.lock() {
-            timings.entry(self.operation.clone()).or_insert_with(Vec::new).push(duration);
+            timings
+                .entry(self.operation.clone())
+                .or_insert_with(Vec::new)
+                .push(duration);
 
             // Keep only recent samples
             if let Some(operation_timings) = timings.get_mut(&self.operation) {
@@ -214,9 +216,7 @@ impl StateValidator {
 
         // Check for obvious infinite loop patterns
         if total_count > 0 && cached_neighbors_len == Some(0) {
-            report.add_error(ValidationError::EmptyCacheNonZeroCount {
-                total_count,
-            });
+            report.add_error(ValidationError::EmptyCacheNonZeroCount { total_count });
         }
 
         report
@@ -241,12 +241,18 @@ impl ValidationReport {
     }
 
     fn add_error(&mut self, error: ValidationError) {
-        error!("Iterator validation ERROR for node {}: {:?}", self.node_id, error);
+        error!(
+            "Iterator validation ERROR for node {}: {:?}",
+            self.node_id, error
+        );
         self.errors.push(error);
     }
 
     fn add_warning(&mut self, warning: ValidationWarning) {
-        warn!("Iterator validation WARNING for node {}: {:?}", self.node_id, warning);
+        warn!(
+            "Iterator validation WARNING for node {}: {:?}",
+            self.node_id, warning
+        );
         self.warnings.push(warning);
     }
 
@@ -261,9 +267,17 @@ impl ValidationReport {
 
 #[derive(Debug)]
 pub enum ValidationError {
-    IndexOutOfBounds { current_index: u32, total_count: u32 },
-    IndexBeyondCache { current_index: u32, cached_len: usize },
-    EmptyCacheNonZeroCount { total_count: u32 },
+    IndexOutOfBounds {
+        current_index: u32,
+        total_count: u32,
+    },
+    IndexBeyondCache {
+        current_index: u32,
+        cached_len: usize,
+    },
+    EmptyCacheNonZeroCount {
+        total_count: u32,
+    },
 }
 
 #[derive(Debug)]
@@ -273,7 +287,8 @@ pub enum ValidationWarning {
 
 /// Global metrics instance
 #[cfg(debug_assertions)]
-static ADJACENCY_METRICS: std::sync::LazyLock<AdjacencyMetrics> = std::sync::LazyLock::new(AdjacencyMetrics::new);
+static ADJACENCY_METRICS: std::sync::LazyLock<AdjacencyMetrics> =
+    std::sync::LazyLock::new(AdjacencyMetrics::new);
 
 /// Convenience function to get global metrics
 #[cfg(debug_assertions)]
@@ -287,7 +302,7 @@ pub mod convenience {
     use super::*;
 
     /// Record an iteration with loop detection
-    pub fn track_iteration(node_id: u32) -> bool {
+    pub fn track_iteration(_node_id: u32) -> bool {
         get_global_metrics().record_iteration()
     }
 
@@ -297,7 +312,7 @@ pub mod convenience {
     }
 
     /// Start timing an operation
-    pub fn start_timing(operation: &str) -> TimingGuard {
+    pub fn start_timing(operation: &str) -> TimingGuard<'_> {
         get_global_metrics().start_timing(operation)
     }
 
@@ -313,6 +328,11 @@ pub mod convenience {
         total_count: u32,
         cached_neighbors_len: Option<usize>,
     ) -> ValidationReport {
-        StateValidator::validate_iterator_state(node_id, current_index, total_count, cached_neighbors_len)
+        StateValidator::validate_iterator_state(
+            node_id,
+            current_index,
+            total_count,
+            cached_neighbors_len,
+        )
     }
 }

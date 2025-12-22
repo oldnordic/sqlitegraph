@@ -3,14 +3,18 @@
 //! This module provides the core read/write operations with intelligent
 //! routing based on I/O mode and buffer state.
 
-use crate::backend::native::{
-    types::{NativeResult, NativeBackendError},
-    graph_file::buffers::ReadBuffer,
-    graph_file::file_ops::FileOperations,
-};
 use super::manager::MemoryResourceManager;
 
-#[cfg(feature = "v2")]
+#[cfg(any(feature = "v2_io_exclusive_mmap", feature = "v2_io_exclusive_std"))]
+use super::types::MemoryIOMode;
+use crate::backend::native::{
+    graph_file::buffers::ReadBuffer,
+    graph_file::file_ops::FileOperations,
+    types::NativeResult,  // NativeBackendError removed - available via parent re-export
+};
+use std::io::{Read, Seek, SeekFrom};
+
+#[cfg(feature = "native-v2")]
 use memmap2::MmapMut;
 
 impl<'a> MemoryResourceManager<'a> {
@@ -34,13 +38,13 @@ impl<'a> MemoryResourceManager<'a> {
         F: FnOnce() -> NativeResult<u64>,
     {
         match self.current_io_mode() {
-            #[cfg(all(feature = "v2", feature = "v2_io_exclusive_mmap"))]
+            #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_mmap"))]
             MemoryIOMode::MemoryMapped => {
                 self.read_from_mmap(offset, buffer)?;
             }
-            #[cfg(all(feature = "v2", feature = "v2_io_exclusive_std"))]
+            #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_std"))]
             MemoryIOMode::ExclusiveStd => {
-                self.clear_write_buffer_safely()?;
+                self.clear_write_buffer_safely();
                 self.direct_read_with_sync(file, offset, buffer)?;
             }
             _ => {
@@ -60,6 +64,7 @@ impl<'a> MemoryResourceManager<'a> {
     /// * `file_size_fn` - Function to get current file size
     ///
     /// Routes write operations based on I/O mode and buffer considerations
+    #[allow(unused_variables)]  // Allow warnings for feature-conditional parameters
     pub fn memory_aware_write<F>(
         &mut self,
         file: &mut std::fs::File,
@@ -74,11 +79,11 @@ impl<'a> MemoryResourceManager<'a> {
         self.validate_header_region_protection(offset)?;
 
         match self.current_io_mode() {
-            #[cfg(all(feature = "v2", feature = "v2_io_exclusive_mmap"))]
+            #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_mmap"))]
             MemoryIOMode::MemoryMapped => {
                 self.write_to_mmap(offset, data, file_size_fn)?;
             }
-            #[cfg(all(feature = "v2", feature = "v2_io_exclusive_std"))]
+            #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_std"))]
             MemoryIOMode::ExclusiveStd => {
                 self.clear_write_buffer_safely();
                 self.direct_write_with_sync(file, offset, data)?;
@@ -92,7 +97,7 @@ impl<'a> MemoryResourceManager<'a> {
     }
 
     /// Read from memory-mapped region
-    #[cfg(all(feature = "v2", feature = "v2_io_exclusive_mmap"))]
+    #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_mmap"))]
     fn read_from_mmap(&self, offset: u64, buffer: &mut [u8]) -> NativeResult<()> {
         let mmap = self
             .mmap
@@ -121,7 +126,7 @@ impl<'a> MemoryResourceManager<'a> {
     }
 
     /// Write to memory-mapped region
-    #[cfg(all(feature = "v2", feature = "v2_io_exclusive_mmap"))]
+    #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_mmap"))]
     fn write_to_mmap<F>(&mut self, offset: u64, data: &[u8], file_size_fn: F) -> NativeResult<()>
     where
         F: FnOnce() -> NativeResult<u64>,
@@ -163,7 +168,7 @@ impl<'a> MemoryResourceManager<'a> {
     }
 
     /// Ensure memory mapping covers the required range
-    #[cfg(feature = "v2")]
+    #[cfg(feature = "native-v2")]
     fn ensure_mmap_covers(&self, required_offset: u64) -> NativeResult<()> {
         if let Some(mmap) = &self.mmap {
             if required_offset as usize > mmap.len() {
@@ -242,7 +247,8 @@ impl<'a> MemoryResourceManager<'a> {
         data: &[u8],
     ) -> NativeResult<()> {
         // Special handling for node slots (must not be buffered)
-        let is_node_slot = (offset >= 0x400) && ((offset - 0x400) % 4096 == 0) && (data.len() == 4096);
+        let is_node_slot =
+            (offset >= 0x400) && ((offset - 0x400) % 4096 == 0) && (data.len() == 4096);
 
         // Try to buffer small writes (except node slots)
         if !is_node_slot && data.len() <= 256 && self.write_buffer.add(offset, data.to_vec()) {
@@ -267,8 +273,9 @@ impl<'a> MemoryResourceManager<'a> {
     where
         F: FnOnce() -> NativeResult<u64>,
     {
-        use std::io::{Read, Seek, SeekFrom};
         use crate::backend::native::types::NativeBackendError;
+        // IO traits removed - Read, Seek, SeekFrom not needed for this function
+        // std::io::{Read, Seek, SeekFrom} removed - unused
 
         // Use adaptive sizing to minimize I/O amplification
         let optimal_capacity = ReadBuffer::adaptive_capacity(buffer.len());
@@ -308,7 +315,8 @@ impl<'a> MemoryResourceManager<'a> {
             buffer.copy_from_slice(&self.read_buffer.data[..buffer.len()]);
         } else {
             // Original request exceeds what we could read-ahead
-            buffer[..adjusted_read_size].copy_from_slice(&self.read_buffer.data[..adjusted_read_size]);
+            buffer[..adjusted_read_size]
+                .copy_from_slice(&self.read_buffer.data[..adjusted_read_size]);
         }
 
         Ok(())

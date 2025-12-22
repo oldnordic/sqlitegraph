@@ -3,13 +3,13 @@
 //! This module provides the main coordination logic for memory resources
 //! including buffer management and I/O mode detection.
 
-use crate::backend::native::{
-    types::{NativeResult, NativeBackendError},
-    graph_file::buffers::{ReadBuffer, WriteBuffer},
-};
 use super::types::{MemoryIOMode, MemoryManagementStatistics};
+use crate::backend::native::{
+    graph_file::buffers::{ReadBuffer, WriteBuffer},
+    types::{NativeBackendError, NativeResult},
+};
 
-#[cfg(feature = "v2")]
+#[cfg(feature = "native-v2")]
 use memmap2::MmapMut;
 
 /// Memory resource manager for coordinating buffers and memory mapping
@@ -19,7 +19,7 @@ pub struct MemoryResourceManager<'a> {
     /// Write buffer for batching small writes
     pub(crate) write_buffer: &'a mut WriteBuffer,
     /// Optional memory mapping for direct memory access
-    #[cfg(feature = "v2")]
+    #[cfg(feature = "native-v2")]
     pub(crate) mmap: &'a mut Option<MmapMut>,
 }
 
@@ -33,26 +33,26 @@ impl<'a> MemoryResourceManager<'a> {
     pub fn new(
         read_buffer: &'a mut ReadBuffer,
         write_buffer: &'a mut WriteBuffer,
-        #[cfg(feature = "v2")] mmap: &'a mut Option<MmapMut>,
+        #[cfg(feature = "native-v2")] mmap: &'a mut Option<MmapMut>,
     ) -> Self {
         Self {
             read_buffer,
             write_buffer,
-            #[cfg(feature = "v2")]
+            #[cfg(feature = "native-v2")]
             mmap,
         }
     }
 
     /// Get the current I/O mode based on feature flags
     pub fn current_io_mode(&self) -> MemoryIOMode {
-        #[cfg(all(feature = "v2", feature = "v2_io_exclusive_mmap"))]
+        #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_mmap"))]
         {
             if self.mmap.is_some() {
                 return MemoryIOMode::MemoryMapped;
             }
         }
 
-        #[cfg(all(feature = "v2", feature = "v2_io_exclusive_std"))]
+        #[cfg(all(feature = "native-v2", feature = "v2_io_exclusive_std"))]
         {
             return MemoryIOMode::ExclusiveStd;
         }
@@ -83,11 +83,11 @@ impl<'a> MemoryResourceManager<'a> {
 
     /// Check if memory mapping is enabled
     pub fn mmap_enabled(&self) -> bool {
-        #[cfg(feature = "v2")]
+        #[cfg(feature = "native-v2")]
         {
             self.mmap.is_some()
         }
-        #[cfg(not(feature = "v2"))]
+        #[cfg(not(feature = "native-v2"))]
         {
             false
         }
@@ -127,7 +127,9 @@ impl<'a> MemoryResourceManager<'a> {
         use std::io::{Seek, SeekFrom, Write};
 
         // Sort operations by offset for optimal write patterns
-        self.write_buffer.operations.sort_by_key(|(offset, _data)| *offset);
+        self.write_buffer
+            .operations
+            .sort_by_key(|(offset, _data)| *offset);
 
         for (offset, data) in &self.write_buffer.operations {
             file.seek(SeekFrom::Start(*offset))?;

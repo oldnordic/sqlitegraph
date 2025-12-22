@@ -1,8 +1,11 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use sqlitegraph::{open_graph, GraphConfig, BackendKind, NativeConfig, NodeSpec, EdgeSpec, NeighborQuery, BackendDirection};
-use std::time::Duration;
-use rand::{Rng, SeedableRng};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
+use sqlitegraph::{
+    BackendDirection, BackendKind, EdgeSpec, GraphConfig, NativeConfig, NeighborQuery, NodeSpec,
+    open_graph,
+};
+use std::time::Duration;
 use tempfile::TempDir;
 
 const DATASET_SIZES: &[usize] = &[100, 1000, 10000];
@@ -40,7 +43,8 @@ fn benchmark_sqlitegraph_v2(c: &mut Criterion) {
     group.sample_size(20);
 
     for &num_nodes in DATASET_SIZES {
-        let edge_multiplier = EDGE_MULTIPLIERS[DATASET_SIZES.iter().position(|&n| n == num_nodes).unwrap()];
+        let edge_multiplier =
+            EDGE_MULTIPLIERS[DATASET_SIZES.iter().position(|&n| n == num_nodes).unwrap()];
         let num_edges = (num_nodes as f64 * edge_multiplier) as usize;
 
         group.throughput(Throughput::Elements(num_nodes as u64));
@@ -77,11 +81,11 @@ fn benchmark_sqlitegraph_v2(c: &mut Criterion) {
                         for (src, dst) in edges {
                             if src < num_nodes as u64 && dst < num_nodes as u64 {
                                 let edge_spec = EdgeSpec {
-                                        from: src as i64,
-                                        to: dst as i64,
-                                        edge_type: "Connects".to_string(),
-                                        data: serde_json::json!({"weight": 1.0}),
-                                    };
+                                    from: src as i64,
+                                    to: dst as i64,
+                                    edge_type: "Connects".to_string(),
+                                    data: serde_json::json!({"weight": 1.0}),
+                                };
                                 let _ = graph.insert_edge(edge_spec).unwrap();
                             }
                         }

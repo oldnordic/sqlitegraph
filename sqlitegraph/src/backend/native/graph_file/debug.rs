@@ -5,9 +5,9 @@
 //! troubleshooting.
 
 use crate::backend::native::{
-    types::NativeResult,
     persistent_header::PersistentHeaderV2,
-    v2::{V2_MAGIC, V2_FORMAT_VERSION},
+    types::NativeResult,
+    v2::{V2_FORMAT_VERSION, V2_MAGIC},
 };
 
 /// Debug instrumentation utilities for GraphFile operations
@@ -22,7 +22,7 @@ impl DebugInstrumentation {
         file: &mut std::fs::File,
         expected_bytes: &[u8],
     ) -> NativeResult<()> {
-        use std::io::{Seek, SeekFrom, Read};
+        use std::io::{Read, Seek, SeekFrom};
 
         let mut read_back = vec![0u8; 16]; // Read first 16 bytes for verification
         file.seek(SeekFrom::Start(0))?;
@@ -30,14 +30,16 @@ impl DebugInstrumentation {
 
         if expected_bytes.len() >= 16 {
             if read_back != &expected_bytes[..16] {
-                return Err(crate::backend::native::types::NativeBackendError::CorruptNodeRecord {
-                    node_id: -1,
-                    reason: format!(
-                        "Header write verification failed\nExpected first 16 bytes: {:02X?}\nActually read: {:02X?}",
-                        &expected_bytes[..16],
-                        read_back
-                    ),
-                });
+                return Err(
+                    crate::backend::native::types::NativeBackendError::CorruptNodeRecord {
+                        node_id: -1,
+                        reason: format!(
+                            "Header write verification failed\nExpected first 16 bytes: {:02X?}\nActually read: {:02X?}",
+                            &expected_bytes[..16],
+                            read_back
+                        ),
+                    },
+                );
             }
         }
 
@@ -87,11 +89,7 @@ impl DebugInstrumentation {
     /// Log critical cluster offset fixes
     ///
     /// Records when cluster offsets are moved to prevent node slot corruption.
-    pub fn log_cluster_offset_fix(
-        cluster_type: &str,
-        old_offset: u64,
-        new_offset: u64,
-    ) {
+    pub fn log_cluster_offset_fix(cluster_type: &str, old_offset: u64, new_offset: u64) {
         println!(
             "CRITICAL FIX: Moving {}_cluster_offset from {} to {} to prevent node slot corruption",
             cluster_type, old_offset, new_offset
@@ -148,19 +146,16 @@ impl DebugInstrumentation {
     ) {
         println!(
             "[SLOT_CORRUPTION] FILE_TRUNCATE: current_size={}, final_rollback_size={}, difference={} bytes",
-            current_size,
-            final_rollback_size,
-            difference
+            current_size, final_rollback_size, difference
         );
-        println!("[SLOT_CORRUPTION] {}: truncating {} bytes", operation, difference);
+        println!(
+            "[SLOT_CORRUPTION] {}: truncating {} bytes",
+            operation, difference
+        );
     }
 
     /// Log post-truncate slot verification
-    pub fn log_post_truncate_slot_check(
-        node_id: u64,
-        slot_offset: u64,
-        version: u8,
-    ) {
+    pub fn log_post_truncate_slot_check(node_id: u64, slot_offset: u64, version: u8) {
         println!(
             "[SLOT_CORRUPTION] POST_TRUNCATE_CHECK: node_id={}, slot_offset=0x{:x}, version={}",
             node_id, slot_offset, version
@@ -215,7 +210,7 @@ pub mod convenience {
     /// TX_BEGIN_AUDIT wrapper for common case
     pub fn audit_transaction_begin(
         enabled: bool,
-        file_path: &std::path::Path,
+        _file_path: &std::path::Path,
         node_data_offset: u64,
         node_id: u64,
         label: &str,
@@ -243,7 +238,7 @@ pub mod convenience {
     /// EDGE_CLUSTER_DEBUG wrapper for node state inspection
     pub fn debug_edge_cluster_state(
         enabled: bool,
-        file_path: &std::path::Path,
+        _file_path: &std::path::Path,
         operation: &str,
         read_bytes_fn: &mut dyn FnMut(u64, &mut [u8]) -> NativeResult<()>,
         file_size_fn: &dyn Fn() -> NativeResult<u64>,

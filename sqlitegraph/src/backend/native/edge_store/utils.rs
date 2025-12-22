@@ -49,17 +49,33 @@ pub fn check_for_overlap(
         let outgoing_end = header.outgoing_cluster_offset + cluster_size; // Estimated size
         let incoming_end = header.incoming_cluster_offset + cluster_size; // Estimated size
 
-        if direction == "Incoming" && cluster_offset < outgoing_end && cluster_end > header.outgoing_cluster_offset {
+        if direction == "Incoming"
+            && cluster_offset < outgoing_end
+            && cluster_end > header.outgoing_cluster_offset
+        {
             println!(
                 "[V2_ALLOC_DEBUG] 🔥 OVERLAP DETECTED: node_id={}, direction={}, cluster=[{}, {}) OVERLAPS outgoing_cluster=[{}, {})",
-                node_id, direction, cluster_offset, cluster_end, header.outgoing_cluster_offset, outgoing_end
+                node_id,
+                direction,
+                cluster_offset,
+                cluster_end,
+                header.outgoing_cluster_offset,
+                outgoing_end
             );
         }
 
-        if direction == "Outgoing" && cluster_offset < incoming_end && cluster_end > header.incoming_cluster_offset {
+        if direction == "Outgoing"
+            && cluster_offset < incoming_end
+            && cluster_end > header.incoming_cluster_offset
+        {
             println!(
                 "[V2_ALLOC_DEBUG] 🔥 OVERLAP DETECTED: node_id={}, direction={}, cluster=[{}, {}) OVERLAPS incoming_cluster=[{}, {})",
-                node_id, direction, cluster_offset, cluster_end, header.incoming_cluster_offset, incoming_end
+                node_id,
+                direction,
+                cluster_offset,
+                cluster_end,
+                header.incoming_cluster_offset,
+                incoming_end
             );
         }
     }
@@ -86,7 +102,14 @@ mod tests {
         let node_region_end = 4096;
 
         // Should detect header region overlap
-        check_for_overlap(node_id, direction, cluster_offset, cluster_size, node_region_end, &header);
+        check_for_overlap(
+            node_id,
+            direction,
+            cluster_offset,
+            cluster_size,
+            node_region_end,
+            &header,
+        );
     }
 
     #[test]
@@ -99,7 +122,14 @@ mod tests {
         let node_region_end = 3072;
 
         // Should detect node region overlap
-        check_for_overlap(node_id, direction, cluster_offset, cluster_size, node_region_end, &header);
+        check_for_overlap(
+            node_id,
+            direction,
+            cluster_offset,
+            cluster_size,
+            node_region_end,
+            &header,
+        );
     }
 
     #[test]
@@ -114,7 +144,14 @@ mod tests {
         let node_region_end = 4096;
 
         // Should detect no overlaps (only allocation summary)
-        check_for_overlap(node_id, direction, cluster_offset, cluster_size, node_region_end, &header);
+        check_for_overlap(
+            node_id,
+            direction,
+            cluster_offset,
+            cluster_size,
+            node_region_end,
+            &header,
+        );
     }
 
     #[test]
@@ -129,6 +166,13 @@ mod tests {
         let node_region_end = 4096;
 
         // Should detect cluster overlap
-        check_for_overlap(node_id, direction, cluster_offset, cluster_size, node_region_end, &header);
+        check_for_overlap(
+            node_id,
+            direction,
+            cluster_offset,
+            cluster_size,
+            node_region_end,
+            &header,
+        );
     }
 }

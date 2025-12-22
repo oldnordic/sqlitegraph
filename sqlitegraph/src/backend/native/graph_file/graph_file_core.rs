@@ -4,17 +4,11 @@
 //! opening, and basic lifecycle operations.
 
 use crate::backend::native::{
-    graph_file::FileLifecycleManager,
-    graph_file::TransactionManager,
-    graph_file::validation::GraphFileValidator,
-    constants::node::NODE_SLOT_SIZE,
+    constants::node::NODE_SLOT_SIZE, graph_file::FileLifecycleManager,
+    graph_file::TransactionManager, graph_file::validation::GraphFileValidator,
 };
 
-use super::{
-    GraphFile,
-    DEFAULT_NODE_DATA_START,
-    RESERVED_NODE_REGION_BYTES,
-};
+use super::{DEFAULT_NODE_DATA_START, GraphFile, RESERVED_NODE_REGION_BYTES};
 
 impl GraphFile {
     /// Calculate the minimum safe offset for cluster allocation
@@ -30,12 +24,16 @@ impl GraphFile {
     }
 
     /// Create a new graph file with initial header
-    pub fn create<P: AsRef<std::path::Path>>(path: P) -> crate::backend::native::types::NativeResult<Self> {
+    pub fn create<P: AsRef<std::path::Path>>(
+        path: P,
+    ) -> crate::backend::native::types::NativeResult<Self> {
         FileLifecycleManager::create(path)
     }
 
     /// Open an existing graph file
-    pub fn open<P: AsRef<std::path::Path>>(path: P) -> crate::backend::native::types::NativeResult<Self> {
+    pub fn open<P: AsRef<std::path::Path>>(
+        path: P,
+    ) -> crate::backend::native::types::NativeResult<Self> {
         FileLifecycleManager::open(path)
     }
 
@@ -44,7 +42,6 @@ impl GraphFile {
         FileLifecycleManager::read_header(self)
     }
 
-  
     /// Get current transaction ID
     pub fn current_transaction_id(&self) -> u64 {
         self.transaction_state.current_transaction_id()
@@ -56,14 +53,20 @@ impl GraphFile {
     }
 
     /// Get transaction statistics
-    pub fn get_transaction_statistics(&self) -> crate::backend::native::graph_file::transaction::TransactionStatistics {
+    pub fn get_transaction_statistics(
+        &self,
+    ) -> crate::backend::native::graph_file::transaction::TransactionStatistics {
         crate::backend::native::graph_file::transaction::TransactionStatistics {
             tx_id: self.current_transaction_id(),
             node_count: self.persistent_header().node_count,
             edge_count: self.persistent_header().edge_count,
             free_space_offset: self.persistent_header().free_space_offset,
             is_active: self.is_transaction_active(),
-            state: if self.is_transaction_active() { "InProgress".to_string() } else { "Inactive".to_string() },
+            state: if self.is_transaction_active() {
+                "InProgress".to_string()
+            } else {
+                "Inactive".to_string()
+            },
         }
     }
 
@@ -73,10 +76,8 @@ impl GraphFile {
 
         let tx_id = self.transaction_state.current_transaction_id() + 1;
 
-        let mut coordinator = GraphFileCoordinator::new(
-            &mut self.persistent_header,
-            &mut self.transaction_state,
-        );
+        let mut coordinator =
+            GraphFileCoordinator::new(&mut self.persistent_header, &mut self.transaction_state);
 
         coordinator.begin_transaction(tx_id);
         Ok(tx_id)
@@ -86,17 +87,12 @@ impl GraphFile {
     pub fn commit_transaction(&mut self) -> crate::backend::native::types::NativeResult<()> {
         use crate::backend::native::graph_file::graph_file_coordinator::GraphFileCoordinator;
 
-        let mut coordinator = GraphFileCoordinator::new(
-            &mut self.persistent_header,
-            &mut self.transaction_state,
-        );
+        let mut coordinator =
+            GraphFileCoordinator::new(&mut self.persistent_header, &mut self.transaction_state);
 
         // Use simple closures that just return Ok(()) - the actual operations
         // will be handled by the coordinator internally
-        coordinator.commit_transaction(
-            || Ok(()),
-            || Ok(()),
-        )?;
+        coordinator.commit_transaction(|| Ok(()), || Ok(()))?;
 
         // Perform the actual file operations after coordinator is done
         self.write_header()?;
@@ -112,17 +108,14 @@ impl GraphFile {
         let node_data_offset = self.persistent_header.node_data_offset;
         let node_count = self.persistent_header.node_count as u32;
 
-        let mut coordinator = GraphFileCoordinator::new(
-            &mut self.persistent_header,
-            &mut self.transaction_state,
-        );
+        let mut coordinator =
+            GraphFileCoordinator::new(&mut self.persistent_header, &mut self.transaction_state);
 
         coordinator.rollback_transaction(
             file_size,
             node_data_offset,
             node_count,
             |new_size| {
-                use std::io::{Write, Seek, SeekFrom};
                 self.file.set_len(new_size)?;
                 Ok(())
             },
@@ -131,7 +124,10 @@ impl GraphFile {
     }
 
     /// Write commit marker value
-    pub fn write_commit_marker_value(&mut self, value: u64) -> crate::backend::native::types::NativeResult<()> {
+    pub fn write_commit_marker_value(
+        &mut self,
+        value: u64,
+    ) -> crate::backend::native::types::NativeResult<()> {
         TransactionManager::write_commit_marker_value(&mut self.file, value)
     }
 
@@ -163,7 +159,9 @@ impl GraphFile {
         .expect("Failed to initialize V2 header");
 
         // CRITICAL SAFETY: Validate header after initialization
-        crate::backend::native::graph_file::header::HeaderManager::validate_header_invariants(&self.persistent_header)
-            .expect("Header invariants violated after initialization");
+        crate::backend::native::graph_file::header::HeaderManager::validate_header_invariants(
+            &self.persistent_header,
+        )
+        .expect("Header invariants violated after initialization");
     }
 }

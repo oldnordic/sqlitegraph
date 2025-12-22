@@ -1,10 +1,10 @@
 //! Chain traversal and pattern matching operations
 
+use crate::backend::native::NativeBackendError;
 use crate::backend::native::adjacency::{AdjacencyHelpers, Direction};
 use crate::backend::native::graph_file::GraphFile;
 use crate::backend::native::types::*;
 use crate::backend::{BackendDirection, ChainStep, PatternMatch, PatternQuery};
-use crate::backend::native::NativeBackendError;
 
 /// Native chain query implementation
 pub fn native_chain_query(
@@ -64,9 +64,9 @@ pub fn native_chain_query(
 
 /// Native pattern search implementation (basic version)
 pub fn native_pattern_search(
-    graph_file: &mut GraphFile,
-    start: NativeNodeId,
-    pattern: &PatternQuery,
+    _graph_file: &mut GraphFile,
+    _start: NativeNodeId,
+    _pattern: &PatternQuery,
 ) -> Result<Vec<PatternMatch>, NativeBackendError> {
     // This is a simplified implementation
     // In a full implementation, this would use the pattern engine

@@ -1,11 +1,9 @@
 //! File header structure and management for native graph database
 
-use serde::{Deserialize, Serialize};
-use std::fmt;
 
 use super::super::constants;
 use super::super::v2::{V2_FORMAT_VERSION, V2_MAGIC};
-use super::{NativeBackendError, NodeFlags, EdgeFlags};
+use super::NativeBackendError;
 
 /// File header structure for native graph database
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -259,8 +257,7 @@ impl FileHeader {
 
     /// Set transaction state
     pub fn set_tx_state(&mut self, state: u32) {
-        self.flags = (self.flags & !constants::TX_STATE_MASK)
-            | (state & constants::TX_STATE_MASK);
+        self.flags = (self.flags & !constants::TX_STATE_MASK) | (state & constants::TX_STATE_MASK);
     }
 
     /// Begin transaction: save current state and set IN_PROGRESS

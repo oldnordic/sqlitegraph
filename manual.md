@@ -399,7 +399,461 @@ assert!(!safety_check.has_orphans());
 
 ---
 
-## 9. CLI Usage
+## 9. Vector Search with HNSW
+
+SQLiteGraph includes a production-ready HNSW (Hierarchical Navigable Small World) implementation for high-performance approximate nearest neighbor search. The HNSW implementation supports vector dimensions from 1 to 4096, with specific optimization for OpenAI embeddings (1536 dimensions).
+
+### 9.1 HNSW Configuration
+
+#### Basic Setup
+
+```rust
+use sqlitegraph::hnsw::{hnsw_config, DistanceMetric, HnswIndex};
+
+// Default configuration (768 dimensions)
+let config = hnsw_config()
+    .dimension(768)
+    .m_connections(16)
+    .ef_construction(200)
+    .ef_search(50)
+    .distance_metric(DistanceMetric::Cosine)
+    .build()?;
+
+let hnsw = HnswIndex::new(config)?;
+```
+
+#### OpenAI Embeddings Configuration (1536 Dimensions)
+
+```rust
+// Production-ready configuration for OpenAI text-embedding-ada-002
+let openai_config = hnsw_config()
+    .dimension(1536)                        // OpenAI embedding size
+    .m_connections(20)                      // Higher connectivity for recall
+    .ef_construction(400)                   // Better index quality
+    .ef_search(100)                         // Higher search quality
+    .distance_metric(DistanceMetric::Cosine) // Recommended for embeddings
+    .build()
+    .expect("OpenAI configuration should be valid");
+
+let hnsw = HnswIndex::new(openai_config)?;
+```
+
+#### Multi-layer Configuration (Future Feature)
+
+```rust
+// Multi-layer configuration for large datasets (>10K vectors)
+let multilayer_config = hnsw_config()
+    .dimension(1536)
+    .m_connections(20)
+    .ef_construction(400)
+    .ef_search(100)
+    .distance_metric(DistanceMetric::Cosine)
+    .enable_multilayer(true)                 // Enable multi-layer functionality
+    .multilayer_deterministic_seed(Some(42)) // Reproducible results
+    .build()?;
+```
+
+### 9.2 Vector Operations
+
+#### Inserting Vectors
+
+```rust
+use serde_json::json;
+
+// Store document embeddings with metadata
+let document = "Machine learning is a subset of artificial intelligence.";
+let embedding = vec![0.1; 1536]; // Your OpenAI embedding
+
+let metadata = json!({
+    "content": document,
+    "model": "text-embedding-ada-002",
+    "created_at": chrono::Utc::now().to_rfc3339()
+});
+
+let vector_id = hnsw.insert_vector(&embedding, Some(metadata))?;
+println!("Stored document vector with ID: {}", vector_id);
+```
+
+#### Searching Vectors
+
+```rust
+// Search for similar documents
+let query_embedding = vec![0.12; 1536]; // Query embedding
+let similar_docs = hnsw.search(&query_embedding, 10)?; // k=10
+
+for (vector_id, distance) in similar_docs {
+    if let Some(record) = hnsw.get_vector(vector_id)? {
+        let content = record.metadata
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("No content");
+        println!("Found similar document (distance: {:.4}): {}", distance, content);
+    }
+}
+```
+
+#### Batch Operations
+
+```rust
+// Insert multiple documents efficiently
+let documents = vec![
+    ("Deep learning uses neural networks", vec![0.2; 1536]),
+    ("Natural language processing analyzes text", vec![0.3; 1536]),
+    ("Computer vision processes images", vec![0.4; 1536]),
+];
+
+for (i, (content, embedding)) in documents.iter().enumerate() {
+    let metadata = json!({
+        "content": content,
+        "doc_id": i,
+        "category": "ai_fundamentals"
+    });
+
+    hnsw.insert_vector(embedding, Some(metadata))?;
+}
+```
+
+### 9.3 Distance Metrics
+
+#### Supported Metrics
+
+```rust
+use sqlitegraph::hnsw::DistanceMetric;
+
+// Cosine Distance (Recommended for embeddings)
+let cosine_config = hnsw_config()
+    .dimension(1536)
+    .distance_metric(DistanceMetric::Cosine)
+    .build()?;
+
+// Euclidean Distance (For general-purpose similarity)
+let euclidean_config = hnsw_config()
+    .dimension(768)
+    .distance_metric(DistanceMetric::Euclidean)
+    .build()?;
+
+// Dot Product (Fastest for normalized vectors)
+let dotproduct_config = hnsw_config()
+    .dimension(512)
+    .distance_metric(DistanceMetric::DotProduct)
+    .build()?;
+
+// Manhattan Distance (L1 norm)
+let manhattan_config = hnsw_config()
+    .dimension(256)
+    .distance_metric(DistanceMetric::Manhattan)
+    .build()?;
+```
+
+#### Performance Characteristics
+
+| Metric | Best Use Case | Relative Speed | Typical Applications |
+|--------|---------------|----------------|---------------------|
+| **Cosine** | Text embeddings | Fast | Semantic search, NLP |
+| **Euclidean** | General similarity | Medium | Image similarity, clustering |
+| **Dot Product** | Normalized vectors | Fastest | Pre-normalized embeddings |
+| **Manhattan** | Sparse vectors | Slow | Feature vectors, histograms |
+
+### 9.4 Production Best Practices
+
+#### OpenAI Integration Pattern
+
+```rust
+use sqlitegraph::hnsw::{hnsw_config, DistanceMetric, HnswIndex};
+use serde_json::json;
+
+struct OpenAIEmbeddingStore {
+    hnsw: HnswIndex,
+}
+
+impl OpenAIEmbeddingStore {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let config = hnsw_config()
+            .dimension(1536)                     // OpenAI text-embedding-ada-002
+            .m_connections(24)                   // High connectivity for recall
+            .ef_construction(400)                // Quality-focused construction
+            .ef_search(100)                      // High-quality search
+            .distance_metric(DistanceMetric::Cosine)
+            .build()?;
+
+        let hnsw = HnswIndex::new(config)?;
+        Ok(Self { hnsw })
+    }
+
+    pub fn add_document(&mut self, content: &str, embedding: &[f32]) -> Result<u64, Box<dyn std::error::Error>> {
+        assert_eq!(embedding.len(), 1536, "Embedding must be 1536 dimensions");
+
+        let metadata = json!({
+            "content": content,
+            "model": "text-embedding-ada-002",
+            "dimensions": 1536,
+            "created_at": chrono::Utc::now().to_rfc3339()
+        });
+
+        self.hnsw.insert_vector(embedding, Some(metadata))
+    }
+
+    pub fn search_similar(&self, query_embedding: &[f32], k: usize) -> Result<Vec<(String, f32)>, Box<dyn std::error::Error>> {
+        assert_eq!(query_embedding.len(), 1536, "Query must be 1536 dimensions");
+
+        let results = self.hnsw.search(query_embedding, k)?;
+
+        let mut documents = Vec::new();
+        for (vector_id, distance) in results {
+            if let Some(record) = self.hnsw.get_vector(vector_id)? {
+                if let Some(content) = record.metadata.get("content").and_then(|v| v.as_str()) {
+                    documents.push((content.to_string(), distance));
+                }
+            }
+        }
+
+        Ok(documents)
+    }
+}
+```
+
+#### Memory Planning
+
+```rust
+// Estimate memory usage for different dimensions
+fn estimate_memory_usage(vector_count: usize, dimension: usize) -> usize {
+    // Vector data: 4 bytes per float32
+    let vector_bytes = vector_count * dimension * 4;
+
+    // HNSW overhead: ~2.6x vector size for 1536 dimensions
+    let overhead_multiplier = match dimension {
+        1536 => 2.6,
+        768 => 2.5,
+        512 => 2.4,
+        256 => 2.3,
+        _ => 2.5,
+    };
+
+    (vector_bytes as f64 * overhead_multiplier) as usize
+}
+
+// Examples:
+// 10K documents × 1536 dimensions ≈ 156MB total memory
+// 100K documents × 1536 dimensions ≈ 1.56GB total memory
+// 1M documents × 1536 dimensions ≈ 15.6GB total memory
+```
+
+#### Performance Optimization
+
+```rust
+// Development configuration (faster builds)
+let dev_config = hnsw_config()
+    .dimension(1536)
+    .m_connections(12)                        // Lower M for faster build
+    .ef_construction(150)                     // Faster construction
+    .ef_search(40)                            // Faster search
+    .distance_metric(DistanceMetric::Cosine)
+    .enable_multilayer(false)                 // Single-layer for simplicity
+    .build()?;
+
+// Production configuration (better quality)
+let prod_config = hnsw_config()
+    .dimension(1536)
+    .m_connections(24)                        // Higher M for better recall
+    .ef_construction(400)                     // Better index quality
+    .ef_search(100)                           // Higher search quality
+    .distance_metric(DistanceMetric::Cosine)
+    .enable_multilayer(true)                  // Enable for large datasets
+    .multilayer_deterministic_seed(Some(42))  // Reproducible results
+    .build()?;
+```
+
+### 9.5 Dimension Guidelines
+
+#### Recommended Dimensions by Use Case
+
+| Use Case | Recommended Dimension | Examples | Performance Impact |
+|----------|----------------------|----------|-------------------|
+| **Production Semantic Search** | **1536** | OpenAI text-embedding-ada-002 | 2-3x slower than 512-dim |
+| **High-Throughput Systems** | 512-768 | Custom embeddings, BERT | Balanced performance |
+| **Resource-Constrained** | 256-512 | Lightweight models | Fast performance |
+| **Development/Testing** | Any | Use production dimensions | Accurate testing |
+
+#### Multi-Model Support
+
+```rust
+// Support for multiple embedding models in the same application
+enum EmbeddingModel {
+    OpenAIAda002,      // 1536 dimensions
+    OpenAI3Small,      // 1536 dimensions
+    Custom768,         // 768 dimensions (BERT-style)
+    Custom256,         // 256 dimensions (efficiency-focused)
+}
+
+impl EmbeddingModel {
+    pub fn dimension(&self) -> usize {
+        match self {
+            EmbeddingModel::OpenAIAda002 => 1536,
+            EmbeddingModel::OpenAI3Small => 1536,
+            EmbeddingModel::Custom768 => 768,
+            EmbeddingModel::Custom256 => 256,
+        }
+    }
+
+    pub fn create_hnsw_config(&self) -> Result<sqlitegraph::hnsw::HnswConfig, sqlitegraph::hnsw::HnswConfigError> {
+        hnsw_config()
+            .dimension(self.dimension())
+            .m_connections(match self {
+                EmbeddingModel::OpenAIAda002 => 20,
+                EmbeddingModel::OpenAI3Small => 20,
+                EmbeddingModel::Custom768 => 16,
+                EmbeddingModel::Custom256 => 12,
+            })
+            .distance_metric(DistanceMetric::Cosine)
+            .build()
+    }
+}
+```
+
+### 9.6 Error Handling
+
+#### Common HNSW Errors
+
+```rust
+use sqlitegraph::hnsw::{HnswIndex, HnswConfigError};
+
+match HnswIndex::new(config) {
+    Ok(hnsw) => {
+        // Use the index
+    }
+    Err(HnswConfigError::InvalidDimension) => {
+        eprintln!("Dimension must be between 1 and 4096");
+    }
+    Err(HnswConfigError::InvalidMParameter) => {
+        eprintln!("M parameter must be > 0");
+    }
+    Err(HnswConfigError::InvalidEfConstruction) => {
+        eprintln!("ef_construction must be >= m");
+    }
+    Err(err) => eprintln!("Configuration error: {:?}", err),
+}
+```
+
+#### Vector Validation
+
+```rust
+fn validate_embedding(embedding: &[f32], expected_dim: usize) -> Result<(), String> {
+    if embedding.len() != expected_dim {
+        return Err(format!(
+            "Embedding dimension mismatch: expected {}, got {}",
+            expected_dim, embedding.len()
+        ));
+    }
+
+    // Check for NaN or infinite values
+    for (i, &val) in embedding.iter().enumerate() {
+        if !val.is_finite() {
+            return Err(format!("Invalid value at index {}: {}", i, val));
+        }
+    }
+
+    Ok(())
+}
+
+// Usage:
+let embedding = vec![0.1; 1536];
+validate_embedding(&embedding, 1536)?;
+hnsw.insert_vector(&embedding, Some(metadata))?;
+```
+
+### 9.7 Integration with Graph Operations
+
+#### Combining Vector Search with Graph Queries
+
+```rust
+use sqlitegraph::{SqliteGraph, GraphEntity};
+
+struct SemanticGraphSearch {
+    graph: SqliteGraph,
+    hnsw: HnswIndex,
+}
+
+impl SemanticGraphSearch {
+    pub fn hybrid_search(&self, query_embedding: &[f32], k: usize) -> Result<Vec<(GraphEntity, f32)>, Box<dyn std::error::Error>> {
+        // 1. Find similar vectors
+        let vector_results = self.hnsw.search(query_embedding, k)?;
+
+        let mut graph_results = Vec::new();
+        for (vector_id, distance) in vector_results {
+            // 2. Get graph entity associated with vector
+            if let Some(record) = self.hnsw.get_vector(vector_id)? {
+                if let Some(entity_id) = record.metadata.get("entity_id").and_then(|v| v.as_i64()) {
+                    // 3. Retrieve full graph entity
+                    if let Some(entity) = self.graph.get_entity(entity_id as u64)? {
+                        graph_results.push((entity, distance));
+                    }
+                }
+            }
+        }
+
+        Ok(graph_results)
+    }
+}
+```
+
+### 9.8 Benchmarking and Performance
+
+#### Running HNSW Benchmarks
+
+```bash
+# Run all HNSW benchmarks including 1536 dimensions
+cargo bench --bench hnsw
+
+# Run OpenAI-specific benchmarks
+cargo bench --bench hnsw -- --filter openai
+
+# Performance comparison across dimensions
+cargo bench --bench hnsw -- --filter insertion
+cargo bench --bench hnsw -- --filter search
+```
+
+#### Expected Performance Characteristics
+
+Based on comprehensive benchmarking (see `docs/V2_HNSW_BENCHMARK_PERFORMANCE_REPORT.md`):
+
+| Dimension | Insertion Rate | Search Latency | Memory Overhead |
+|-----------|----------------|----------------|-----------------|
+| **256** | ~70K vectors/sec | <1ms (k=10) | 2.3x vector size |
+| **512** | ~60K vectors/sec | <1.2ms (k=10) | 2.4x vector size |
+| **768** | ~55K vectors/sec | <1.4ms (k=10) | 2.5x vector size |
+| **1536** | ~45K vectors/sec | <2ms (k=10) | 2.6x vector size |
+
+### 9.9 Migration from Other Vector Databases
+
+#### From Pinecone
+
+```rust
+// Pinecone equivalent configuration
+let pinecone_equivalent = hnsw_config()
+    .dimension(1536)
+    .m_connections(16)      // Similar to Pinecone's default
+    .ef_construction(200)   // Similar to Pinecone's build config
+    .ef_search(50)         // Similar to Pinecone's search config
+    .distance_metric(DistanceMetric::Cosine)
+    .build()?;
+```
+
+#### From FAISS
+
+```rust
+// FAISS HNSW equivalent
+let faiss_equivalent = hnsw_config()
+    .dimension(1536)
+    .m_connections(32)      // FAISS default M
+    .ef_construction(40)   // FAISS default efConstruction
+    .ef_search(16)         // FAISS default efSearch
+    .distance_metric(DistanceMetric::Cosine)
+    .build()?;
+```
+
+---
+
+## 10. CLI Usage
 
 ### Available Commands
 

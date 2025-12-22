@@ -1,5 +1,5 @@
 //! Basic functionality test for SQLiteGraph library
-use sqlitegraph::{SqliteGraph, GraphEntity, GraphEdge};
+use sqlitegraph::{GraphEdge, GraphEntity, SqliteGraph};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Testing SQLiteGraph basic functionality...");
@@ -73,13 +73,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Verify graph structure
     let entity1 = graph.get_entity(node1)?;
     let entity2 = graph.get_entity(node2)?;
-    println!("✅ Retrieved entities: {} ({}) -> {} ({})",
-             entity1.name, entity1.kind, entity2.name, entity2.kind);
+    println!(
+        "✅ Retrieved entities: {} ({}) -> {} ({})",
+        entity1.name, entity1.kind, entity2.name, entity2.kind
+    );
 
     // Test edge retrieval
     let edge_retrieved = graph.get_edge(edge1)?;
-    println!("✅ Retrieved edge: {} ({} -> {})",
-             edge_retrieved.edge_type, edge_retrieved.from_id, edge_retrieved.to_id);
+    println!(
+        "✅ Retrieved edge: {} ({} -> {})",
+        edge_retrieved.edge_type, edge_retrieved.from_id, edge_retrieved.to_id
+    );
 
     println!("🎉 All basic operations work correctly!");
     println!("📊 Created graph with {} entities and {} edges", 3, 3);

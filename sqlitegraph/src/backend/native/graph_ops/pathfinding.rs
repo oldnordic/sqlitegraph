@@ -1,9 +1,9 @@
 //! Shortest path algorithms using BFS
 
+use crate::backend::native::NativeBackendError;
 use crate::backend::native::adjacency::AdjacencyHelpers;
 use crate::backend::native::graph_file::GraphFile;
 use crate::backend::native::types::*;
-use crate::backend::native::NativeBackendError;
 
 /// Native shortest path implementation using BFS
 pub fn native_shortest_path(

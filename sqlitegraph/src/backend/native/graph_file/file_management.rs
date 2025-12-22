@@ -4,15 +4,13 @@
 //! size validation, memory mapping management, and cleanup operations.
 
 use crate::backend::native::{
+    graph_file::buffers::ReadBuffer, graph_file::buffers::WriteBuffer,
     types::NativeResult,
-    types::NativeBackendError,
-    graph_file::buffers::ReadBuffer,
-    graph_file::buffers::WriteBuffer,
 };
 
 #[cfg(feature = "v2_experimental")]
 use memmap2::{MmapMut, MmapOptions};
-use std::io::{Write, Seek, SeekFrom};
+use std::io::{Seek, SeekFrom, Write};
 
 /// File management operations utilities for GraphFile
 pub struct FileManager;
@@ -36,10 +34,7 @@ impl FileManager {
     ///
     /// Increases the file size by the specified number of bytes using
     /// sparse file allocation when supported by the filesystem.
-    pub fn grow_file(
-        file: &mut std::fs::File,
-        additional_bytes: u64,
-    ) -> NativeResult<()> {
+    pub fn grow_file(file: &mut std::fs::File, additional_bytes: u64) -> NativeResult<()> {
         if additional_bytes == 0 {
             return Ok(());
         }
@@ -168,10 +163,12 @@ impl FileManager {
             let required_size = len.max(file_size);
 
             *mmap = unsafe {
-                Some(MmapOptions::new()
-                    .len(required_size as usize)
-                    .map_mut(&file.try_clone()?)?)
-                      };
+                Some(
+                    MmapOptions::new()
+                        .len(required_size as usize)
+                        .map_mut(&file.try_clone()?)?,
+                )
+            };
         }
 
         Ok(())
@@ -181,8 +178,8 @@ impl FileManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Seek, SeekFrom, Write};
     use tempfile::tempfile;
-    use std::io::{Write, Read, Seek, SeekFrom};
 
     #[test]
     fn test_grow_file() {

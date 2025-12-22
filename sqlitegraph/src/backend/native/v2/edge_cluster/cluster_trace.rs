@@ -4,7 +4,7 @@
 //! validation for cluster operations. It isolates debugging concerns from
 //! the core cluster logic.
 
-use crate::backend::native::{FileOffset};
+use crate::backend::native::FileOffset;
 use std::cell::{Cell, RefCell};
 use std::fmt::Write;
 
@@ -232,15 +232,8 @@ mod tests {
             strict: true,
         };
 
-        let reason = format_strict_reason(
-            Some(ctx),
-            "Test error",
-            5,
-            100,
-            200,
-            50,
-            b"\x01\x02\x03",
-        );
+        let reason =
+            format_strict_reason(Some(ctx), "Test error", 5, 100, 200, 50, b"\x01\x02\x03");
 
         assert!(reason.contains("Test error"));
         assert!(reason.contains("node_id=42"));
@@ -252,15 +245,7 @@ mod tests {
 
     #[test]
     fn test_format_strict_reason_without_context() {
-        let reason = format_strict_reason(
-            None,
-            "Test error",
-            3,
-            50,
-            150,
-            75,
-            b"\xFF\xEE",
-        );
+        let reason = format_strict_reason(None, "Test error", 3, 50, 150, 75, b"\xFF\xEE");
 
         assert!(reason.contains("Test error"));
         assert!(reason.contains("payload_size=150"));

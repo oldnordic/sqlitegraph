@@ -36,8 +36,10 @@ pub use types::{
 pub use adjacency::{AdjacencyHelpers, AdjacencyIterator, Direction};
 pub use edge_store::EdgeStore;
 pub use graph_backend::NativeGraphBackend;
-pub use graph_file::{GraphFile, decode_persistent_header, encode_persistent_header, get_slice_safe,
-                     DEFAULT_NODE_DATA_START, RESERVED_NODE_REGION_BYTES};
+pub use graph_file::{
+    DEFAULT_NODE_DATA_START, GraphFile, RESERVED_NODE_REGION_BYTES, decode_persistent_header,
+    encode_persistent_header, get_slice_safe,
+};
 pub use node_cache::NodeRecordCache;
 pub use node_store::{NodeStore, clear_node_cache};
 

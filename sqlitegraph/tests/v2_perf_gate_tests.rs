@@ -4,8 +4,8 @@
 //! These tests protect against performance regressions in V2 features
 //! including cluster management, multi-edge support, and compact storage.
 
-use std::path::PathBuf;
 use sqlitegraph::bench_gates::{self, BenchGateResult, BenchThreshold, set_bench_file_path};
+use std::path::PathBuf;
 
 /// V2 Node insertion performance gates
 /// Tests that V2's 250-byte node slot allocation performs within limits
@@ -204,14 +204,250 @@ fn v2_rollback_efficiency_gate() {
 /// Tests memory-mapped I/O efficiency
 #[test]
 fn v2_mmap_read_gate() {
-    // TODO: Add v2_mmap_read benchmark
-    // This will test mmap read performance
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_mmap_read_throughput",
+        BenchThreshold {
+            name: "v2_mmap_read_throughput".into(),
+            min_ops_per_sec: 80000.0, // Current: 100000.0, allow 20% degradation
+            max_ms: 0.0125,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
 }
 
 #[test]
 fn v2_mmap_write_gate() {
-    // TODO: Add v2_mmap_write benchmark
-    // This will test mmap write performance
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_mmap_write_throughput",
+        BenchThreshold {
+            name: "v2_mmap_write_throughput".into(),
+            min_ops_per_sec: 40000.0, // Current: 50000.0, allow 20% degradation
+            max_ms: 0.025,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+/// V2 Cluster management gates
+/// Tests cluster compaction efficiency
+#[test]
+fn v2_cluster_compaction_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_cluster_compaction",
+        BenchThreshold {
+            name: "v2_cluster_compaction".into(),
+            min_ops_per_sec: 400.0, // Current: 500.0, allow 20% degradation
+            max_ms: 2.5,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+/// V2 scaling gates for large datasets
+#[test]
+fn v2_insertion_mixed_graph_10000_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_insertion_mixed_graph_10000",
+        BenchThreshold {
+            name: "v2_insertion_mixed_graph_10000".into(),
+            min_ops_per_sec: 400.0, // Current: 600.0, allow 33% degradation at scale
+            max_ms: 2.5,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+/// V2 BFS scaling gates
+#[test]
+fn v2_bfs_depth_5_5000_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_bfs_depth_5_5000",
+        BenchThreshold {
+            name: "v2_bfs_depth_5_5000".into(),
+            min_ops_per_sec: 40.0, // Current: 50.0, allow 20% degradation at scale
+            max_ms: 25.0,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+#[test]
+fn v2_bfs_depth_10_1000_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_bfs_depth_10_1000",
+        BenchThreshold {
+            name: "v2_bfs_depth_10_1000".into(),
+            min_ops_per_sec: 40.0, // Current: 50.0, allow 20% degradation for depth
+            max_ms: 25.0,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+/// V2 K-hop traversal scaling gates
+#[test]
+fn v2_k_hop_outgoing_2_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_k_hop_outgoing_2",
+        BenchThreshold {
+            name: "v2_k_hop_outgoing_2".into(),
+            min_ops_per_sec: 800.0, // Current: 1000.0, allow 20% degradation
+            max_ms: 1.25,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+#[test]
+fn v2_k_hop_outgoing_4_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_k_hop_outgoing_4",
+        BenchThreshold {
+            name: "v2_k_hop_outgoing_4".into(),
+            min_ops_per_sec: 200.0, // Current: 250.0, allow 20% degradation
+            max_ms: 5.0,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+#[test]
+fn v2_k_hop_outgoing_5_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_k_hop_outgoing_5",
+        BenchThreshold {
+            name: "v2_k_hop_outgoing_5".into(),
+            min_ops_per_sec: 100.0, // Current: 125.0, allow 20% degradation
+            max_ms: 10.0,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+/// V2 Multi-edge scaling gates
+#[test]
+fn v2_multiedge_insert_factor_3_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_multiedge_insert_factor_3",
+        BenchThreshold {
+            name: "v2_multiedge_insert_factor_3".into(),
+            min_ops_per_sec: 265.0, // Current: 333.0, allow 20% degradation
+            max_ms: 3.75,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+#[test]
+fn v2_multiedge_insert_factor_10_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_multiedge_insert_factor_10",
+        BenchThreshold {
+            name: "v2_multiedge_insert_factor_10".into(),
+            min_ops_per_sec: 80.0, // Current: 100.0, allow 20% degradation
+            max_ms: 12.5,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+#[test]
+fn v2_multiedge_insert_factor_20_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_multiedge_insert_factor_20",
+        BenchThreshold {
+            name: "v2_multiedge_insert_factor_20".into(),
+            min_ops_per_sec: 40.0, // Current: 50.0, allow 20% degradation
+            max_ms: 25.0,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+/// V2 Multi-edge deduplication scaling gates
+#[test]
+fn v2_multiedge_neighbors_dedup_3_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_multiedge_neighbors_dedup_3",
+        BenchThreshold {
+            name: "v2_multiedge_neighbors_dedup_3".into(),
+            min_ops_per_sec: 12000.0, // Current: 15000.0, allow 20% degradation
+            max_ms: 0.083,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+#[test]
+fn v2_multiedge_neighbors_dedup_10_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_multiedge_neighbors_dedup_10",
+        BenchThreshold {
+            name: "v2_multiedge_neighbors_dedup_10".into(),
+            min_ops_per_sec: 3200.0, // Current: 4000.0, allow 20% degradation
+            max_ms: 0.3125,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+/// V2 File growth efficiency gates for different graph types
+#[test]
+fn v2_file_growth_sparse_5000_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_file_growth_sparse_5000",
+        BenchThreshold {
+            name: "v2_file_growth_sparse_5000".into(),
+            min_ops_per_sec: 60.0, // Current: 75.0, allow 20% degradation at scale
+            max_ms: 16.67,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
+}
+
+#[test]
+fn v2_file_growth_multiedge_1000_gate() {
+    set_bench_file_path(baseline_path());
+    let result = bench_gates::check_thresholds(
+        "v2_file_growth_multiedge_1000",
+        BenchThreshold {
+            name: "v2_file_growth_multiedge_1000".into(),
+            min_ops_per_sec: 60.0, // Current: 75.0, allow 20% degradation
+            max_ms: 16.67,
+        },
+    )
+    .expect("gate");
+    assert_eq!(result, BenchGateResult::Pass);
 }
 
 /// V2 Compact serialization gates

@@ -22,10 +22,10 @@ pub enum MemoryIOMode {
     /// Standard I/O with adaptive buffering
     Standard,
     /// Memory-mapped I/O
-    #[cfg(feature = "v2")]
+    #[cfg(feature = "native-v2")]
     MemoryMapped,
     /// Standard I/O without buffering (exclusive mode)
-    #[cfg(feature = "v2")]
+    #[cfg(feature = "native-v2")]
     ExclusiveStd,
 }
 

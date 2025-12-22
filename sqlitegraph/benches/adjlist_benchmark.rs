@@ -1,10 +1,10 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::time::Duration;
-use rand::{Rng, SeedableRng};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
+use std::time::Duration;
 
 const DATASET_SIZES: &[usize] = &[100, 1000, 10000];
 const EDGE_MULTIPLIERS: &[f64] = &[2.0, 2.0, 2.0];
@@ -93,12 +93,20 @@ impl SimpleAdjList {
 
     fn memory_usage(&self) -> usize {
         use std::mem;
-        mem::size_of::<Self>() +
-        self.nodes.capacity() * mem::size_of::<u64>() +
-        self.outgoing.capacity() * mem::size_of::<(u64, Vec<u64>)>() +
-        self.incoming.capacity() * mem::size_of::<(u64, Vec<u64>)>() +
-        self.outgoing.values().map(|v| v.capacity() * mem::size_of::<u64>()).sum::<usize>() +
-        self.incoming.values().map(|v| v.capacity() * mem::size_of::<u64>()).sum::<usize>()
+        mem::size_of::<Self>()
+            + self.nodes.capacity() * mem::size_of::<u64>()
+            + self.outgoing.capacity() * mem::size_of::<(u64, Vec<u64>)>()
+            + self.incoming.capacity() * mem::size_of::<(u64, Vec<u64>)>()
+            + self
+                .outgoing
+                .values()
+                .map(|v| v.capacity() * mem::size_of::<u64>())
+                .sum::<usize>()
+            + self
+                .incoming
+                .values()
+                .map(|v| v.capacity() * mem::size_of::<u64>())
+                .sum::<usize>()
     }
 }
 
@@ -138,7 +146,8 @@ fn benchmark_adjlist_creation(c: &mut Criterion) {
     group.sample_size(100);
 
     for &num_nodes in DATASET_SIZES {
-        let edge_multiplier = EDGE_MULTIPLIERS[DATASET_SIZES.iter().position(|&n| n == num_nodes).unwrap()];
+        let edge_multiplier =
+            EDGE_MULTIPLIERS[DATASET_SIZES.iter().position(|&n| n == num_nodes).unwrap()];
 
         group.throughput(Throughput::Elements(num_nodes as u64));
 
@@ -175,7 +184,8 @@ fn benchmark_adjlist_queries(c: &mut Criterion) {
     group.sample_size(1000);
 
     for &num_nodes in DATASET_SIZES {
-        let edge_multiplier = EDGE_MULTIPLIERS[DATASET_SIZES.iter().position(|&n| n == num_nodes).unwrap()];
+        let edge_multiplier =
+            EDGE_MULTIPLIERS[DATASET_SIZES.iter().position(|&n| n == num_nodes).unwrap()];
 
         // Pre-build graph
         let mut graph = SimpleAdjList::new();
@@ -260,7 +270,8 @@ fn benchmark_adjlist_memory(c: &mut Criterion) {
     let mut group = c.benchmark_group("adjlist_memory");
 
     for &num_nodes in DATASET_SIZES {
-        let edge_multiplier = EDGE_MULTIPLIERS[DATASET_SIZES.iter().position(|&n| n == num_nodes).unwrap()];
+        let edge_multiplier =
+            EDGE_MULTIPLIERS[DATASET_SIZES.iter().position(|&n| n == num_nodes).unwrap()];
 
         group.bench_with_input(
             BenchmarkId::new("memory_usage", num_nodes),

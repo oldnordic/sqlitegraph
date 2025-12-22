@@ -4,7 +4,7 @@
 //! bytes, deserialization from bytes, and format validation.
 
 use crate::backend::native::constants::edge;
-use crate::backend::native::types::{NativeResult, EdgeRecord, NativeEdgeId, NativeBackendError};
+use crate::backend::native::types::{EdgeRecord, NativeBackendError, NativeEdgeId, NativeResult};
 
 /// Edge record serialization utilities
 pub struct EdgeSerializer;
@@ -93,7 +93,11 @@ impl EdgeSerializer {
     /// - `BufferTooSmall` if buffer doesn't contain complete header
     /// - `CorruptEdgeRecord` if format is invalid or ID doesn't match
     /// - `JsonError` if data deserialization fails
-    pub fn deserialize_edge(&self, edge_id: NativeEdgeId, buffer: &[u8]) -> NativeResult<EdgeRecord> {
+    pub fn deserialize_edge(
+        &self,
+        edge_id: NativeEdgeId,
+        buffer: &[u8],
+    ) -> NativeResult<EdgeRecord> {
         if buffer.len() < edge::FIXED_HEADER_SIZE {
             return Err(NativeBackendError::BufferTooSmall {
                 size: buffer.len(),
@@ -108,14 +112,23 @@ impl EdgeSerializer {
 
         // Read edge flags
         let flags_bytes = &buffer[offset..offset + 2];
-        let flags = crate::backend::native::types::EdgeFlags(u16::from_be_bytes([flags_bytes[0], flags_bytes[1]]));
+        let flags = crate::backend::native::types::EdgeFlags(u16::from_be_bytes([
+            flags_bytes[0],
+            flags_bytes[1],
+        ]));
         offset += 2;
 
         // Read edge ID and validate
         let id_bytes = &buffer[offset..offset + edge::ID_SIZE];
         let id = i64::from_be_bytes([
-            id_bytes[0], id_bytes[1], id_bytes[2], id_bytes[3],
-            id_bytes[4], id_bytes[5], id_bytes[6], id_bytes[7],
+            id_bytes[0],
+            id_bytes[1],
+            id_bytes[2],
+            id_bytes[3],
+            id_bytes[4],
+            id_bytes[5],
+            id_bytes[6],
+            id_bytes[7],
         ]);
         offset += edge::ID_SIZE;
 
@@ -129,16 +142,28 @@ impl EdgeSerializer {
         // Read from node ID
         let from_bytes = &buffer[offset..offset + edge::FROM_ID_SIZE];
         let from_id = i64::from_be_bytes([
-            from_bytes[0], from_bytes[1], from_bytes[2], from_bytes[3],
-            from_bytes[4], from_bytes[5], from_bytes[6], from_bytes[7],
+            from_bytes[0],
+            from_bytes[1],
+            from_bytes[2],
+            from_bytes[3],
+            from_bytes[4],
+            from_bytes[5],
+            from_bytes[6],
+            from_bytes[7],
         ]);
         offset += edge::FROM_ID_SIZE;
 
         // Read to node ID
         let to_bytes = &buffer[offset..offset + edge::TO_ID_SIZE];
         let to_id = i64::from_be_bytes([
-            to_bytes[0], to_bytes[1], to_bytes[2], to_bytes[3],
-            to_bytes[4], to_bytes[5], to_bytes[6], to_bytes[7],
+            to_bytes[0],
+            to_bytes[1],
+            to_bytes[2],
+            to_bytes[3],
+            to_bytes[4],
+            to_bytes[5],
+            to_bytes[6],
+            to_bytes[7],
         ]);
         offset += edge::TO_ID_SIZE;
 
@@ -150,7 +175,10 @@ impl EdgeSerializer {
         // Read data length
         let data_len_bytes = &buffer[offset..offset + 4];
         let data_len = u32::from_be_bytes([
-            data_len_bytes[0], data_len_bytes[1], data_len_bytes[2], data_len_bytes[3],
+            data_len_bytes[0],
+            data_len_bytes[1],
+            data_len_bytes[2],
+            data_len_bytes[3],
         ]) as usize;
         offset += 4;
 

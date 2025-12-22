@@ -5,12 +5,12 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::backend::native::edge_store::record_operations::EdgeRecordOperations;
-    use crate::backend::native::edge_store::record_operations::validation::EdgeValidator;
-    use crate::backend::native::edge_store::record_operations::serialization::EdgeSerializer;
     use crate::backend::native::constants::edge;
-    use crate::backend::native::types::{EdgeRecord, EdgeFlags};
+    use crate::backend::native::edge_store::record_operations::EdgeRecordOperations;
+    use crate::backend::native::edge_store::record_operations::serialization::EdgeSerializer;
+    use crate::backend::native::edge_store::record_operations::validation::EdgeValidator;
     use crate::backend::native::graph_file::GraphFile;
+    use crate::backend::native::types::{EdgeFlags, EdgeRecord};
     use tempfile::NamedTempFile;
 
     fn create_test_graph_file() -> (GraphFile, NamedTempFile) {
@@ -36,7 +36,11 @@ mod tests {
         }
     }
 
-    fn create_test_edge_with_id(id: crate::backend::native::types::NativeEdgeId, from_id: i64, to_id: i64) -> EdgeRecord {
+    fn create_test_edge_with_id(
+        id: crate::backend::native::types::NativeEdgeId,
+        from_id: i64,
+        to_id: i64,
+    ) -> EdgeRecord {
         EdgeRecord {
             id,
             from_id,
@@ -180,7 +184,10 @@ mod tests {
         // Test serialization works with null data using EdgeSerializer directly
         let serializer = EdgeSerializer::new();
         let serialized = serializer.serialize_edge(&edge).unwrap();
-        assert!(!serialized.is_empty(), "Serialization should not be empty even with null data");
+        assert!(
+            !serialized.is_empty(),
+            "Serialization should not be empty even with null data"
+        );
 
         // Test full edge write/read roundtrip with null data
         operations.write_edge(&edge).unwrap();
@@ -258,9 +265,15 @@ mod tests {
             };
 
             let result = validator.validate_edge_fields(&edge);
-            assert_eq!(result.is_ok(), should_be_valid,
+            assert_eq!(
+                result.is_ok(),
+                should_be_valid,
                 "Validation failed for edge: id={}, from={}, to={}, type={}",
-                id, from_id, to_id, edge_type);
+                id,
+                from_id,
+                to_id,
+                edge_type
+            );
         }
     }
 }

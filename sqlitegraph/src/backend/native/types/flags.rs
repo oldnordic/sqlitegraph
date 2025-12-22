@@ -29,6 +29,9 @@ impl NodeFlags {
 
     /// No flags set
     pub const NONE: Self = Self(0);
+
+    /// Node is deleted
+    pub const DELETED: Self = Self(1);
 }
 
 impl fmt::LowerHex for NodeFlags {
@@ -38,7 +41,7 @@ impl fmt::LowerHex for NodeFlags {
 }
 
 /// Edge flags bitfield for marking edge state
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct EdgeFlags(pub u16);
 
 impl EdgeFlags {

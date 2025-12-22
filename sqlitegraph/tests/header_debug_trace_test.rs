@@ -1,8 +1,8 @@
 //! Debug test to trace exactly what happens during header decode with 80 bytes
 
+use sqlitegraph::backend::native::constants::HEADER_SIZE;
 use sqlitegraph::backend::native::decode_persistent_header;
 use sqlitegraph::backend::native::persistent_header::PERSISTENT_HEADER_SIZE;
-use sqlitegraph::backend::native::constants::HEADER_SIZE;
 
 #[test]
 fn test_debug_trace_decode_80_bytes() {
@@ -13,8 +13,8 @@ fn test_debug_trace_decode_80_bytes() {
     let mut header_data = vec![0u8; PERSISTENT_HEADER_SIZE];
 
     // Set some basic valid data to get past the initial checks
-    header_data[0..8].copy_from_slice(b"SQLTGRPH");  // magic
-    header_data[8..12].copy_from_slice(&2u32.to_be_bytes());  // version
+    header_data[0..8].copy_from_slice(b"SQLTGRPH"); // magic
+    header_data[8..12].copy_from_slice(&2u32.to_be_bytes()); // version
 
     println!("Created header buffer of {} bytes", header_data.len());
     println!("First 16 bytes: {:02x?}", &header_data[..16]);
@@ -53,12 +53,24 @@ fn test_debug_trace_decode_80_bytes() {
     // At this point, offset should be 56, and we're about to read outgoing_cluster_offset
     println!("About to read outgoing_cluster_offset at offset {}", offset);
     println!("bytes[{}..{}] would be accessed", offset, offset + 8);
-    println!("bytes[{} + 7] = bytes[{}] would be accessed", offset, offset + 7);
+    println!(
+        "bytes[{} + 7] = bytes[{}] would be accessed",
+        offset,
+        offset + 7
+    );
 
     if offset + 8 >= header_data.len() {
-        println!("WARNING: offset + 8 ({}) >= header_data.len() ({})", offset + 8, header_data.len());
+        println!(
+            "WARNING: offset + 8 ({}) >= header_data.len() ({})",
+            offset + 8,
+            header_data.len()
+        );
     } else {
-        println!("OK: offset + 8 ({}) < header_data.len() ({})", offset + 8, header_data.len());
+        println!(
+            "OK: offset + 8 ({}) < header_data.len() ({})",
+            offset + 8,
+            header_data.len()
+        );
     }
 
     // Continue tracing...
@@ -68,12 +80,24 @@ fn test_debug_trace_decode_80_bytes() {
     // Now offset should be 64, and we're about to read incoming_cluster_offset
     println!("About to read incoming_cluster_offset at offset {}", offset);
     println!("bytes[{}..{}] would be accessed", offset, offset + 8);
-    println!("bytes[{} + 7] = bytes[{}] would be accessed", offset, offset + 7);
+    println!(
+        "bytes[{} + 7] = bytes[{}] would be accessed",
+        offset,
+        offset + 7
+    );
 
     if offset + 8 >= header_data.len() {
-        println!("WARNING: offset + 8 ({}) >= header_data.len() ({})", offset + 8, header_data.len());
+        println!(
+            "WARNING: offset + 8 ({}) >= header_data.len() ({})",
+            offset + 8,
+            header_data.len()
+        );
     } else {
-        println!("OK: offset + 8 ({}) < header_data.len() ({})", offset + 8, header_data.len());
+        println!(
+            "OK: offset + 8 ({}) < header_data.len() ({})",
+            offset + 8,
+            header_data.len()
+        );
     }
 
     // Continue tracing...
@@ -83,19 +107,35 @@ fn test_debug_trace_decode_80_bytes() {
     // Now offset should be 72, and we're about to read free_space_offset
     println!("About to read free_space_offset at offset {}", offset);
     println!("bytes[{}..{}] would be accessed", offset, offset + 8);
-    println!("bytes[{} + 7] = bytes[{}] would be accessed", offset, offset + 7);
+    println!(
+        "bytes[{} + 7] = bytes[{}] would be accessed",
+        offset,
+        offset + 7
+    );
 
     if offset + 8 >= header_data.len() {
-        println!("WARNING: offset + 8 ({}) >= header_data.len() ({})", offset + 8, header_data.len());
+        println!(
+            "WARNING: offset + 8 ({}) >= header_data.len() ({})",
+            offset + 8,
+            header_data.len()
+        );
     } else {
-        println!("OK: offset + 8 ({}) < header_data.len() ({})", offset + 8, header_data.len());
+        println!(
+            "OK: offset + 8 ({}) < header_data.len() ({})",
+            offset + 8,
+            header_data.len()
+        );
     }
 
     // Continue tracing...
     offset += 8; // free_space_offset
     println!("After free_space_offset: offset = {}", offset);
 
-    println!("Final offset = {}, header_data.len() = {}", offset, header_data.len());
+    println!(
+        "Final offset = {}, header_data.len() = {}",
+        offset,
+        header_data.len()
+    );
 
     // Now try the actual decode
     println!("\n--- ACTUAL DECODE ATTEMPT ---");
@@ -104,8 +144,10 @@ fn test_debug_trace_decode_80_bytes() {
     match result {
         Ok(header) => {
             println!("SUCCESS: Header decoded successfully");
-            println!("Header: magic={:?}, version={}, schema_version={}",
-                    &header.magic, header.version, header.schema_version);
+            println!(
+                "Header: magic={:?}, version={}, schema_version={}",
+                &header.magic, header.version, header.schema_version
+            );
         }
         Err(e) => {
             println!("ERROR: Header decode failed: {:?}", e);

@@ -4,12 +4,10 @@
 //! It handles complex transaction workflows, rollback procedures, and file management coordination.
 
 use crate::backend::native::{
-    transaction_state::TransactionState,
     persistent_header::PersistentHeaderV2,
-    types::{NativeResult, NativeNodeId, NativeBackendError},
+    transaction_state::TransactionState,
+    types::{NativeBackendError, NativeNodeId, NativeResult},
 };
-
-use std::path::Path;
 
 /// Graph file coordinator for high-level workflow management and coordination
 pub struct GraphFileCoordinator<'a> {
@@ -164,7 +162,7 @@ impl<'a> GraphFileCoordinator<'a> {
         &self,
         current_size: u64,
         final_rollback_size: u64,
-        intended_rollback_size: u64,
+        _intended_rollback_size: u64,
         truncate_file_fn: F,
     ) -> NativeResult<()>
     where
@@ -189,9 +187,7 @@ impl<'a> GraphFileCoordinator<'a> {
         }
         truncate_file_fn(final_rollback_size)?;
         if std::env::var("TRUNC_AUDIT").is_ok() {
-            println!(
-                "[TRUNC_AUDIT] AFTER_TRUNCATE: set_len completed",
-            );
+            println!("[TRUNC_AUDIT] AFTER_TRUNCATE: set_len completed",);
         }
 
         Ok(())
@@ -299,8 +295,7 @@ impl Default for PostTransactionValidationOptions {
 mod tests {
     use super::*;
     use crate::backend::native::{
-        persistent_header::PersistentHeaderV2,
-        transaction_state::TransactionState,
+        persistent_header::PersistentHeaderV2, transaction_state::TransactionState,
     };
 
     #[test]

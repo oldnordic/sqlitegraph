@@ -1,9 +1,9 @@
 //! Helper functions for adjacency operations
 
+use super::AdjacencyIterator;
 use crate::backend::native::graph_file::GraphFile;
 use crate::backend::native::node_store::NodeStore;
 use crate::backend::native::types::*;
-use super::AdjacencyIterator;
 
 /// Helper functions for adjacency operations
 pub struct AdjacencyHelpers;

@@ -76,6 +76,21 @@ impl CompactEdgeRecord {
         8 + 2 + 2 + self.edge_data.len()
     }
 
+    /// Alias for size_bytes() to maintain compatibility.
+    pub fn serialized_size(&self) -> usize {
+        self.size_bytes()
+    }
+
+    /// Estimated size in bytes for WAL record estimation.
+    pub fn estimated_size(&self) -> usize {
+        self.size_bytes()
+    }
+
+    /// Get serialized bytes for this record.
+    pub fn as_bytes(&self) -> Vec<u8> {
+        self.serialize()
+    }
+
     /// Create compact record directly from EdgeRecord without data loss.
     /// This is the new pipeline method that preserves original edge_type and edge_data.
     pub fn from_edge_record(

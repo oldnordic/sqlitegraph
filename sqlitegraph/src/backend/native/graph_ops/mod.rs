@@ -22,25 +22,23 @@
 //! - `chain_queries.rs`: Chain traversal and pattern matching
 //! - `tests.rs`: Comprehensive test suite
 
-use super::cpu_tuning::resolve_cpu_profile;
 use super::graph_file::GraphFile;
 use super::types::CpuProfile;
 use super::types::*;
-use crate::backend::{BackendDirection, ChainStep, PatternMatch, PatternQuery};
 
 // Module declarations
-mod strategy;
 mod bfs_implementations;
-mod pathfinding;
-mod k_hop;
 mod chain_queries;
+mod k_hop;
+mod pathfinding;
+mod strategy;
 
 // Re-export all public functionality
-pub use strategy::*;
 pub use bfs_implementations::*;
-pub use pathfinding::*;
-pub use k_hop::*;
 pub use chain_queries::*;
+pub use k_hop::*;
+pub use pathfinding::*;
+pub use strategy::*;
 
 /// Native BFS implementation using adjacency helpers
 pub fn native_bfs(

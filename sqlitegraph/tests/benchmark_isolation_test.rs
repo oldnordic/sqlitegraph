@@ -96,7 +96,7 @@ fn test_direct_corruption_reproduction() {
         Ok(node) => {
             println!("Node 257 accessible after node creation: {}", node.name);
             assert_eq!(node.name, "node_257");
-        },
+        }
         Err(e) => panic!("Failed to read node 257: {}", e),
     }
 

@@ -4,14 +4,12 @@
 //! buffer management, and file size operations for GraphFile instances.
 
 use crate::backend::native::{
-    types::NativeResult,
-    types::NativeBackendError,
-    graph_file::buffers::WriteBuffer,
+    graph_file::buffers::WriteBuffer, types::NativeResult,
 };
 
 #[cfg(feature = "v2_experimental")]
 use memmap2::{MmapMut, MmapOptions};
-use std::io::{Read, Write, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 
 /// I/O operations management utilities for GraphFile
 pub struct IOOperationsManager;
@@ -35,11 +33,7 @@ impl IOOperationsManager {
     ///
     /// Provides basic byte-level writing with proper error handling
     /// and position management.
-    pub fn write_bytes_std(
-        file: &mut std::fs::File,
-        offset: u64,
-        data: &[u8],
-    ) -> NativeResult<()> {
+    pub fn write_bytes_std(file: &mut std::fs::File, offset: u64, data: &[u8]) -> NativeResult<()> {
         file.seek(SeekFrom::Start(offset))?;
         file.write_all(data)?;
         Ok(())
@@ -107,7 +101,7 @@ impl IOOperationsManager {
     /// Clears any cached read data to ensure fresh reads
     /// from disk for subsequent operations.
     pub fn invalidate_read_buffer(
-        read_buffer: &mut crate::backend::native::graph_file::buffers::ReadBuffer,
+        _read_buffer: &mut crate::backend::native::graph_file::buffers::ReadBuffer,
     ) {
         // Implementation depends on ReadBuffer structure
         // This is a placeholder for the actual buffer invalidation logic
@@ -303,7 +297,6 @@ impl IOOperationsManager {
         offset: u64,
         length: u64,
     ) -> NativeResult<()> {
-        use std::io::{Seek, SeekFrom};
         let required_size = offset + length;
         graph_file.ensure_file_len_at_least(required_size)
     }
@@ -312,8 +305,8 @@ impl IOOperationsManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Seek, SeekFrom, Write};
     use tempfile::tempfile;
-    use std::io::{Write, Read, Seek, SeekFrom};
 
     #[test]
     fn test_read_write_bytes_std() {
@@ -384,7 +377,8 @@ mod tests {
         write_buffer.add(110, b"data2".to_vec());
 
         // Flush buffer
-        let bytes_written = IOOperationsManager::flush_write_buffer(&mut temp_file, &mut write_buffer).unwrap();
+        let bytes_written =
+            IOOperationsManager::flush_write_buffer(&mut temp_file, &mut write_buffer).unwrap();
 
         assert_eq!(bytes_written, 10); // 5 + 5
         assert!(write_buffer.operations.is_empty());
@@ -398,11 +392,23 @@ mod tests {
 
         // Write using exclusive std mode
         let test_data = b"Exclusive std mode test";
-        IOOperationsManager::write_bytes_std_exclusive(&mut temp_file, 0, test_data, &mut write_buffer).unwrap();
+        IOOperationsManager::write_bytes_std_exclusive(
+            &mut temp_file,
+            0,
+            test_data,
+            &mut write_buffer,
+        )
+        .unwrap();
 
         // Read using exclusive std mode
         let mut buffer = vec![0u8; test_data.len()];
-        IOOperationsManager::read_bytes_std_exclusive(&mut temp_file, 0, &mut buffer, &mut write_buffer).unwrap();
+        IOOperationsManager::read_bytes_std_exclusive(
+            &mut temp_file,
+            0,
+            &mut buffer,
+            &mut write_buffer,
+        )
+        .unwrap();
 
         assert_eq!(buffer, test_data);
     }

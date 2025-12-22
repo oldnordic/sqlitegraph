@@ -1,9 +1,9 @@
 //! K-hop neighbor exploration operations
 
+use crate::backend::native::NativeBackendError;
 use crate::backend::native::adjacency::{AdjacencyHelpers, Direction};
 use crate::backend::native::graph_file::GraphFile;
 use crate::backend::native::types::*;
-use crate::backend::native::NativeBackendError;
 
 /// Native k-hop implementation
 pub fn native_k_hop(

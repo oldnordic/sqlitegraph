@@ -4,14 +4,13 @@ use crate::backend::native::graph_file::GraphFile;
 use crate::backend::native::node_store::NodeStore;
 use crate::backend::native::optimizations::*;
 use crate::backend::native::types::*;
-use crate::backend::native::v2::node_record_v2::NodeRecordV2Ext;
 
 use super::Direction;
 
 // Import instrumentation when in debug mode
 #[cfg(debug_assertions)]
 use super::instrumentation::convenience::{
-    track_iteration, start_timing, get_metrics, validate_state
+    get_metrics, start_timing, track_iteration, validate_state,
 };
 
 #[cfg(debug_assertions)]
@@ -164,7 +163,10 @@ impl<'a> AdjacencyIterator<'a> {
         #[cfg(debug_assertions)]
         {
             if !track_iteration(self.node_id as u32) {
-                error!("Stopping iteration due to infinite loop detection for node {}", self.node_id);
+                error!(
+                    "Stopping iteration due to infinite loop detection for node {}",
+                    self.node_id
+                );
                 return Ok(None);
             }
         }
@@ -195,7 +197,10 @@ impl<'a> AdjacencyIterator<'a> {
                 // The cached_clustered_neighbors should now be Some(Vec::new()) with total_count = 0
                 #[cfg(debug_assertions)]
                 {
-                    println!("DEBUG: V2 cluster initialization failed and cached for node {}", self.node_id);
+                    println!(
+                        "DEBUG: V2 cluster initialization failed and cached for node {}",
+                        self.node_id
+                    );
                 }
             }
         }
@@ -231,7 +236,6 @@ impl<'a> AdjacencyIterator<'a> {
         Ok(None)
     }
 
-
     /// Collect all neighbors into a vector
     pub fn collect(mut self) -> NativeResult<Vec<NativeNodeId>> {
         #[cfg(debug_assertions)]
@@ -256,8 +260,10 @@ impl<'a> AdjacencyIterator<'a> {
                 None => {
                     // Inconsistency detected - force termination
                     #[cfg(debug_assertions)]
-                    eprintln!("DEBUG: Terminating iteration early - no neighbor found at index {} for node {} (total_count: {})",
-                                     self.current_index, self.node_id, self.total_count);
+                    eprintln!(
+                        "DEBUG: Terminating iteration early - no neighbor found at index {} for node {} (total_count: {})",
+                        self.current_index, self.node_id, self.total_count
+                    );
                     break;
                 }
             }

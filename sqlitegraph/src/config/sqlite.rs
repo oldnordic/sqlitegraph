@@ -33,20 +33,24 @@ impl SqliteConfig {
 
     /// Add a PRAGMA setting (builder pattern)
     pub fn with_pragma(mut self, key: &str, value: &str) -> Self {
-        self.pragma_settings.insert(key.to_string(), value.to_string());
+        self.pragma_settings
+            .insert(key.to_string(), value.to_string());
         self
     }
 
     /// Configure for WAL mode (builder pattern convenience method)
     pub fn with_wal_mode(mut self) -> Self {
-        self.pragma_settings.insert("journal_mode".to_string(), "WAL".to_string());
+        self.pragma_settings
+            .insert("journal_mode".to_string(), "WAL".to_string());
         self
     }
 
     /// Configure for better performance with some safety trade-offs
     pub fn with_performance_mode(mut self) -> Self {
-        self.pragma_settings.insert("journal_mode".to_string(), "WAL".to_string());
-        self.pragma_settings.insert("synchronous".to_string(), "NORMAL".to_string());
+        self.pragma_settings
+            .insert("journal_mode".to_string(), "WAL".to_string());
+        self.pragma_settings
+            .insert("synchronous".to_string(), "NORMAL".to_string());
         self
     }
 }

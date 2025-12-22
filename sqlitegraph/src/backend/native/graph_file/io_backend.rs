@@ -4,10 +4,8 @@
 //! handling different I/O modes (standard vs mmap) and exclusive access patterns.
 
 use crate::backend::native::{
+    graph_file::buffers::WriteBuffer, graph_file::file_ops::IOMode,
     types::NativeResult,
-    types::NativeBackendError,
-    graph_file::buffers::WriteBuffer,
-    graph_file::file_ops::IOMode,
 };
 
 #[cfg(feature = "v2_experimental")]
@@ -23,6 +21,7 @@ impl IOBackendManager {
     /// - Exclusive MMAP mode: Direct memory-mapped reads
     /// - Exclusive STD mode: Standard file I/O with buffer management
     /// - Default mode: Standard file I/O
+    #[allow(unused_variables)]  // Allow warnings for feature-conditional parameters
     pub fn route_read_bytes(
         file: &mut std::fs::File,
         buffer: &mut [u8],
@@ -55,6 +54,7 @@ impl IOBackendManager {
     /// - Exclusive MMAP mode: Direct memory-mapped writes
     /// - Exclusive STD mode: Standard file I/O with buffer management
     /// - Default mode: Standard file I/O
+    #[allow(unused_variables)]  // Allow warnings for feature-conditional parameters
     pub fn route_write_bytes(
         file: &mut std::fs::File,
         data: &[u8],
@@ -85,6 +85,7 @@ impl IOBackendManager {
     ///
     /// Handles buffered write operations with proper backend routing
     /// for different I/O modes and exclusive access patterns.
+    #[allow(unused_variables)]  // Allow warnings for feature-conditional parameters
     pub fn route_buffered_write_bytes(
         file: &mut std::fs::File,
         data: &[u8],
@@ -144,11 +145,10 @@ impl IOBackendManager {
         buffer: &mut [u8],
         offset: u64,
     ) -> NativeResult<()> {
-        let mmap = mmap
-            .ok_or(NativeBackendError::CorruptNodeRecord {
-                node_id: -1,
-                reason: "mmap not initialized in exclusive mmap mode".to_string(),
-            })?;
+        let mmap = mmap.ok_or(NativeBackendError::CorruptNodeRecord {
+            node_id: -1,
+            reason: "mmap not initialized in exclusive mmap mode".to_string(),
+        })?;
 
         if offset as usize + buffer.len() > mmap.len() {
             return Err(NativeBackendError::CorruptNodeRecord {
@@ -219,11 +219,10 @@ impl IOBackendManager {
 
         // Ensure mmap covers the write region
         // Note: In a real implementation, you'd need to handle mmap resizing here
-        let mmap = mmap
-            .ok_or(NativeBackendError::CorruptNodeRecord {
-                node_id: -1,
-                reason: "mmap not initialized in exclusive mmap mode".to_string(),
-            })?;
+        let mmap = mmap.ok_or(NativeBackendError::CorruptNodeRecord {
+            node_id: -1,
+            reason: "mmap not initialized in exclusive mmap mode".to_string(),
+        })?;
 
         if offset as usize + data.len() > mmap.len() {
             return Err(NativeBackendError::CorruptNodeRecord {
@@ -250,7 +249,7 @@ impl IOBackendManager {
         offset: u64,
         write_buffer: &mut WriteBuffer,
     ) -> NativeResult<()> {
-        use std::io::{Write, Seek, SeekFrom};
+        use std::io::{Seek, SeekFrom, Write};
 
         // Clear pending write buffer operations before writing
         if !write_buffer.operations.is_empty() {
@@ -270,12 +269,8 @@ impl IOBackendManager {
     }
 
     /// Write bytes using standard file I/O
-    fn write_bytes_std(
-        file: &mut std::fs::File,
-        data: &[u8],
-        offset: u64,
-    ) -> NativeResult<()> {
-        use std::io::{Write, Seek, SeekFrom};
+    fn write_bytes_std(file: &mut std::fs::File, data: &[u8], offset: u64) -> NativeResult<()> {
+        use std::io::{Seek, SeekFrom, Write};
 
         file.seek(SeekFrom::Start(offset))?;
         file.write_all(data)?;
@@ -292,11 +287,10 @@ impl IOBackendManager {
     ) -> NativeResult<()> {
         // Ensure mmap covers the write region
         // Note: In a real implementation, you'd need to handle mmap resizing here
-        let mmap = mmap
-            .ok_or(NativeBackendError::CorruptNodeRecord {
-                node_id: -1,
-                reason: "mmap not initialized in exclusive mmap mode".to_string(),
-            })?;
+        let mmap = mmap.ok_or(NativeBackendError::CorruptNodeRecord {
+            node_id: -1,
+            reason: "mmap not initialized in exclusive mmap mode".to_string(),
+        })?;
 
         if end_offset as usize > mmap.len() {
             return Err(NativeBackendError::CorruptNodeRecord {
@@ -327,7 +321,7 @@ impl IOBackendManager {
         offset: u64,
         write_buffer: &mut WriteBuffer,
     ) -> NativeResult<()> {
-        use std::io::{Write, Seek, SeekFrom};
+        use std::io::{Seek, SeekFrom, Write};
 
         // Clear pending write buffer operations before writing
         if !write_buffer.operations.is_empty() {
@@ -353,7 +347,7 @@ impl IOBackendManager {
         offset: u64,
         write_buffer: &mut WriteBuffer,
     ) -> NativeResult<()> {
-        use std::io::{Write, Seek, SeekFrom};
+        use std::io::{Seek, SeekFrom, Write};
 
         // Use write_buffer for optimized batched writes
         let data_vec = data.to_vec();
@@ -411,7 +405,6 @@ impl IOBackendStatistics {
 mod tests {
     use super::*;
     use tempfile::tempfile;
-    use std::io::{Write, Seek, SeekFrom};
 
     #[test]
     fn test_backend_description() {
@@ -439,9 +432,11 @@ mod tests {
             test_data,
             0,
             &mut WriteBuffer::new(10),
-            #[cfg(feature = "v2_experimental")] None,
-            IOMode::Default
-        ).unwrap();
+            #[cfg(feature = "v2_experimental")]
+            None,
+            IOMode::Default,
+        )
+        .unwrap();
 
         // Read back test data
         let mut buffer = vec![0u8; test_data.len()];
@@ -450,9 +445,11 @@ mod tests {
             &mut buffer,
             0,
             &mut WriteBuffer::new(10),
-            #[cfg(feature = "v2_experimental")] None,
-            IOMode::Default
-        ).unwrap();
+            #[cfg(feature = "v2_experimental")]
+            None,
+            IOMode::Default,
+        )
+        .unwrap();
 
         assert_eq!(buffer, test_data);
     }
@@ -469,14 +466,16 @@ mod tests {
             test_data,
             0,
             &mut write_buffer,
-            #[cfg(feature = "v2_experimental")] None,
-            IOMode::Default
-        ).unwrap();
+            #[cfg(feature = "v2_experimental")]
+            None,
+            IOMode::Default,
+        )
+        .unwrap();
 
         // Force flush to ensure data is written
         let operations = write_buffer.flush();
         for (offset, data) in operations {
-            use std::io::{Write, Seek, SeekFrom};
+            use std::io::{Seek, SeekFrom, Write};
             temp_file.seek(SeekFrom::Start(offset)).unwrap();
             temp_file.write_all(&data).unwrap();
         }
