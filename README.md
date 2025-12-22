@@ -4,7 +4,7 @@
 
 SQLiteGraph is a sophisticated, embedded graph database featuring a dual backend architecture with production-ready Native V2 clustering. Built for performance-critical applications requiring deterministic behavior and ACID guarantees.
 
-**Current Status: Production Ready** ✅
+**Current Status: under development
 
 SQLiteGraph provides two production-grade backend options:
 - **SQLite Backend**: Mature, ACID-compliant, proven in production
