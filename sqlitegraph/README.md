@@ -2,11 +2,11 @@
 
 Deterministic, embedded graph database with SQLite and high-performance Native V2 backends.
 
-**Current Status: Production Ready** 🚀
+**Current Status: Active Development**
 
 SQLiteGraph provides two backend options for different use cases:
 - **SQLite Backend**: Mature, ACID-compliant, **WAL mode enabled by default** for concurrent performance (file-based databases)
-- **Native V2 Backend**: High-performance, clustered adjacency, production-grade (direct file I/O, no WAL)
+- **Native V2 Backend**: High-performance, clustered adjacency (direct file I/O, no WAL)
 
 ## Features
 
@@ -16,7 +16,7 @@ SQLiteGraph provides two backend options for different use cases:
 - **Backend Abstraction**: Unified API works with either backend
 - **Easy Migration**: Switch backends with configuration changes
 
-### WAL Mode (SQLite Backend Only) 📝
+### WAL Mode (SQLite Backend Only)
 - **Automatic Enablement**: WAL mode enabled by default for all file-based SQLite databases
 - **Concurrent Performance**: 30-50% improvement for concurrent read/write workloads
 - **ACID Compliance**: Full transaction support with rollback capabilities
@@ -160,7 +160,7 @@ cargo run --example native_v2_test --features native-v2
 
 ## Current Capabilities
 
-### ✅ **What Works Today**
+### **What Works Today**
 
 **Core Operations:**
 - Entity CRUD operations with JSON metadata
@@ -179,7 +179,7 @@ cargo run --example native_v2_test --features native-v2
 - Comprehensive safety checks
 - Benchmark regression gates
 
-### ⚠️ **Current Limitations**
+### **Current Limitations**
 
 **Scope:**
 - Focused on embedded use cases (not distributed)
