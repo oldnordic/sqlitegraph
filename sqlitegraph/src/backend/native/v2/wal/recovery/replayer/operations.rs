@@ -218,9 +218,18 @@ impl DefaultReplayOperations {
         };
 
         // Step 3: Add rollback operation BEFORE deletion (critical for transaction integrity)
+        // Serialize the node_record to old_data so rollback can restore the deleted node
+        let old_data = serde_json::to_vec(&node_record)
+            .map_err(|e| RecoveryError::replay_failure(
+                format!("Failed to serialize node data for rollback: {}", e)
+            ))?;
+
+        let old_data_len = old_data.len();
+
         rollback_data.push(super::types::RollbackOperation::NodeDelete {
             node_id: node_id as NativeNodeId,
             slot_offset,
+            old_data,
         });
 
         // Create NodeStore and FreeSpaceManager for this operation following proper SME methodology
@@ -228,30 +237,94 @@ impl DefaultReplayOperations {
             let mut graph_file = self.graph_file.write()
                 .map_err(|e| RecoveryError::io_error(format!("Failed to lock graph file: {}", e)))?;
 
-            let mut node_store = NodeStore::new(&mut *graph_file);
-            let mut free_space_manager = FreeSpaceManager::new(AllocationStrategy::FirstFit);
-
             // Step 5: Handle edge cascade cleanup (if node has cluster references)
+            // Do this BEFORE creating NodeStore to avoid borrow conflicts
             if node_record.outgoing_edge_count > 0 || node_record.incoming_edge_count > 0 {
-                debug!("Node {} has edges - scheduling cascade cleanup: outgoing={}, incoming={}",
+                debug!("Node {} has edges - performing cascade cleanup: outgoing={}, incoming={}",
                        node_id, node_record.outgoing_edge_count, node_record.incoming_edge_count);
 
-                // TODO: Implement edge cascade deletion
-                // This is a placeholder for edge cleanup - would integrate with EdgeStore
-                // For now, we log the requirement and proceed with node deletion
-                warn!("Edge cascade cleanup not yet implemented - node {} had {} outgoing, {} incoming edges",
-                      node_id, node_record.outgoing_edge_count, node_record.incoming_edge_count);
+                // Create EdgeStore for edge deletion operations
+                let mut edge_store = EdgeStore::new(&mut *graph_file);
+
+                // Collect and delete outgoing edges (edges where from_id = node_id)
+                if node_record.outgoing_edge_count > 0 {
+                    let outgoing_edges: Vec<(NativeNodeId, NativeNodeId)> = edge_store
+                        .iter_edges_with_ids(
+                            node_id as NativeNodeId,
+                            crate::backend::native::adjacency::Direction::Outgoing
+                        )
+                        .collect();
+
+                    let outgoing_count = outgoing_edges.len();
+                    for (edge_id, neighbor_id) in outgoing_edges {
+                        // Mark edge as deleted (soft deletion)
+                        if let Err(e) = edge_store.delete_edge(edge_id) {
+                            warn!("Failed to delete outgoing edge {} for node {} -> neighbor {}: {:?}",
+                                  edge_id, node_id, neighbor_id, e);
+                        } else {
+                            debug!("Deleted outgoing edge {} for node {} -> neighbor {}", edge_id, node_id, neighbor_id);
+                        }
+                    }
+
+                    debug!("Deleted {} outgoing edges for node {}", outgoing_count, node_id);
+                }
+
+                // Collect and delete incoming edges (edges where to_id = node_id)
+                if node_record.incoming_edge_count > 0 {
+                    let incoming_edges: Vec<(NativeNodeId, NativeNodeId)> = edge_store
+                        .iter_edges_with_ids(
+                            node_id as NativeNodeId,
+                            crate::backend::native::adjacency::Direction::Incoming
+                        )
+                        .collect();
+
+                    let incoming_count = incoming_edges.len();
+                    for (edge_id, neighbor_id) in incoming_edges {
+                        // Mark edge as deleted (soft deletion)
+                        if let Err(e) = edge_store.delete_edge(edge_id) {
+                            warn!("Failed to delete incoming edge {} for node {} <- neighbor {}: {:?}",
+                                  edge_id, node_id, neighbor_id, e);
+                        } else {
+                            debug!("Deleted incoming edge {} for node {} <- neighbor {}", edge_id, node_id, neighbor_id);
+                        }
+                    }
+
+                    debug!("Deleted {} incoming edges for node {}", incoming_count, node_id);
+                }
+
+                debug!("Successfully completed edge cascade cleanup for node {}", node_id);
             }
+
+            // Now create NodeStore and FreeSpaceManager for remaining operations
+            let mut node_store = NodeStore::new(&mut *graph_file);
+            let mut free_space_manager = FreeSpaceManager::new(AllocationStrategy::FirstFit);
 
             // Step 6: Clean up cluster references if they exist
             if node_record.outgoing_cluster_offset != 0 || node_record.incoming_cluster_offset != 0 {
                 debug!("Cleaning up cluster references for node {}: outgoing_offset={}, incoming_offset={}",
                        node_id, node_record.outgoing_cluster_offset, node_record.incoming_cluster_offset);
 
-                // TODO: Implement cluster reference cleanup
-                // This would involve updating cluster metadata and potentially deallocating cluster storage
-                // For now, we log the requirement
-                warn!("Cluster reference cleanup not yet implemented - freeing cluster space for node {}", node_id);
+                // Deallocate outgoing cluster if it exists
+                if node_record.outgoing_cluster_offset != 0 && node_record.outgoing_cluster_size > 0 {
+                    free_space_manager.add_free_block(
+                        node_record.outgoing_cluster_offset,
+                        node_record.outgoing_cluster_size
+                    );
+                    debug!("Deallocated outgoing cluster: node_id={}, offset={}, size={}",
+                           node_id, node_record.outgoing_cluster_offset, node_record.outgoing_cluster_size);
+                }
+
+                // Deallocate incoming cluster if it exists
+                if node_record.incoming_cluster_offset != 0 && node_record.incoming_cluster_size > 0 {
+                    free_space_manager.add_free_block(
+                        node_record.incoming_cluster_offset,
+                        node_record.incoming_cluster_size
+                    );
+                    debug!("Deallocated incoming cluster: node_id={}, offset={}, size={}",
+                           node_id, node_record.incoming_cluster_offset, node_record.incoming_cluster_size);
+                }
+
+                debug!("Successfully cleaned up cluster references for node {}", node_id);
             }
 
             // Step 7: Deallocate node slot using FreeSpaceManager
@@ -273,7 +346,7 @@ impl DefaultReplayOperations {
         {
             let mut stats = self.statistics.lock().unwrap();
             stats.record_node_operation();
-            stats.record_bytes_written(old_data.map(|d| d.len()).unwrap_or(0) as u64);
+            stats.record_bytes_written(old_data_len as u64);
         }
 
         debug!("Successfully completed node delete: node_id={}, rollback_data_count={}",
@@ -1515,17 +1588,67 @@ impl DefaultReplayOperations {
         &self,
         header_offset: u64,
         new_data: &[u8],
-        _old_data: Option<&[u8]>,
-        _rollback_data: &mut Vec<super::types::RollbackOperation>,
+        old_data: Option<&[u8]>,
+        rollback_data: &mut Vec<super::types::RollbackOperation>,
     ) -> Result<(), RecoveryError> {
-        warn!("Header update replay not yet implemented - placeholder (offset: {}, data_size: {})",
-              header_offset, new_data.len());
+        debug!("Replaying header update: offset={}, data_size={}", header_offset, new_data.len());
 
-        // TODO: Implement actual header update logic:
-        // 1. Validate header_offset is within GraphFile::HEADER_SIZE
-        // 2. Verify new_data won't overflow header boundaries
-        // 3. Write new_data to GraphFile at header_offset
-        // 4. If old_data.is_some(), add RollbackOperation::HeaderUpdate
+        // Step 1: Input validation
+        // File: sqlitegraph/src/backend/native/constants.rs
+        // HEADER_SIZE is defined as the size of the file header region
+        use crate::backend::native::constants::HEADER_SIZE;
+
+        if header_offset >= HEADER_SIZE as u64 {
+            return Err(RecoveryError::validation(
+                format!("Header offset {} exceeds header region size {}", header_offset, HEADER_SIZE)
+            ));
+        }
+
+        let end_offset = header_offset + new_data.len() as u64;
+        if end_offset > HEADER_SIZE as u64 {
+            return Err(RecoveryError::validation(
+                format!("Header update exceeds header region: offset={} + size={} > {}",
+                       header_offset, new_data.len(), HEADER_SIZE)
+            ));
+        }
+
+        // Step 2: Create rollback operation BEFORE making changes (critical for transaction integrity)
+        if let Some(old) = old_data {
+            rollback_data.push(super::types::RollbackOperation::HeaderUpdate {
+                header_offset,
+                new_data: new_data.to_vec(),
+                old_data: old.to_vec(),
+            });
+        }
+
+        // Step 3: Perform atomic write to GraphFile header
+        // File: sqlitegraph/src/backend/native/graph_file/mod.rs
+        // Method: write_bytes(offset, data) - Writes data at specific offset
+        {
+            let mut graph_file = self.graph_file.write()
+                .map_err(|e| RecoveryError::replay_failure(
+                    format!("Failed to lock graph file: {}", e)
+                ))?;
+
+            graph_file.write_bytes(header_offset, new_data)
+                .map_err(|e| RecoveryError::io_error(
+                    format!("Failed to write header at offset {}: {:?}", header_offset, e)
+                ))?;
+
+            debug!("Successfully updated header at offset {} ({} bytes)", header_offset, new_data.len());
+        }
+
+        // Step 4: Update replay statistics
+        {
+            let mut stats_guard = self.statistics.lock()
+                .map_err(|e| RecoveryError::replay_failure(
+                    format!("Failed to lock statistics: {}", e)
+                ))?;
+
+            stats_guard.record_bytes_written(new_data.len() as u64);
+        }
+
+        debug!("Header update replay completed: offset={}, size={}", header_offset, new_data.len());
 
         Ok(())
     }

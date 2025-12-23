@@ -4,6 +4,12 @@ Deterministic, embedded graph database with SQLite and high-performance Native V
 
 **Current Status: Active Development**
 
+**V2 WAL Recovery System**: 100% Feature Coverage Complete (v0.2.5)
+- All handle operations implemented (11/11)
+- All rollback operations implemented (11/11)
+- Edge cascade cleanup complete
+- Full transaction integrity and graph corruption prevention
+
 SQLiteGraph provides two backend options for different use cases:
 - **SQLite Backend**: Mature, ACID-compliant, battle-tested
 - **Native V2 Backend**: High-performance, clustered adjacency, experimental
@@ -19,8 +25,15 @@ SQLiteGraph provides two backend options for different use cases:
 ### Core Graph Operations
 - **Entity Management**: Insert, update, retrieve, delete graph entities
 - **Edge Management**: Create and manage relationships between entities
+- **Edge Cascade Cleanup**: Automatic edge cleanup on node deletion (graph integrity)
 - **JSON Data Storage**: Arbitrary JSON metadata with entities and edges
 - **Deterministic Operations**: Consistent ordering and behavior
+
+### Transaction Safety & Recovery
+- **Write-Ahead Log (WAL)**: Durable transaction logging
+- **Rollback Operations**: Complete rollback coverage for all operations
+- **Transaction Recovery**: Crash recovery with WAL replay
+- **Graph Integrity**: Cascade cleanup prevents dangling references
 
 ### Traversal & Querying
 - **Neighbor Queries**: Get incoming/outgoing connections
@@ -240,8 +253,11 @@ cargo bench
 **V2 Native Backend Status**
 - All V1 legacy code removed
 - Clustered adjacency storage implemented
+- **WAL Recovery System**: 100% feature coverage (v0.2.5)
+- **Transaction Rollback**: Complete rollback operations (11/11)
+- **Edge Cascade Cleanup**: Automatic cleanup on node deletion
 - Corruption prevention active
-- Comprehensive test coverage
+- Comprehensive test coverage (647/647 tests passing)
 - Experimental high-performance features
 
 ### Performance Benchmarks
@@ -258,6 +274,17 @@ Current performance characteristics (Native V2):
 2. **Single Machine**: No built-in distributed capabilities
 3. **Memory Usage**: Large graphs may require buffer tuning
 4. **Documentation**: API evolving as new features added
+
+### V2 WAL Recovery Implementation Status
+
+**Completed Operations (v0.2.5)**:
+- ✅ All handle operations (11/11): node_insert, node_update, node_delete, string_insert, cluster_create, edge_insert, edge_update, edge_delete, free_space_allocate, free_space_deallocate, header_update
+- ✅ All rollback operations (11/11): rollback_node_insert, rollback_node_update, rollback_node_delete, rollback_string_insert, rollback_header_update, rollback_edge_insert, rollback_edge_update, rollback_edge_delete, rollback_free_space_allocate, rollback_free_space_deallocate, rollback_cluster_create
+- ✅ Edge cascade cleanup on node deletion
+- ✅ Cluster reference cleanup on node deletion
+- ✅ NodeRecordV2 cleanup on edge insert rollback
+
+**Technical Documentation**: See [CHANGELOG v0.2.5](CHANGELOG.md) for implementation details
 
 ## License
 

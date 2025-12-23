@@ -98,11 +98,18 @@ pub enum RollbackOperation {
     NodeDelete {
         node_id: NativeNodeId,
         slot_offset: u64,
+        old_data: Vec<u8>,
     },
     /// Rollback string insertion (NEW: for string table operations)
     StringInsert {
         string_id: u64,
         string_value: String,
+    },
+    /// Rollback header update by restoring old data
+    HeaderUpdate {
+        header_offset: u64,
+        new_data: Vec<u8>,
+        old_data: Vec<u8>,
     },
     // Edge rollback operations
     EdgeInsert {
@@ -196,6 +203,7 @@ impl RollbackOperation {
             RollbackOperation::NodeUpdate { .. } => "NodeUpdate",
             RollbackOperation::NodeDelete { .. } => "NodeDelete",
             RollbackOperation::StringInsert { .. } => "StringInsert",
+            RollbackOperation::HeaderUpdate { .. } => "HeaderUpdate",
             RollbackOperation::EdgeInsert { .. } => "EdgeInsert",
             RollbackOperation::EdgeUpdate { .. } => "EdgeUpdate",
             RollbackOperation::EdgeDelete { .. } => "EdgeDelete",

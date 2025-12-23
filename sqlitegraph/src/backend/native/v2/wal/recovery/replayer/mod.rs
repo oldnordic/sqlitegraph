@@ -91,6 +91,7 @@ impl V2GraphFileReplayer {
             graph_file.clone(),
             node_store.clone(),
             string_table.clone(),
+            free_space_manager.clone(),
         )));
 
         // Create operations handler
