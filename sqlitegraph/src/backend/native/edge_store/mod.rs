@@ -7,6 +7,9 @@
 // Re-export core types from the parent module
 pub use crate::backend::native::types::{EdgeFlags, EdgeRecord, NativeEdgeId};
 
+// Import logging macro
+use log::debug;
+
 // Import modular components
 pub mod capacity_coordinator;
 mod cluster_utils;
@@ -152,6 +155,25 @@ impl<'a> EdgeStore<'a> {
             .expect("Failed to allocate edge ID with capacity")
     }
 
+    /// Delete an edge by marking it as deleted (soft deletion)
+    ///
+    /// This marks the edge as deleted by setting a flag in the edge record.
+    /// The edge record remains in storage but is marked as deleted.
+    ///
+    /// # Arguments
+    /// * `edge_id` - The ID of the edge to delete
+    ///
+    /// # Returns
+    /// `Ok(())` if the edge was successfully marked as deleted
+    ///
+    /// # Note
+    /// This is a soft deletion - the edge record remains but is marked as deleted.
+    /// This is reversible for rollback scenarios.
+    pub fn delete_edge(&mut self, edge_id: crate::backend::native::types::NativeEdgeId) -> crate::backend::native::types::NativeResult<()> {
+        let mut operations = record_operations::EdgeRecordOperations::new(self.graph_file);
+        operations.delete_edge(edge_id)
+    }
+
     /// Iterate over neighbors of a node using V2 cluster adjacency
     /// Returns node IDs that are connected to the specified node in the given direction
     /// AVOIDS CIRCULAR DEPENDENCY: Uses direct edge iteration instead of AdjacencyIterator
@@ -164,6 +186,28 @@ impl<'a> EdgeStore<'a> {
         // Instead, use direct edge record iteration
         match self.iter_neighbors_direct(node_id, direction) {
             Ok(neighbors) => Box::new(neighbors.into_iter()),
+            Err(_) => Box::new(std::iter::empty()),
+        }
+    }
+
+    /// Iterate edges for a node, returning edge IDs and neighbor node IDs
+    ///
+    /// This is similar to iter_neighbors but returns both edge_id and neighbor_id for each edge.
+    /// This enables operations like edge cascade cleanup where edge IDs are needed.
+    ///
+    /// # Arguments
+    /// * `node_id` - The node to iterate edges for
+    /// * `direction` - Outgoing (edges from this node) or Incoming (edges to this node)
+    ///
+    /// # Returns
+    /// Iterator of (edge_id, neighbor_id) tuples
+    ///
+    /// # Performance Note
+    /// This scans all edge records in the database (1 to header.edge_count), which is O(N)
+    /// where N is the total number of edges. For large graphs, consider adding an index.
+    pub fn iter_edges_with_ids(&mut self, node_id: crate::backend::native::types::NativeNodeId, direction: crate::backend::native::adjacency::Direction) -> Box<dyn Iterator<Item = (crate::backend::native::types::NativeEdgeId, crate::backend::native::types::NativeNodeId)> + '_> {
+        match self.iter_edges_with_ids_direct(node_id, direction) {
+            Ok(edges) => Box::new(edges.into_iter()),
             Err(_) => Box::new(std::iter::empty()),
         }
     }
@@ -255,6 +299,57 @@ impl<'a> EdgeStore<'a> {
         );
 
         Ok(neighbors)
+    }
+
+    /// Direct edge iteration with IDs, returning (edge_id, neighbor_id) tuples
+    /// Similar to iter_neighbors_direct but includes edge IDs for operations like cascade cleanup
+    fn iter_edges_with_ids_direct(&mut self, node_id: crate::backend::native::types::NativeNodeId, direction: crate::backend::native::adjacency::Direction) -> crate::backend::native::types::NativeResult<Vec<(crate::backend::native::types::NativeEdgeId, crate::backend::native::types::NativeNodeId)>> {
+        use crate::backend::native::v2::node_record_v2::NodeRecordV2Ext;
+        use crate::backend::native::node_store::NodeStore;
+
+        // Read V2 node to get edge count information
+        let mut node_store = NodeStore::new(self.graph_file);
+        let node_v2 = node_store.read_node_v2(node_id)?;
+        drop(node_store);
+
+        let edge_count = match direction {
+            crate::backend::native::adjacency::Direction::Outgoing => node_v2.outgoing_edge_count,
+            crate::backend::native::adjacency::Direction::Incoming => node_v2.incoming_edge_count,
+        };
+
+        if edge_count == 0 {
+            return Ok(Vec::new());
+        }
+
+        debug!("Direct edge iteration with IDs for node {} (direction: {:?}) - {} edges expected",
+               node_id, direction, edge_count);
+
+        // Read edges directly from legacy edge storage by scanning all edges
+        let header = self.graph_file.header();
+        let mut edges = Vec::new();
+
+        for edge_id in 1..=header.edge_count as i64 {
+            let mut operations = record_operations::EdgeRecordOperations::new(self.graph_file);
+            if let Ok(edge) = operations.read_edge(edge_id) {
+                let matches_direction = match direction {
+                    crate::backend::native::adjacency::Direction::Outgoing => edge.from_id == node_id,
+                    crate::backend::native::adjacency::Direction::Incoming => edge.to_id == node_id,
+                };
+
+                if matches_direction {
+                    let neighbor_id = match direction {
+                        crate::backend::native::adjacency::Direction::Outgoing => edge.to_id,
+                        crate::backend::native::adjacency::Direction::Incoming => edge.from_id,
+                    };
+                    edges.push((edge_id, neighbor_id));
+                }
+            }
+        }
+
+        debug!("Direct edge iteration with IDs found {} edges for node {} (direction: {:?})",
+               edges.len(), node_id, direction);
+
+        Ok(edges)
     }
 
     /// Allocate adjacency space for outgoing edges
