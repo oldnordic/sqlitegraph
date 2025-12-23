@@ -44,10 +44,10 @@ pub use self::validator::{
     TransactionValidator, RecoveryValidator, ValidationResult,
 };
 
-// Re-export replay components
+// Re-export replay components (modular structure)
 pub use self::replayer::{
     V2GraphFileReplayer, ReplayConfig, ReplayResult, ReplayStatistics,
-    RollbackOperation,
+    RollbackOperation, RollbackSummary, DefaultReplayOperations, RollbackSystem,
 };
 
 // Module declarations
