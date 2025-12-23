@@ -57,7 +57,7 @@ impl CommandLineConfig {
     }
 
     pub fn help() -> &'static str {
-        r#"Usage: sqlitegraph [--backend sqlite] [--db memory|PATH] [--command status]
+        r#"Usage: sqlitegraph [--backend sqlite|native] [--db memory|PATH] [command] [args]
 
 Commands:
   status                    Show database status and statistics
@@ -65,20 +65,25 @@ Commands:
   migrate [--dry-run]       Run pending schema migrations
   dump-graph --output PATH  Dump graph data to file
   load-graph --input PATH   Load graph data from file
-  reindex-all [options]     Rebuild all indexes (syncore + sync graph)
-  reindex-syncore [options] Rebuild core database indexes only
-  reindex-sync-graph [options] Rebuild graph indexes and caches only
+  bulk-insert-entities --input FILE  Bulk insert entities from JSON
+  bulk-insert-edges --input FILE    Bulk insert edges from JSON
+  hnsw-create --dimension N --m M --ef-construction N --distance-metric TYPE  Create HNSW index
+  hnsw-insert --input FILE  Insert vectors into HNSW index
+  hnsw-search --input FILE --k N  Search HNSW index
+  hnsw-stats                Show HNSW index statistics
 
-Reindexing Options:
-  --progress                Show progress during reindexing
-  --no-validate             Skip index validation after rebuilding
-  --batch-size SIZE         Batch size for processing (default: 1000)
+HNSW Options:
+  --dimension               Vector dimension (e.g., 768)
+  --m                       Number of bi-directional links (default: 16)
+  --ef-construction         HNSW ef_construction parameter (default: 200)
+  --distance-metric         Distance metric: cosine|euclidean|dot|manhattan
+  --k                       Number of nearest neighbors to return
 
 Examples:
   sqlitegraph status
   sqlitegraph --db /path/to/graph.db list
-  sqlitegraph reindex-all --progress
-  sqlitegraph reindex-syncore --batch-size 500
+  sqlitegraph bulk-insert-entities --input entities.json
+  sqlitegraph hnsw-create --dimension 768 --m 16 --ef-construction 200 --distance-metric cosine
   sqlitegraph migrate --dry-run
 "#
     }
