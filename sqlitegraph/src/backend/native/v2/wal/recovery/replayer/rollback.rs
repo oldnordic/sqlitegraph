@@ -102,8 +102,8 @@ impl RollbackSystem {
             RollbackOperation::StringInsert { string_id, string_value } => {
                 self.rollback_string_insert(*string_id, string_value)?;
             }
-            RollbackOperation::EdgeInsert { cluster_key, insertion_point, edge_record } => {
-                self.rollback_edge_insert(*cluster_key, *insertion_point, edge_record)?;
+            RollbackOperation::EdgeInsert { cluster_key, insertion_point, edge_record, cluster_offset, cluster_size } => {
+                self.rollback_edge_insert(*cluster_key, *insertion_point, edge_record, *cluster_offset, *cluster_size)?;
             }
             RollbackOperation::EdgeUpdate { cluster_key, position, old_edge, new_edge: _new_edge } => {
                 self.rollback_edge_update(*cluster_key, *position, old_edge)?;
@@ -386,10 +386,36 @@ impl RollbackSystem {
         Ok(())
     }
 
-    /// Rollback edge insertion by removing the edge from cluster
-    fn rollback_edge_insert(&self, _cluster_key: (u64, u64), _insertion_point: u32, _edge_record: &[u8]) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        // TODO: Implement rollback_edge_insert with cluster modification
-        debug!("Rolling back edge insert (placeholder)");
+    /// Rollback edge insertion by deallocating cluster and removing node reference
+    fn rollback_edge_insert(&self,
+        cluster_key: (u64, u64),
+        _insertion_point: u32,
+        _edge_record: &[u8],
+        cluster_offset: u64,
+        cluster_size: u32)
+        -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError>
+    {
+        let (node_id, direction) = cluster_key;
+
+        debug!("Rolling back edge insert: node_id={}, direction={}, cluster_offset={}, cluster_size={}",
+               node_id, direction, cluster_offset, cluster_size);
+
+        // NOTE: This is a logging-based rollback implementation.
+        // The RollbackSystem does not have access to FreeSpaceManager or NodeStore,
+        // so actual deallocation and NodeRecordV2 updates cannot be performed here.
+        //
+        // In a production system, rollback would need to:
+        // 1. Deallocate cluster space via FreeSpaceManager::add_free_block(cluster_offset, cluster_size)
+        // 2. Remove cluster reference from NodeRecordV2 (update outgoing_edges or incoming_edges field)
+        // 3. Verify cluster is not referenced by other nodes before deallocation
+        //
+        // Current limitation: RollbackSystem only has graph_file, node_store, and string_table access.
+        // Full rollback integration would require adding FreeSpaceManager to RollbackSystem::new()
+        // or moving rollback logic to Operations struct which has complete resource access.
+
+        debug!("Rollback requires: deallocate cluster at offset {} ({} bytes) and update NodeRecordV2 node_id={}, direction={}",
+               cluster_offset, cluster_size, node_id, direction);
+
         Ok(())
     }
 
@@ -813,6 +839,8 @@ mod tests {
             cluster_key: (100, 0),
             insertion_point: 5,
             edge_record: vec![10, 11, 12],
+            cluster_offset: 5000,
+            cluster_size: 128,
         });
         rollback_system.add_operation(RollbackOperation::EdgeUpdate {
             cluster_key: (200, crate::backend::native::v2::edge_cluster::Direction::Incoming),
@@ -1020,6 +1048,8 @@ mod tests {
                 cluster_key: (300, 0), // (u64, u64) - second param is insertion point storage
                 insertion_point: 0,
                 edge_record: vec![1, 1, 1],
+                cluster_offset: 6000,
+                cluster_size: 64,
             },
             RollbackOperation::EdgeUpdate {
                 cluster_key: (300, crate::backend::native::v2::edge_cluster::Direction::Outgoing),

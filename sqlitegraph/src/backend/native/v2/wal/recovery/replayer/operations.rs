@@ -498,13 +498,8 @@ impl DefaultReplayOperations {
             )),
         };
 
-        // Step 3: Add rollback operation BEFORE making changes (critical for transaction integrity)
+        // Step 3: Create cluster data first (needed for both rollback and allocation)
         let edge_record_bytes = edge_record.serialize();
-        rollback_data.push(super::types::RollbackOperation::EdgeInsert {
-            cluster_key,
-            insertion_point,
-            edge_record: edge_record_bytes.clone(),
-        });
 
         // Step 4: Create cluster with edge following the CORRECT V2 cluster format
         // CRITICAL FIX: Use EdgeCluster::create_from_compact_edges and .serialize() instead of manual construction
@@ -572,7 +567,17 @@ impl DefaultReplayOperations {
             allocated_offset
         }; // FreeSpaceManager lock is released here
 
-        // Step 7: Write cluster data to allocated storage following handle_cluster_create pattern
+        // Step 5: Add rollback operation AFTER cluster allocation (now we have offset and size)
+        // This maintains transaction integrity while ensuring complete state capture for rollback
+        rollback_data.push(super::types::RollbackOperation::EdgeInsert {
+            cluster_key,
+            insertion_point,
+            edge_record: edge_record_bytes.clone(),
+            cluster_offset: allocated_offset,
+            cluster_size: cluster_data.len() as u32,
+        });
+
+        // Step 6: Write cluster data to allocated storage following handle_cluster_create pattern
         {
             let mut graph_file = self.graph_file.write()
                 .map_err(|e| RecoveryError::replay_failure(

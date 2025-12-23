@@ -109,6 +109,8 @@ pub enum RollbackOperation {
         cluster_key: (u64, u64),
         insertion_point: u32,
         edge_record: Vec<u8>,
+        cluster_offset: u64,
+        cluster_size: u32,
     },
     EdgeUpdate {
         cluster_key: (i64, crate::backend::native::v2::edge_cluster::Direction),
@@ -283,6 +285,8 @@ mod tests {
             cluster_key: (100, 0),
             insertion_point: 5,
             edge_record: vec![1, 2, 3],
+            cluster_offset: 4000,
+            cluster_size: 256,
         };
         assert_eq!(edge_insert.operation_name(), "EdgeInsert");
         assert!(!edge_insert.affects_nodes());
