@@ -53,7 +53,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sqlitegraph = "0.2.3"
+sqlitegraph = "0.2.5"
 ```
 
 ### SQLite Backend (Default)
@@ -110,7 +110,7 @@ Enable the Native V2 backend in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sqlitegraph = { version = "0.2.2", features = ["native-v2"] }
+sqlitegraph = { version = "0.2.5", features = ["native-v2"] }
 ```
 
 ```rust
@@ -161,16 +161,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```toml
 # Default - SQLite backend only
-sqlitegraph = "0.2.3"
+sqlitegraph = "0.2.5"
 
 # Native V2 backend (high performance)
-sqlitegraph = { version = "0.2.2", features = ["native-v2"] }
+sqlitegraph = { version = "0.2.5", features = ["native-v2"] }
 
 # Legacy compatibility (alias)
-sqlitegraph = { version = "0.2.2", features = ["v2_experimental"] }
+sqlitegraph = { version = "0.2.5", features = ["v2_experimental"] }
 
 # Development features
-sqlitegraph = { version = "0.2.2", features = ["trace_v2_io"] }
+sqlitegraph = { version = "0.2.5", features = ["trace_v2_io"] }
 ```
 
 ## Examples
