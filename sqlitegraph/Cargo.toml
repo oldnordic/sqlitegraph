@@ -1,6 +1,6 @@
 [package]
 name = "sqlitegraph"
-version = "0.2.7"
+version = "0.2.8"
 edition = "2024"
 description = "Deterministic, embedded graph database with SQLite and Native V2 backends"
 license = "GPL-3.0-or-later"
