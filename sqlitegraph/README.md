@@ -6,7 +6,7 @@ Deterministic, embedded graph database with SQLite and high-performance Native V
 
 SQLiteGraph provides two backend options for different use cases:
 - **SQLite Backend**: Mature, ACID-compliant, **WAL mode enabled by default** for concurrent performance (file-based databases)
-- **Native V2 Backend**: High-performance, clustered adjacency (direct file I/O, no WAL)
+- **Native V2 Backend**: High-performance, clustered adjacency with **complete WAL implementation** for transactional durability (direct file I/O)
 
 ## Features
 
@@ -16,9 +16,12 @@ SQLiteGraph provides two backend options for different use cases:
 - **Backend Abstraction**: Unified API works with either backend
 - **Easy Migration**: Switch backends with configuration changes
 
-### WAL Mode (SQLite Backend Only)
-- **Automatic Enablement**: WAL mode enabled by default for all file-based SQLite databases
+### WAL Mode (Both Backends)
+- **SQLite Backend**: WAL mode enabled by default for all file-based databases
+- **Native V2 Backend**: Complete WAL implementation with cluster-affinity logging
+- **Automatic Enablement**: WAL enabled by default (SQLite) or available via config (Native V2)
 - **Concurrent Performance**: 30-50% improvement for concurrent read/write workloads
+- **Crash Recovery**: Full transaction recovery from WAL logs
 - **ACID Compliance**: Full transaction support with rollback capabilities
 - **Automatic File Management**: WAL and SHM files created and managed automatically
 - **Network Filesystem Support**: Graceful fallback to DELETE mode when WAL is unsupported
@@ -31,9 +34,29 @@ SQLiteGraph provides two backend options for different use cases:
 
 ### Traversal & Querying
 - **Neighbor Queries**: Get incoming/outgoing connections
-- **Pattern Matching**: Advanced graph pattern queries
+- **Pattern Matching**: Advanced graph pattern queries with fast-path caching
 - **Traversal Algorithms**: BFS, shortest path, connected components
+- **Query Cache**: Cached K-hop and shortest path queries
 - **Reasoning Pipelines**: Multi-step analysis with filtering and scoring
+
+### HNSW Vector Search
+- **Approximate Nearest Neighbor**: O(log N) search complexity
+- **High Performance**: In-memory vector index with 95%+ recall
+- **Multiple Distance Metrics**: Cosine, Euclidean, Dot Product, Manhattan
+- **SIMD Optimized**: AVX2/AVX-512 support for distance calculations
+- **Dynamic Updates**: Insert and delete vectors without full rebuilds
+- **Configuration**: Flexible HNSW parameters for accuracy/speed tradeoffs
+
+### Bulk Operations & Snapshots
+- **Bulk Insert**: High-performance batch entity and edge insertion
+- **Snapshot Export**: Atomic graph snapshot creation with 70%+ storage efficiency
+- **Snapshot Import**: Fast graph restoration from snapshots
+- **Cross-Platform**: Platform-independent binary snapshot format
+
+### MVCC & Transactions
+- **MVCC Snapshots**: Read isolation with snapshot consistency
+- **Transaction Support**: Full ACID transactions (SQLite) or WAL transactions (Native V2)
+- **Rollback**: Complete transaction rollback capabilities
 
 ### Performance & Safety
 - **Benchmark Gates**: Automated performance regression prevention
