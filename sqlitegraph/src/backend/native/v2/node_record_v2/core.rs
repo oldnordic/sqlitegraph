@@ -3,7 +3,7 @@
 use crate::backend::native::NodeFlags;
 
 /// V2 node record with direct references to adjacency clusters.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct NodeRecordV2 {
     pub id: i64,
     pub flags: NodeFlags,
