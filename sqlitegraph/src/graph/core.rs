@@ -1,12 +1,15 @@
 //! Core SqliteGraph struct and construction functionality.
 
 use std::path::Path;
+use std::collections::HashMap;
+use std::sync::RwLock;
 
 use rusqlite::Connection;
 
 use crate::{
     cache::AdjacencyCache, errors::SqliteGraphError, mvcc::SnapshotManager,
     query_cache::QueryCache, schema::ensure_schema,
+    hnsw::HnswIndex,
 };
 
 use super::metrics::{GraphMetrics, StatementTracker};
@@ -23,6 +26,8 @@ pub struct SqliteGraph {
     pub(crate) metrics: GraphMetrics,
     pub(crate) statement_tracker: StatementTracker,
     pub(crate) snapshot_manager: SnapshotManager,
+    /// HNSW vector indexes stored by name
+    pub(crate) hnsw_indexes: RwLock<HashMap<String, HnswIndex>>,
 }
 
 // Helper function to check if connection is in-memory
@@ -92,6 +97,7 @@ impl SqliteGraph {
             metrics: GraphMetrics::default(),
             statement_tracker: StatementTracker::default(),
             snapshot_manager: SnapshotManager::new(),
+            hnsw_indexes: RwLock::new(HashMap::new()),
         }
     }
 }

@@ -1,15 +1,12 @@
 use sqlitegraph::{
     backend::BackendDirection,
-    pattern::{NodeConstraint, PatternLeg, PatternQuery},
-    pipeline::{ReasoningPipeline, ReasoningStep},
-    subgraph::SubgraphRequest,
+    pattern::{PatternLeg, PatternQuery},
 };
 
+/// Simplified DSL result for v0.2.5 (pipeline/subgraph removed)
 #[derive(Debug, Clone)]
 pub enum DslResult {
     Pattern(PatternQuery),
-    Pipeline(ReasoningPipeline),
-    Subgraph(SubgraphRequest),
     Error(String),
 }
 
@@ -20,9 +17,6 @@ pub fn parse_dsl(input: &str) -> DslResult {
     }
     if trimmed.starts_with("pattern ") {
         return parse_pattern_pipeline(trimmed);
-    }
-    if let Some(result) = parse_hop_command(trimmed) {
-        return result;
     }
     if trimmed.contains("->") || trimmed.contains('*') {
         return DslResult::Pattern(parse_repetitive_pattern(trimmed));
@@ -37,26 +31,9 @@ fn parse_pattern_pipeline(input: &str) -> DslResult {
     if pattern_part.is_empty() {
         return DslResult::Error("missing pattern segment".into());
     }
-    let query = parse_repetitive_pattern(pattern_part);
-    let mut steps = vec![ReasoningStep::Pattern(query)];
-    if let Some(filter_part) = segments.next() {
-        let text = filter_part.trim();
-        let mut tokens = text.split_whitespace();
-        let clause = tokens.next().unwrap_or("");
-        if tokens.next().is_some() {
-            return DslResult::Error("multiple filter clauses are not supported".into());
-        }
-        if let Some(kind) = clause.strip_prefix("type=") {
-            let trimmed = kind.trim();
-            if trimmed.is_empty() {
-                return DslResult::Error("unsupported filter clause".into());
-            }
-            steps.push(ReasoningStep::Filter(NodeConstraint::kind(trimmed)));
-        } else {
-            return DslResult::Error("unsupported filter clause".into());
-        }
-    }
-    DslResult::Pipeline(ReasoningPipeline { steps })
+    let _query = parse_repetitive_pattern(pattern_part);
+    // Note: filter parsing removed for v0.2.5 compatibility
+    DslResult::Pattern(_query)
 }
 
 fn parse_repetitive_pattern(segment: &str) -> PatternQuery {
@@ -83,19 +60,5 @@ fn parse_repetitive_pattern(segment: &str) -> PatternQuery {
     PatternQuery { root: None, legs }
 }
 
-fn parse_hop_command(input: &str) -> Option<DslResult> {
-    if let Some((prefix, suffix)) = input.split_once("-hop") {
-        let depth = prefix.trim().parse::<u32>().ok()?;
-        let mut allowed = Vec::new();
-        if let Some(filter) = suffix.trim().strip_prefix("type=") {
-            allowed.push(filter.trim().to_string());
-        }
-        return Some(DslResult::Subgraph(SubgraphRequest {
-            root: 0,
-            depth,
-            allowed_edge_types: Vec::new(),
-            allowed_node_types: allowed,
-        }));
-    }
-    None
-}
+// parse_hop_command removed - SubgraphRequest not available in v0.2.5
+// TODO: Implement simplified hop command using PatternQuery if needed

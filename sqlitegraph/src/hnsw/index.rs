@@ -45,6 +45,8 @@
 //! ```
 
 use serde_json::Value;
+use std::collections::HashMap;
+use std::sync::RwLock;
 
 use crate::{
     SqliteGraph,
@@ -534,7 +536,7 @@ impl SqliteGraph {
     ///
     /// # Returns
     ///
-    /// Returns an HnswIndex ready for vector operations
+    /// Returns a mutable reference to the HnswIndex ready for vector operations
     ///
     /// # Examples
     ///
@@ -552,12 +554,98 @@ impl SqliteGraph {
     /// ```
     pub fn hnsw_index(
         &self,
-        _name: &str,
+        name: &str,
         config: HnswConfig,
-    ) -> Result<HnswIndex, SqliteGraphError> {
-        // For now, create in-memory HNSW index
-        // TODO: Integrate with SQLite storage for persistence
-        HnswIndex::new(config).map_err(|e| SqliteGraphError::invalid_input(e.to_string()))
+    ) -> Result<std::sync::RwLockWriteGuard<'_, HashMap<String, HnswIndex>>, SqliteGraphError> {
+        use std::sync::RwLock;
+
+        // Check if index already exists
+        {
+            let indexes = self.hnsw_indexes.read().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
+            if indexes.contains_key(name) {
+                return Err(SqliteGraphError::invalid_input(format!("HNSW index '{}' already exists. Use get_hnsw_index() to retrieve it.", name)));
+            }
+        }
+
+        // Create new HNSW index
+        let hnsw = HnswIndex::new(config).map_err(|e| SqliteGraphError::invalid_input(e.to_string()))?;
+
+        // Store the index
+        let mut indexes = self.hnsw_indexes.write().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
+        indexes.insert(name.to_string(), hnsw);
+
+        Ok(indexes)
+    }
+
+    /// Get an existing HNSW index by name
+    ///
+    /// # Arguments
+    /// * `name` - Name of the index to retrieve
+    ///
+    /// # Returns
+    ///
+    /// Returns a mutable reference to the HnswIndex if it exists
+    pub fn get_hnsw_index(
+        &self,
+        name: &str,
+    ) -> Result<Option<std::sync::RwLockWriteGuard<'_, HashMap<String, HnswIndex>>>, SqliteGraphError> {
+        use std::sync::RwLock;
+
+        let indexes = self.hnsw_indexes.write().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
+
+        if indexes.contains_key(name) {
+            Ok(Some(indexes))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Get a reference to an HNSW index without locking for write
+    pub fn get_hnsw_index_ref<F, R>(
+        &self,
+        name: &str,
+        f: F,
+    ) -> Result<R, SqliteGraphError>
+    where
+        F: FnOnce(&HnswIndex) -> R,
+    {
+        use std::sync::RwLock;
+
+        let indexes = self.hnsw_indexes.read().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
+
+        if let Some(hnsw) = indexes.get(name) {
+            Ok(f(hnsw))
+        } else {
+            Err(SqliteGraphError::invalid_input(format!("HNSW index '{}' not found", name)))
+        }
+    }
+
+    /// Get a mutable reference to an HNSW index for modifications
+    pub fn get_hnsw_index_mut<F, R>(
+        &self,
+        name: &str,
+        f: F,
+    ) -> Result<R, SqliteGraphError>
+    where
+        F: FnOnce(&mut HnswIndex) -> R,
+    {
+        use std::sync::RwLock;
+
+        let mut indexes = self.hnsw_indexes.write().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
+
+        if let Some(hnsw) = indexes.get_mut(name) {
+            Ok(f(hnsw))
+        } else {
+            Err(SqliteGraphError::invalid_input(format!("HNSW index '{}' not found", name)))
+        }
+    }
+
+    /// List all HNSW index names
+    pub fn list_hnsw_indexes(&self) -> Result<Vec<String>, SqliteGraphError> {
+        use std::sync::RwLock;
+
+        let indexes = self.hnsw_indexes.read().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
+        Ok(indexes.keys().cloned().collect())
     }
 }
 

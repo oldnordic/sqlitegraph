@@ -14,10 +14,21 @@ use crate::backend::{
 };
 use crate::graph::GraphEntity;
 use parking_lot::RwLock;
+use std::sync::Arc;
+
+// V2 WAL integration (always available when native-v2 feature is enabled)
+#[cfg(feature = "native-v2")]
+use crate::backend::native::v2::wal::{
+    V2GraphWALIntegrator, V2WALConfig, GraphWALIntegrationConfig,
+};
 
 /// Native backend implementation using interior mutability
 pub struct NativeGraphBackend {
     graph_file: RwLock<GraphFile>,
+    /// WAL integrator for transaction management and checkpointing
+    /// Always available when native-v2 feature is enabled (production ready)
+    #[cfg(feature = "native-v2")]
+    wal_integrator: Option<Arc<V2GraphWALIntegrator>>,
 }
 
 impl NativeGraphBackend {
@@ -30,27 +41,62 @@ impl NativeGraphBackend {
         let path = temp_file.path();
         let graph_file = GraphFile::create(path).map_err(map_to_graph_error)?;
 
+        #[cfg(feature = "native-v2")]
+        let wal_integrator = Some(Self::create_wal_integrator(path)?);
+
         Ok(Self {
             graph_file: RwLock::new(graph_file),
+            #[cfg(feature = "native-v2")]
+            wal_integrator,
         })
     }
 
     /// Create a new native backend at the specified path
     pub fn new<P: AsRef<std::path::Path>>(path: P) -> Result<Self, SqliteGraphError> {
-        let graph_file = GraphFile::create(path).map_err(map_to_graph_error)?;
+        let graph_file = GraphFile::create(&path).map_err(map_to_graph_error)?;
+
+        #[cfg(feature = "native-v2")]
+        let wal_integrator = Some(Self::create_wal_integrator(&path)?);
 
         Ok(Self {
             graph_file: RwLock::new(graph_file),
+            #[cfg(feature = "native-v2")]
+            wal_integrator,
         })
     }
 
     /// Open an existing native backend from the specified path
     pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Self, SqliteGraphError> {
-        let graph_file = GraphFile::open(path).map_err(map_to_graph_error)?;
+        let graph_file = GraphFile::open(&path).map_err(map_to_graph_error)?;
+
+        #[cfg(feature = "native-v2")]
+        let wal_integrator = Some(Self::create_wal_integrator(&path)?);
 
         Ok(Self {
             graph_file: RwLock::new(graph_file),
+            #[cfg(feature = "native-v2")]
+            wal_integrator,
         })
+    }
+
+    /// Create WAL integrator for the graph
+    #[cfg(feature = "native-v2")]
+    fn create_wal_integrator<P: AsRef<std::path::Path>>(path: P) -> Result<Arc<V2GraphWALIntegrator>, SqliteGraphError> {
+        use std::path::Path;
+
+        let path_ref = path.as_ref();
+
+        // Use the helper function to create WAL config with correct paths
+        let wal_config = V2WALConfig::for_graph_file(path_ref);
+
+        // Create integration config with default settings
+        let integration_config = GraphWALIntegrationConfig::default();
+
+        // Create the integrator
+        let integrator = V2GraphWALIntegrator::create(wal_config, integration_config)
+            .map_err(|e| SqliteGraphError::connection(format!("Failed to create WAL integrator: {:?}", e)))?;
+
+        Ok(Arc::new(integrator))
     }
 
     /// Get mutable access to the underlying graph file for internal operations
@@ -60,6 +106,18 @@ impl NativeGraphBackend {
     {
         let mut graph_file = self.graph_file.write();
         f(&mut *graph_file).map_err(map_to_graph_error)
+    }
+
+    /// Get WAL metrics (if native-v2 feature is enabled and WAL integrator exists)
+    #[cfg(feature = "native-v2")]
+    pub fn get_wal_metrics(&self) -> Option<crate::backend::native::v2::wal::WALManagerMetrics> {
+        self.wal_integrator.as_ref().map(|integrator| integrator.get_metrics())
+    }
+
+    /// Get active transaction count (if native-v2 feature is enabled and WAL integrator exists)
+    #[cfg(feature = "native-v2")]
+    pub fn get_active_transaction_count(&self) -> Option<usize> {
+        self.wal_integrator.as_ref().map(|integrator| integrator.get_active_transaction_count())
     }
 }
 
@@ -229,6 +287,92 @@ impl GraphBackend for NativeGraphBackend {
     ) -> Result<Vec<PatternMatch>, SqliteGraphError> {
         self.with_graph_file(|graph_file| {
             native_pattern_search(graph_file, start as NativeNodeId, pattern)
+        })
+    }
+
+    fn checkpoint(&self) -> Result<(), SqliteGraphError> {
+        #[cfg(feature = "native-v2")]
+        {
+            if let Some(ref integrator) = self.wal_integrator {
+                integrator
+                    .force_checkpoint()
+                    .map_err(|e| SqliteGraphError::connection(format!("WAL checkpoint failed: {:?}", e)))?;
+                return Ok(());
+            }
+        }
+
+        // If native-v2 feature is not enabled, checkpoint is a no-op
+        Ok(())
+    }
+
+    fn snapshot_export(&self, export_dir: &std::path::Path) -> Result<crate::backend::SnapshotMetadata, SqliteGraphError> {
+        use crate::backend::native::v2::export::SnapshotExporter;
+        use crate::backend::native::v2::export::snapshot::SnapshotExportConfig;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        // Get the graph file path from the GraphFile
+        let graph_path = self.with_graph_file(|graph_file| {
+            Ok(graph_file.path().to_path_buf())
+        })?;
+
+        // Create snapshot exporter with default config
+        let snapshot_id = format!("snapshot_{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs());
+
+        let config = SnapshotExportConfig {
+            export_path: export_dir.to_path_buf(),
+            snapshot_id: snapshot_id.clone(),
+            include_statistics: true,
+            min_stable_duration: std::time::Duration::from_secs(0),
+            checksum_validation: true,
+        };
+
+        let mut exporter = SnapshotExporter::new(&graph_path, config)
+            .map_err(|e| SqliteGraphError::connection(format!("Failed to create snapshot exporter: {:?}", e)))?;
+
+        let result = exporter.export_snapshot()
+            .map_err(|e| SqliteGraphError::connection(format!("Snapshot export failed: {:?}", e)))?;
+
+        Ok(crate::backend::SnapshotMetadata {
+            snapshot_path: result.snapshot_path,
+            size_bytes: result.snapshot_size_bytes,
+            entity_count: 0, // Snapshot export doesn't return entity count directly
+            edge_count: 0,
+        })
+    }
+
+    fn snapshot_import(&self, import_dir: &std::path::Path) -> Result<crate::backend::ImportMetadata, SqliteGraphError> {
+        use crate::backend::native::v2::import::SnapshotImporter;
+        use crate::backend::native::v2::import::snapshot::SnapshotImportConfig;
+        use crate::backend::native::v2::import::ImportMode;
+
+        // Get the graph file path
+        let graph_path = self.with_graph_file(|graph_file| {
+            Ok(graph_file.path().to_path_buf())
+        })?;
+
+        let config = SnapshotImportConfig {
+            target_graph_path: graph_path.clone(),
+            export_dir_path: import_dir.to_path_buf(),
+            import_mode: ImportMode::Fresh,
+            validate_manifest: true,
+            verify_checksum: true,
+            overwrite_existing: true, // Allow overwriting for import
+        };
+
+        let importer = SnapshotImporter::from_export_dir(import_dir, &graph_path, config)
+            .map_err(|e| SqliteGraphError::connection(format!("Failed to create snapshot importer: {:?}", e)))?;
+
+        let result = importer.import()
+            .map_err(|e| SqliteGraphError::connection(format!("Snapshot import failed: {:?}", e)))?;
+
+        Ok(crate::backend::ImportMetadata {
+            snapshot_path: import_dir.join("snapshot"), // Approximate path
+            entities_imported: result.records_imported,
+            edges_imported: 0, // Records include both entities and edges
         })
     }
 }

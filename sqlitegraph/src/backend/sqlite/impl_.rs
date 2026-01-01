@@ -215,4 +215,78 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
     ) -> Result<Vec<PatternMatch>, SqliteGraphError> {
         pattern::execute_pattern(&self.graph, start, pattern)
     }
+
+    fn checkpoint(&self) -> Result<(), SqliteGraphError> {
+        // Execute SQLite WAL checkpoint
+        let conn = self.graph.connection();
+        conn.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+            // wal_checkpoint returns a row with 3 integers: (busy, log, checkpointed)
+            // We don't need to use them, just execute the checkpoint
+            let _busy: i32 = row.get(0)?;
+            let _log: i32 = row.get(1)?;
+            let _checkpointed: i32 = row.get(2)?;
+            Ok(())
+        })
+            .map_err(|e| SqliteGraphError::connection(format!("WAL checkpoint failed: {}", e)))?;
+        Ok(())
+    }
+
+    fn snapshot_export(&self, export_dir: &std::path::Path) -> Result<crate::backend::SnapshotMetadata, SqliteGraphError> {
+        use std::fs;
+
+        // Ensure export directory exists
+        fs::create_dir_all(export_dir)
+            .map_err(|e| SqliteGraphError::connection(format!("Failed to create export directory: {}", e)))?;
+
+        let snapshot_file = export_dir.join("snapshot.json");
+
+        // Use existing dump_graph_to_path function
+        crate::recovery::dump_graph_to_path(&self.graph, &snapshot_file)?;
+
+        // Get metadata
+        let metadata = fs::metadata(&snapshot_file)
+            .map_err(|e| SqliteGraphError::connection(format!("Failed to read snapshot metadata: {}", e)))?;
+
+        let entity_ids = self.graph.all_entity_ids()
+            .map_err(|e| SqliteGraphError::query(format!("Failed to get entity count: {}", e)))?;
+
+        Ok(crate::backend::SnapshotMetadata {
+            snapshot_path: snapshot_file,
+            size_bytes: metadata.len(),
+            entity_count: entity_ids.len() as u64,
+            edge_count: 0, // SQLite dump doesn't separate edge count easily
+        })
+    }
+
+    fn snapshot_import(&self, import_dir: &std::path::Path) -> Result<crate::backend::ImportMetadata, SqliteGraphError> {
+        use std::fs;
+
+        let snapshot_file = import_dir.join("snapshot.json");
+
+        if !snapshot_file.exists() {
+            return Err(SqliteGraphError::connection(format!(
+                "Snapshot file not found: {}",
+                snapshot_file.display()
+            )));
+        }
+
+        // Get entity count before import
+        let before_count = self.graph.all_entity_ids()
+            .map_err(|e| SqliteGraphError::query(format!("Failed to get entity count: {}", e)))?
+            .len();
+
+        // Use existing load_graph_from_path function
+        crate::recovery::load_graph_from_path(&self.graph, &snapshot_file)?;
+
+        // Get entity count after import
+        let after_count = self.graph.all_entity_ids()
+            .map_err(|e| SqliteGraphError::query(format!("Failed to get entity count: {}", e)))?
+            .len();
+
+        Ok(crate::backend::ImportMetadata {
+            snapshot_path: snapshot_file,
+            entities_imported: (after_count - before_count) as u64,
+            edges_imported: 0, // SQLite load doesn't separate edge count easily
+        })
+    }
 }

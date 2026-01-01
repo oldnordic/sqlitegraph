@@ -345,6 +345,35 @@ $ sqlitegraph --command reindex-all --progress --db large_graph.db
 [indexing] 45.2% (1250/2764) - elapsed: 2.3s, remaining: 2.8s
 ```
 
+### HNSW Vector Search Commands
+
+The CLI provides HNSW vector search commands for testing and development:
+
+```bash
+# Create HNSW index
+sqlitegraph --backend sqlite --db :memory: hnsw-create --dimension 768 --m 16 --ef-construction 200 --distance-metric cosine
+
+# Insert vectors from JSON file
+sqlitegraph --backend sqlite --db :memory: hnsw-insert --input vectors.json
+
+# Search for similar vectors
+sqlitegraph --backend sqlite --db :memory: hnsw-search --input query.json --k 10
+
+# Get index statistics
+sqlitegraph --backend sqlite --db :memory: hnsw-stats
+```
+
+**Important**: HNSW indexes do not persist across CLI invocations. Each CLI command creates a new database connection with empty HNSW storage. For persistent vector search functionality, use the Rust API directly:
+
+```rust
+let graph = SqliteGraph::open("mydb.db")?;
+let hnsw = graph.hnsw_index("vectors", config)?;
+hnsw.insert_vector(&vector, metadata)?;
+let results = hnsw.search(&query, k)?;
+```
+
+See `docs/hnsw_cli_persistence_issue_20241223.md` for technical details and implementation status.
+
 ## Getting Started with Examples
 
 ### Running Examples

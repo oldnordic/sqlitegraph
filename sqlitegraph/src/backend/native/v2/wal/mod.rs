@@ -62,6 +62,9 @@ use std::path::PathBuf;
 /// V2 WAL configuration parameters
 #[derive(Debug, Clone)]
 pub struct V2WALConfig {
+    /// Path to the graph file (can be .db, .v2, or any extension)
+    pub graph_path: PathBuf,
+
     /// Path to the main WAL file
     pub wal_path: PathBuf,
 
@@ -93,6 +96,7 @@ pub struct V2WALConfig {
 impl Default for V2WALConfig {
     fn default() -> Self {
         Self {
+            graph_path: PathBuf::from("v2_graph.db"),
             wal_path: PathBuf::from("v2_graph.wal"),
             checkpoint_path: PathBuf::from("v2_graph.checkpoint"),
             max_wal_size: 1024 * 1024 * 1024, // 1GB
@@ -111,6 +115,7 @@ impl V2WALConfig {
     pub fn for_graph_file(graph_path: &std::path::Path) -> Self {
         let base_path = graph_path.with_extension("");
         Self {
+            graph_path: graph_path.to_path_buf(),
             wal_path: base_path.with_extension("wal"),
             checkpoint_path: base_path.with_extension("checkpoint"),
             ..Default::default()

@@ -9,13 +9,64 @@ struct MigrationStep {
     statements: &'static [&'static str],
 }
 
-const MIGRATION_STEPS: &[MigrationStep] = &[MigrationStep {
-    target_version: 2,
-    statements: &[
-        "CREATE TABLE IF NOT EXISTS graph_meta_history(version INTEGER NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)",
-        "INSERT INTO graph_meta_history(version) VALUES(2)",
-    ],
-}];
+const MIGRATION_STEPS: &[MigrationStep] = &[
+    MigrationStep {
+        target_version: 2,
+        statements: &[
+            "CREATE TABLE IF NOT EXISTS graph_meta_history(version INTEGER NOT NULL, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)",
+            "INSERT INTO graph_meta_history(version) VALUES(2)",
+        ],
+    },
+    MigrationStep {
+        target_version: 3,
+        statements: &[
+            // HNSW index metadata table
+            "CREATE TABLE IF NOT EXISTS hnsw_indexes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                dimension INTEGER NOT NULL,
+                m INTEGER NOT NULL,
+                ef_construction INTEGER NOT NULL,
+                distance_metric TEXT NOT NULL,
+                vector_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )",
+            // HNSW vectors table
+            "CREATE TABLE IF NOT EXISTS hnsw_vectors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                index_id INTEGER NOT NULL,
+                vector_data BLOB NOT NULL,
+                metadata TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (index_id) REFERENCES hnsw_indexes(id) ON DELETE CASCADE
+            )",
+            // HNSW layers table
+            "CREATE TABLE IF NOT EXISTS hnsw_layers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                index_id INTEGER NOT NULL,
+                layer_level INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                connections BLOB NOT NULL,
+                FOREIGN KEY (index_id) REFERENCES hnsw_indexes(id) ON DELETE CASCADE,
+                UNIQUE(index_id, layer_level, node_id)
+            )",
+            // HNSW entry points table
+            "CREATE TABLE IF NOT EXISTS hnsw_entry_points (
+                index_id INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                PRIMARY KEY (index_id, node_id),
+                FOREIGN KEY (index_id) REFERENCES hnsw_indexes(id) ON DELETE CASCADE
+            )",
+            // Indexes for performance
+            "CREATE INDEX IF NOT EXISTS idx_hnsw_vectors_index ON hnsw_vectors(index_id)",
+            "CREATE INDEX IF NOT EXISTS idx_hnsw_layers_index ON hnsw_layers(index_id, layer_level)",
+            "CREATE INDEX IF NOT EXISTS idx_hnsw_entry_points_index ON hnsw_entry_points(index_id)",
+            "INSERT INTO graph_meta_history(version) VALUES(3)",
+        ],
+    },
+];
 
 pub const SCHEMA_VERSION: i64 = BASE_SCHEMA_VERSION + MIGRATION_STEPS.len() as i64;
 

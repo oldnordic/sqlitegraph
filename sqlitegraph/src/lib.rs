@@ -98,6 +98,20 @@ pub use recovery::{dump_graph_to_path, load_graph_from_path, load_graph_from_rea
 pub use backend::{BackendDirection, ChainStep, GraphBackend};
 pub use backend::{EdgeSpec, NativeGraphBackend, NeighborQuery, NodeSpec, SqliteGraphBackend};
 
+// Re-export WAL functionality for native backend
+#[cfg(feature = "native-v2")]
+pub use backend::native::v2::wal::{
+    V2WALConfig, V2WALManager,
+    TransactionIsolation, WALManagerMetrics,
+};
+
+// Re-export WAL integration for advanced usage
+#[cfg(feature = "native-v2")]
+pub use backend::native::v2::wal::{
+    V2GraphWALIntegrator, GraphWALIntegrationConfig,
+    GraphOperationResult, OperationMetrics,
+};
+
 // Re-export configuration and factory
 pub use config::{BackendKind, GraphConfig, NativeConfig, SqliteConfig, open_graph};
 

@@ -49,8 +49,8 @@ impl CheckpointExecutor {
 
         let writer = BufWriter::with_capacity(DEFAULT_CHECKPOINT_BUFFER_SIZE, file);
 
-        // Extract V2 graph file path from WAL config
-        let v2_graph_path = config.wal_path.with_extension("v2");
+        // Use the graph_path from config (supports .db, .v2, or any extension)
+        let v2_graph_path = config.graph_path.clone();
 
         // Create V2 Graph Integrator with real backend integration
         let v2_integrator = V2GraphIntegrator::new(v2_graph_path).map_err(|e| {
@@ -155,6 +155,11 @@ impl CheckpointExecutor {
         start_lsn: u64,
         end_lsn: u64,
     ) -> CheckpointResult<Vec<(u64, V2WALRecord)>> {
+        // If start_lsn is 0, this is likely an empty WAL - return empty records
+        if start_lsn == 0 {
+            return Ok(Vec::new());
+        }
+
         let mut reader = V2WALReader::open(&self.config.wal_path).map_err(|e| {
             CheckpointError::v2_integration(format!("Failed to open WAL reader: {}", e))
         })?;

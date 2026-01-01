@@ -61,6 +61,63 @@ pub trait GraphBackend {
         start: i64,
         pattern: &PatternQuery,
     ) -> Result<Vec<PatternMatch>, SqliteGraphError>;
+
+    /// Trigger WAL checkpoint for backends that support write-ahead logging
+    ///
+    /// For Native backend with WAL: flushes WAL to graph file
+    /// For SQLite backend: executes PRAGMA wal_checkpoint(TRUNCATE)
+    /// For backends without WAL: returns Ok(()) as no-op
+    fn checkpoint(&self) -> Result<(), SqliteGraphError>;
+
+    /// Export database snapshot to the specified directory
+    ///
+    /// Creates a consistent snapshot of the current database state.
+    /// For Native backend: uses V2 snapshot format
+    /// For SQLite backend: uses JSON dump format
+    ///
+    /// # Arguments
+    /// * `export_dir` - Directory path where snapshot will be written
+    ///
+    /// # Returns
+    /// Snapshot metadata including file paths and size information
+    fn snapshot_export(&self, export_dir: &std::path::Path) -> Result<SnapshotMetadata, SqliteGraphError>;
+
+    /// Import database snapshot from the specified directory
+    ///
+    /// Restores database state from a previously created snapshot.
+    /// For Native backend: loads V2 snapshot format
+    /// For SQLite backend: loads JSON dump format
+    ///
+    /// # Arguments
+    /// * `import_dir` - Directory path containing snapshot files
+    ///
+    /// # Returns
+    /// Import metadata including number of records imported
+    fn snapshot_import(&self, import_dir: &std::path::Path) -> Result<ImportMetadata, SqliteGraphError>;
+}
+
+/// Metadata returned by snapshot export operations
+#[derive(Debug, Clone)]
+pub struct SnapshotMetadata {
+    /// Path to the snapshot file
+    pub snapshot_path: std::path::PathBuf,
+    /// Snapshot size in bytes
+    pub size_bytes: u64,
+    /// Number of entities in snapshot
+    pub entity_count: u64,
+    /// Number of edges in snapshot
+    pub edge_count: u64,
+}
+
+/// Metadata returned by snapshot import operations
+#[derive(Debug, Clone)]
+pub struct ImportMetadata {
+    /// Path to the imported snapshot
+    pub snapshot_path: std::path::PathBuf,
+    /// Number of entities imported
+    pub entities_imported: u64,
+    /// Number of edges imported
+    pub edges_imported: u64,
 }
 
 /// Reference implementation for GraphBackend trait that works with references.
@@ -129,5 +186,17 @@ where
         pattern: &PatternQuery,
     ) -> Result<Vec<PatternMatch>, SqliteGraphError> {
         (*self).pattern_search(start, pattern)
+    }
+
+    fn checkpoint(&self) -> Result<(), SqliteGraphError> {
+        (*self).checkpoint()
+    }
+
+    fn snapshot_export(&self, export_dir: &std::path::Path) -> Result<SnapshotMetadata, SqliteGraphError> {
+        (*self).snapshot_export(export_dir)
+    }
+
+    fn snapshot_import(&self, import_dir: &std::path::Path) -> Result<ImportMetadata, SqliteGraphError> {
+        (*self).snapshot_import(import_dir)
     }
 }

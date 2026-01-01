@@ -44,4 +44,9 @@ pub use node_cache::NodeRecordCache;
 pub use node_store::{NodeStore, clear_node_cache};
 
 // V2 clustered edge kernel re-exports
-pub use v2::{EdgeCluster, EdgeRecordCompactExt, FreeSpaceManager, NodeRecordV2, StringTable};
+pub use v2::{
+    EdgeCluster, EdgeRecordCompactExt, FreeSpaceManager, NodeRecordV2, StringTable,
+    // Snapshot support
+    export::SnapshotExporter, export::snapshot::SnapshotExportConfig,
+    import::SnapshotImporter, import::snapshot::SnapshotImportConfig,
+};
