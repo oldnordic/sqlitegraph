@@ -1,6 +1,6 @@
 # SQLiteGraph Changelog
 
-## [Unreleased]
+## [0.2.11] - 2026-01-01
 
 ### Fixes
 - Native V2: ensure node slot reads always use the canonical std I/O path when `native-v2` is enabled without `v2_experimental`, preventing `Corrupt node record … Invalid V2 node record version 0` errors during edge insertion.
