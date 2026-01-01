@@ -365,16 +365,7 @@ impl<'a> NodeStore<'a> {
         {
             self.graph_file.mmap_read_bytes(slot_offset, &mut buffer)?;
         }
-        #[cfg(all(feature = "v2_experimental", feature = "v2_io_exclusive_std"))]
-        {
-            // EXCLUSIVE STD MODE: Use standard I/O for V2 node reads
-            self.graph_file.read_bytes(slot_offset, &mut buffer)?;
-        }
-        #[cfg(not(any(
-            feature = "v2_experimental",
-            feature = "v2_io_exclusive_mmap",
-            feature = "v2_io_exclusive_std"
-        )))]
+        #[cfg(not(all(feature = "v2_experimental", feature = "v2_io_exclusive_mmap")))]
         {
             // DEFAULT MODE: Use canonical read_bytes API for V2
             self.graph_file.read_bytes(slot_offset, &mut buffer)?;
