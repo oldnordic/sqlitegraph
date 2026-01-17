@@ -266,11 +266,9 @@ fn run_bulk_insert_edges(client: &BackendClient, args: &[String]) -> Result<(), 
 fn run_hnsw_create(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {
     let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("hnsw-create requires SQLite backend"))?;
 
-    // NOTE: HNSW indexes are stored in-memory within SqliteGraph and do NOT persist
-    // across CLI invocations. Each CLI command creates a new SqliteGraph instance with
-    // empty HNSW index storage. For persistent HNSW functionality, use the Rust API directly.
-    //
-    // See: https://github.com/your-repo/sqlitegraph/docs/hnsw_cli_persistence_issue_20241223.md
+    // NOTE: HNSW indexes now persist to database for file-based databases.
+    // Vectors inserted via hnsw-insert will be saved and restored on next CLI invocation.
+    // For in-memory databases (--db memory), indexes remain in-memory only.
 
     // Parse HNSW configuration from command-line arguments
     let dimension = required_flag_value(args, "--dimension")
@@ -291,6 +289,13 @@ fn run_hnsw_create(client: &BackendClient, args: &[String]) -> Result<(), Sqlite
         _ => return Err(SqliteGraphError::invalid_input(format!("unsupported distance metric: {distance_metric_str}"))),
     };
 
+    // Get index name (default to "default" if not specified)
+    let index_name = args.iter()
+        .position(|arg| arg == "--index-name")
+        .and_then(|idx| args.get(idx + 1))
+        .map(|s| s.as_str())
+        .unwrap_or("default");
+
     // Build HNSW configuration
     let config = HnswConfigBuilder::new()
         .dimension(dimension)
@@ -301,11 +306,12 @@ fn run_hnsw_create(client: &BackendClient, args: &[String]) -> Result<(), Sqlite
         .build()
         .map_err(|e| SqliteGraphError::invalid_input(format!("invalid HNSW config: {e}")))?;
 
-    // Create HNSW index
-    let _hnsw = graph.hnsw_index("default", config)?;
+    // Create HNSW index with persistent storage
+    let _hnsw = graph.hnsw_index_persistent(index_name, config)?;
 
     let payload = json!({
         "command": "hnsw-create",
+        "index_name": index_name,
         "dimension": dimension,
         "m": m,
         "ef_construction": ef_construction,
@@ -319,17 +325,9 @@ fn run_hnsw_create(client: &BackendClient, args: &[String]) -> Result<(), Sqlite
 fn run_hnsw_insert(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {
     let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("hnsw-insert requires SQLite backend"))?;
 
-    // NOTE: HNSW indexes are stored in-memory within SqliteGraph and do NOT persist
-    // across CLI invocations. The index created by 'hnsw-create' is lost when that CLI
-    // process exits. Subsequent commands will fail with "index not found" unless used
-    // within the same CLI session (which is not currently supported).
-    //
-    // For persistent HNSW functionality, use the Rust API directly:
-    //   let graph = SqliteGraph::open("mydb.db")?;
-    //   let hnsw = graph.hnsw_index("vectors", config)?;
-    //   hnsw.insert_vector(&vector, metadata)?;
-    //
-    // See: https://github.com/your-repo/sqlitegraph/docs/hnsw_cli_persistence_issue_20241223.md
+    // NOTE: HNSW indexes now persist to database for file-based databases.
+    // Vectors will be saved and available in subsequent CLI invocations.
+    // For in-memory databases (--db memory), vectors remain in-memory only.
 
     // Get index name (default to "default" if not specified)
     let index_name = args.iter()
@@ -400,16 +398,9 @@ fn run_hnsw_insert(client: &BackendClient, args: &[String]) -> Result<(), Sqlite
 fn run_hnsw_search(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {
     let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("hnsw-search requires SQLite backend"))?;
 
-    // NOTE: HNSW indexes are stored in-memory within SqliteGraph and do NOT persist
-    // across CLI invocations. This command will fail with "index not found" unless the
-    // index was created in the same CLI session (which is not currently supported).
-    //
-    // For persistent HNSW functionality, use the Rust API directly:
-    //   let graph = SqliteGraph::open("mydb.db")?;
-    //   let hnsw = graph.hnsw_index("vectors", config)?;
-    //   let results = hnsw.search(&query_vector, k)?;
-    //
-    // See: https://github.com/your-repo/sqlitegraph/docs/hnsw_cli_persistence_issue_20241223.md
+    // NOTE: HNSW indexes now persist to database for file-based databases.
+    // Searches will work across CLI invocations for persisted indexes.
+    // For in-memory databases (--db memory), indexes remain in-memory only.
 
     // Get index name (default to "default" if not specified)
     let index_name = args.iter()
@@ -498,16 +489,9 @@ fn run_hnsw_search(client: &BackendClient, args: &[String]) -> Result<(), Sqlite
 fn run_hnsw_stats(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {
     let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("hnsw-stats requires SQLite backend"))?;
 
-    // NOTE: HNSW indexes are stored in-memory within SqliteGraph and do NOT persist
-    // across CLI invocations. This command will fail with "index not found" unless the
-    // index was created in the same CLI session (which is not currently supported).
-    //
-    // For persistent HNSW functionality, use the Rust API directly:
-    //   let graph = SqliteGraph::open("mydb.db")?;
-    //   let hnsw = graph.hnsw_index("vectors", config)?;
-    //   let stats = hnsw.statistics()?;
-    //
-    // See: https://github.com/your-repo/sqlitegraph/docs/hnsw_cli_persistence_issue_20241223.md
+    // NOTE: HNSW indexes now persist to database for file-based databases.
+    // Statistics will show persisted indexes and their vectors across CLI invocations.
+    // For in-memory databases (--db memory), indexes remain in-memory only.
 
     // Get index name (default to "default" if not specified)
     let index_name = args.iter()

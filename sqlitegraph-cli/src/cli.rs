@@ -73,10 +73,10 @@ Commands:
   neighbors --id ID [--direction incoming|outgoing]  Direct neighbor query
   pattern-match --edge-type TYPE [--start-label LABEL] [--end-label LABEL] [--direction incoming|outgoing] [--start-prop KEY:VAL] [--end-prop KEY:VAL]  Match triple patterns
   pattern-match-fast --edge-type TYPE [--start-label LABEL] [--end-label LABEL] [--direction incoming|outgoing] [--start-prop KEY:VAL] [--end-prop KEY:VAL]  Fast-path pattern match
-  hnsw-create --dimension N --m M --ef-construction N --distance-metric TYPE  Create HNSW index
-  hnsw-insert --input FILE  Insert vectors into HNSW index
-  hnsw-search --input FILE --k N  Search HNSW index
-  hnsw-stats                Show HNSW index statistics
+  hnsw-create --dimension N --m M --ef-construction N --distance-metric TYPE [--index-name NAME]  Create HNSW index
+  hnsw-insert --input FILE [--name NAME]  Insert vectors into HNSW index
+  hnsw-search --input FILE --k N [--name NAME]  Search HNSW index
+  hnsw-stats [--name NAME]                Show HNSW index statistics
   wal-checkpoint            Trigger WAL checkpoint operation
   wal-metrics                Show WAL performance metrics and file sizes
   wal-config                 Show WAL configuration settings
@@ -105,6 +105,8 @@ HNSW Options:
   --m                       Number of bi-directional links (default: 16)
   --ef-construction         HNSW ef_construction parameter (default: 200)
   --distance-metric         Distance metric: cosine|euclidean|dot|manhattan
+  --index-name              Index name for create (default: "default")
+  --name                    Index name for insert/search/stats (default: "default")
   --k                       Number of nearest neighbors to return
 
 Examples:

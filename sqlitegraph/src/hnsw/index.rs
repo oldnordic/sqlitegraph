@@ -1123,16 +1123,33 @@ impl SqliteGraph {
         // Create index with appropriate storage backend
         let hnsw = if is_file_based {
             // For file-based databases, use persistent storage
-            // Get database path to open a new connection
+            // First, save metadata on the MAIN connection to ensure it persists
+            let temp_index = HnswIndex::new(name, config.clone())
+                .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to create HNSW index: {}", e)))?;
+            temp_index.save_metadata(&self.conn)
+                .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to save HNSW index metadata: {}", e)))?;
+
+            // Get the index_id from the database
+            let index_id = HnswIndex::get_index_id(&self.conn, name)
+                .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to get index_id: {}", e)))?
+                .ok_or_else(|| SqliteGraphError::invalid_input(format!("Failed to get index_id after saving metadata")))?;
+
+            // Get database path to open a new connection for storage
             let db_path = self.conn.pragma_query_value(None, "database_list", |row| {
                 let name: String = row.get(1)?;
                 Ok(name)
             }).map_err(|e| SqliteGraphError::invalid_input(format!("Failed to get database path: {}", e)))?;
 
-            let conn_for_storage = rusqlite::Connection::open(db_path)
+            let conn_for_storage = rusqlite::Connection::open(&db_path)
                 .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to open connection for storage: {}", e)))?;
 
-            HnswIndex::with_persistent_storage(name, config, conn_for_storage)
+            // Ensure schema is initialized on the new connection
+            crate::schema::ensure_schema(&conn_for_storage)
+                .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to ensure schema: {}", e)))?;
+
+            // Create index with storage using the index_id we just retrieved
+            let storage = Box::new(crate::hnsw::storage::SQLiteVectorStorage::new(index_id, conn_for_storage));
+            HnswIndex::with_storage(name, config, storage)
                 .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to create HNSW index: {}", e)))?
         } else {
             // For in-memory databases, use in-memory storage
@@ -1140,7 +1157,7 @@ impl SqliteGraph {
                 .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to create HNSW index: {}", e)))?
         };
 
-        // Store the index (metadata already saved by with_persistent_storage)
+        // Store the index (metadata already saved to database above)
         let mut indexes = self.hnsw_indexes.write().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
         indexes.insert(name.to_string(), hnsw);
 
