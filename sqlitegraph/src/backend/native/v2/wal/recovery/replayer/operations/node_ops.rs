@@ -13,9 +13,7 @@ use crate::backend::native::v2::{
 };
 use crate::backend::native::v2::wal::recovery::errors::RecoveryError;
 use crate::backend::native::v2::wal::recovery::replayer::types::RollbackOperation;
-
-macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
-macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
+use crate::debug::{debug_log, warn_log};
 
 impl super::DefaultReplayOperations {
     /// Handle node insertion during replay
@@ -26,7 +24,7 @@ impl super::DefaultReplayOperations {
         node_data: &[u8],
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
-        debug!("Replaying node insert: node_id={}, slot_offset={}, data_size={}",
+        debug_log!("Replaying node insert: node_id={}, slot_offset={}, data_size={}",
                node_id, slot_offset, node_data.len());
 
         // Deserialize the node data
@@ -69,7 +67,7 @@ impl super::DefaultReplayOperations {
             stats.record_bytes_written(node_data.len() as u64);
         }
 
-        debug!("Successfully replayed node insert: node_id={}", node_id);
+        debug_log!("Successfully replayed node insert: node_id={}", node_id);
         Ok(())
     }
 
@@ -82,7 +80,7 @@ impl super::DefaultReplayOperations {
         old_data: Option<&Vec<u8>>,
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
-        debug!("Replaying node update: node_id={}, data_size={}", node_id, new_data.len());
+        debug_log!("Replaying node update: node_id={}, data_size={}", node_id, new_data.len());
 
         // Validate input data
         if new_data.is_empty() {
@@ -133,7 +131,7 @@ impl super::DefaultReplayOperations {
             stats.record_bytes_written(new_data.len() as u64);
         }
 
-        debug!("Successfully replayed node update: node_id={}", node_id);
+        debug_log!("Successfully replayed node update: node_id={}", node_id);
         Ok(())
     }
 
@@ -145,11 +143,11 @@ impl super::DefaultReplayOperations {
         old_data: Option<&Vec<u8>>,
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
-        debug!("Replaying node delete: node_id={}, slot_offset={}", node_id, slot_offset);
+        debug_log!("Replaying node delete: node_id={}, slot_offset={}", node_id, slot_offset);
 
         // Step 1: Validate input parameters
         if node_id == 0 {
-            warn!("Invalid node_id=0 for node deletion - treating as no-op");
+            warn_log!("Invalid node_id=0 for node deletion - treating as no-op");
             return Ok(());
         }
 
@@ -162,7 +160,7 @@ impl super::DefaultReplayOperations {
                 ))?
         } else {
             // For now, create a minimal node record - in real implementation would retrieve from storage
-            warn!("No old_data provided for node delete - creating minimal rollback record");
+            warn_log!("No old_data provided for node delete - creating minimal rollback record");
             NodeRecordV2::new(
                 node_id as i64,
                 "Unknown".to_string(),
@@ -194,7 +192,7 @@ impl super::DefaultReplayOperations {
             // Step 5: Handle edge cascade cleanup (if node has cluster references)
             // Do this BEFORE creating NodeStore to avoid borrow conflicts
             if node_record.outgoing_edge_count > 0 || node_record.incoming_edge_count > 0 {
-                debug!("Node {} has edges - performing cascade cleanup: outgoing={}, incoming={}",
+                debug_log!("Node {} has edges - performing cascade cleanup: outgoing={}, incoming={}",
                        node_id, node_record.outgoing_edge_count, node_record.incoming_edge_count);
 
                 // Create EdgeStore for edge deletion operations
@@ -213,14 +211,14 @@ impl super::DefaultReplayOperations {
                     for (edge_id, neighbor_id) in outgoing_edges {
                         // Mark edge as deleted (soft deletion)
                         if let Err(e) = edge_store.delete_edge(edge_id) {
-                            warn!("Failed to delete outgoing edge {} for node {} -> neighbor {}: {:?}",
+                            warn_log!("Failed to delete outgoing edge {} for node {} -> neighbor {}: {:?}",
                                   edge_id, node_id, neighbor_id, e);
                         } else {
-                            debug!("Deleted outgoing edge {} for node {} -> neighbor {}", edge_id, node_id, neighbor_id);
+                            debug_log!("Deleted outgoing edge {} for node {} -> neighbor {}", edge_id, node_id, neighbor_id);
                         }
                     }
 
-                    debug!("Deleted {} outgoing edges for node {}", outgoing_count, node_id);
+                    debug_log!("Deleted {} outgoing edges for node {}", outgoing_count, node_id);
                 }
 
                 // Collect and delete incoming edges (edges where to_id = node_id)
@@ -236,17 +234,17 @@ impl super::DefaultReplayOperations {
                     for (edge_id, neighbor_id) in incoming_edges {
                         // Mark edge as deleted (soft deletion)
                         if let Err(e) = edge_store.delete_edge(edge_id) {
-                            warn!("Failed to delete incoming edge {} for node {} <- neighbor {}: {:?}",
+                            warn_log!("Failed to delete incoming edge {} for node {} <- neighbor {}: {:?}",
                                   edge_id, node_id, neighbor_id, e);
                         } else {
-                            debug!("Deleted incoming edge {} for node {} <- neighbor {}", edge_id, node_id, neighbor_id);
+                            debug_log!("Deleted incoming edge {} for node {} <- neighbor {}", edge_id, node_id, neighbor_id);
                         }
                     }
 
-                    debug!("Deleted {} incoming edges for node {}", incoming_count, node_id);
+                    debug_log!("Deleted {} incoming edges for node {}", incoming_count, node_id);
                 }
 
-                debug!("Successfully completed edge cascade cleanup for node {}", node_id);
+                debug_log!("Successfully completed edge cascade cleanup for node {}", node_id);
             }
 
             // Now create NodeStore and FreeSpaceManager for remaining operations
@@ -255,7 +253,7 @@ impl super::DefaultReplayOperations {
 
             // Step 6: Clean up cluster references if they exist
             if node_record.outgoing_cluster_offset != 0 || node_record.incoming_cluster_offset != 0 {
-                debug!("Cleaning up cluster references for node {}: outgoing_offset={}, incoming_offset={}",
+                debug_log!("Cleaning up cluster references for node {}: outgoing_offset={}, incoming_offset={}",
                        node_id, node_record.outgoing_cluster_offset, node_record.incoming_cluster_offset);
 
                 // Deallocate outgoing cluster if it exists
@@ -264,7 +262,7 @@ impl super::DefaultReplayOperations {
                         node_record.outgoing_cluster_offset,
                         node_record.outgoing_cluster_size
                     );
-                    debug!("Deallocated outgoing cluster: node_id={}, offset={}, size={}",
+                    debug_log!("Deallocated outgoing cluster: node_id={}, offset={}, size={}",
                            node_id, node_record.outgoing_cluster_offset, node_record.outgoing_cluster_size);
                 }
 
@@ -274,11 +272,11 @@ impl super::DefaultReplayOperations {
                         node_record.incoming_cluster_offset,
                         node_record.incoming_cluster_size
                     );
-                    debug!("Deallocated incoming cluster: node_id={}, offset={}, size={}",
+                    debug_log!("Deallocated incoming cluster: node_id={}, offset={}, size={}",
                            node_id, node_record.incoming_cluster_offset, node_record.incoming_cluster_size);
                 }
 
-                debug!("Successfully cleaned up cluster references for node {}", node_id);
+                debug_log!("Successfully cleaned up cluster references for node {}", node_id);
             }
 
             // Step 7: Deallocate node slot using FreeSpaceManager
@@ -286,7 +284,7 @@ impl super::DefaultReplayOperations {
                 // Estimate node size for deallocation (use reasonable default for now)
                 let estimated_node_size = std::mem::size_of::<NodeRecordV2>() as u32;
                 free_space_manager.add_free_block(slot_offset, estimated_node_size);
-                debug!("Deallocated node slot: offset={}, size={}", slot_offset, estimated_node_size);
+                debug_log!("Deallocated node slot: offset={}, size={}", slot_offset, estimated_node_size);
             }
 
             // Step 8: Remove node from node index using real NodeStore deletion
@@ -303,7 +301,7 @@ impl super::DefaultReplayOperations {
             stats.record_bytes_written(old_data_len as u64);
         }
 
-        debug!("Successfully completed node delete: node_id={}, rollback_data_count={}",
+        debug_log!("Successfully completed node delete: node_id={}, rollback_data_count={}",
                node_id, rollback_data.len());
 
         Ok(())

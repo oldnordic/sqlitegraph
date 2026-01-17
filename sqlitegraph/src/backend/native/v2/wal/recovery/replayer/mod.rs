@@ -23,14 +23,10 @@ use crate::backend::native::v2::{
 };
 use crate::backend::native::v2::wal::V2WALRecord;
 use super::{errors::RecoveryError, core::TransactionState, constants::*};
+use crate::debug::{info_log, debug_log, warn_log, error_log};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
-
-macro_rules! info { ($($arg:tt)*) => { log::info!($($arg)*); }; }
-macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
-macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
-macro_rules! error { ($($arg:tt)*) => { log::error!($($arg)*); }; }
 
 /// Production-grade V2 graph file replayer
 ///
@@ -131,7 +127,7 @@ impl V2GraphFileReplayer {
         let mut failed_operations = Vec::new();
         let mut warnings = Vec::new();
 
-        info!("Starting V2 transaction replay for {} transactions", transactions.len());
+        info_log!("Starting V2 transaction replay for {} transactions", transactions.len());
 
         // Sort transactions by commit LSN for proper replay order
         let mut committed_transactions: Vec<_> = transactions
@@ -143,11 +139,11 @@ impl V2GraphFileReplayer {
             a.commit_lsn.unwrap_or(0).cmp(&b.commit_lsn.unwrap_or(0))
         });
 
-        info!("Replaying {} committed transactions", committed_transactions.len());
+        info_log!("Replaying {} committed transactions", committed_transactions.len());
 
         // Process each transaction
         for (tx_index, transaction) in committed_transactions.iter().enumerate() {
-            debug!("Replaying transaction TX {} ({}/{}) with {} records",
+            debug_log!("Replaying transaction TX {} ({}/{}) with {} records",
                    transaction.tx_id, tx_index + 1, committed_transactions.len(), transaction.records.len());
 
             match self.replay_transaction(transaction, tx_index + 1, committed_transactions.len()) {
@@ -157,7 +153,7 @@ impl V2GraphFileReplayer {
                     warnings.extend(tx_result.warnings);
                 }
                 Err(e) => {
-                    error!("Failed to replay transaction TX {}: {}", transaction.tx_id, e);
+                    error_log!("Failed to replay transaction TX {}: {}", transaction.tx_id, e);
                     failed_operations.push((V2WALRecord::HeaderUpdate { // Dummy record
                         header_offset: 0,
                         new_data: vec![],
@@ -191,7 +187,7 @@ impl V2GraphFileReplayer {
             warnings,
         };
 
-        info!(
+        info_log!(
             "V2 transaction replay completed: {} operations successful, {} failed, duration: {:?}",
             result.successful_operations,
             result.failed_operations.len(),
@@ -239,7 +235,7 @@ impl V2GraphFileReplayer {
                     }
                 }
                 Err(e) => {
-                    error!("Failed to replay record: {}", e);
+                    error_log!("Failed to replay record: {}", e);
                     failed_operations.push((record.clone(), e));
                     break;
                 }
@@ -250,15 +246,15 @@ impl V2GraphFileReplayer {
         if failed_operations.is_empty() {
             self.commit_transaction()?;
         } else {
-            warn!("Rolling back transaction due to {} failed operations", failed_operations.len());
+            warn_log!("Rolling back transaction due to {} failed operations", failed_operations.len());
             if let Err(e) = self.rollback_transaction() {
-                error!("Failed to rollback transaction: {}", e);
+                error_log!("Failed to rollback transaction: {}", e);
                 warnings.push(format!("Rollback failed: {}", e));
             }
         }
 
         let duration = start_time.elapsed();
-        debug!("Transaction TX {} replayed in {:?}: {} success, {} failed",
+        debug_log!("Transaction TX {} replayed in {:?}: {} success, {} failed",
                transaction.tx_id, duration, successful_operations, failed_operations.len());
 
         Ok(ReplayResult {
@@ -323,20 +319,20 @@ impl V2GraphFileReplayer {
             V2WALRecord::TransactionCommit { .. } |
             V2WALRecord::TransactionRollback { .. } => {
                 // Transaction control records are handled by the recovery coordinator
-                debug!("Transaction control record encountered during replay - handled by recovery coordinator");
+                debug_log!("Transaction control record encountered during replay - handled by recovery coordinator");
                 Ok(())
             }
 
             V2WALRecord::Checkpoint { .. } => {
                 // Checkpoint records are handled by the recovery coordinator
-                debug!("Checkpoint record encountered during replay - handled by recovery coordinator");
+                debug_log!("Checkpoint record encountered during replay - handled by recovery coordinator");
                 Ok(())
             }
 
             // Segment end marker
             V2WALRecord::SegmentEnd { .. } => {
                 // Segment end marks are handled by the recovery coordinator
-                debug!("Segment end marker encountered during replay - handled by recovery coordinator");
+                debug_log!("Segment end marker encountered during replay - handled by recovery coordinator");
                 Ok(())
             }
 
@@ -344,7 +340,7 @@ impl V2GraphFileReplayer {
             V2WALRecord::TransactionPrepare { .. } |
             V2WALRecord::TransactionAbort { .. } => {
                 // Two-phase commit records are handled by the recovery coordinator
-                debug!("Two-phase commit transaction record encountered during replay - handled by recovery coordinator");
+                debug_log!("Two-phase commit transaction record encountered during replay - handled by recovery coordinator");
                 Ok(())
             }
 
@@ -353,7 +349,7 @@ impl V2GraphFileReplayer {
             V2WALRecord::SavepointRollback { .. } |
             V2WALRecord::SavepointRelease { .. } => {
                 // Savepoint records are handled by the recovery coordinator
-                debug!("Savepoint record encountered during replay - handled by recovery coordinator");
+                debug_log!("Savepoint record encountered during replay - handled by recovery coordinator");
                 Ok(())
             }
 
@@ -361,7 +357,7 @@ impl V2GraphFileReplayer {
             V2WALRecord::BackupCreate { .. } |
             V2WALRecord::BackupRestore { .. } => {
                 // Backup records are handled by the recovery coordinator
-                debug!("Backup record encountered during replay - handled by recovery coordinator");
+                debug_log!("Backup record encountered during replay - handled by recovery coordinator");
                 Ok(())
             }
 
@@ -369,7 +365,7 @@ impl V2GraphFileReplayer {
             V2WALRecord::LockAcquire { .. } |
             V2WALRecord::LockRelease { .. } => {
                 // Lock records are handled by the recovery coordinator
-                debug!("Lock record encountered during replay - handled by recovery coordinator");
+                debug_log!("Lock record encountered during replay - handled by recovery coordinator");
                 Ok(())
             }
 
@@ -377,7 +373,7 @@ impl V2GraphFileReplayer {
             V2WALRecord::IndexUpdate { .. } |
             V2WALRecord::StatisticsUpdate { .. } => {
                 // Metadata update records are handled by the recovery coordinator
-                debug!("Metadata update record encountered during replay - handled by recovery coordinator");
+                debug_log!("Metadata update record encountered during replay - handled by recovery coordinator");
                 Ok(())
             }
         }
@@ -385,14 +381,14 @@ impl V2GraphFileReplayer {
 
     /// Begin a transaction for replay operations
     fn begin_transaction(&self) -> Result<(), RecoveryError> {
-        debug!("Beginning transaction for replay operations");
+        debug_log!("Beginning transaction for replay operations");
         // In a full implementation, this would start a database transaction
         Ok(())
     }
 
     /// Commit a successful transaction replay
     fn commit_transaction(&self) -> Result<(), RecoveryError> {
-        debug!("Committing successful transaction replay");
+        debug_log!("Committing successful transaction replay");
         // Clear rollback operations on successful commit
         {
             let mut rollback_system = self.rollback_system.lock().unwrap();
@@ -403,13 +399,13 @@ impl V2GraphFileReplayer {
 
     /// Rollback a failed transaction replay
     fn rollback_transaction(&self) -> Result<(), RecoveryError> {
-        debug!("V2 transaction rollback initiated");
+        debug_log!("V2 transaction rollback initiated");
 
         let rollback_system = self.rollback_system.lock().unwrap();
         let summary = rollback_system.get_summary();
 
         if summary.total_operations > 0 {
-            info!("Rolling back {} operations ({} node, {} string)",
+            info_log!("Rolling back {} operations ({} node, {} string)",
                   summary.total_operations,
                   summary.data_operations_count() - summary.string_insert_count,
                   summary.string_insert_count);
@@ -421,7 +417,7 @@ impl V2GraphFileReplayer {
     /// Report replay progress
     fn report_progress(&self, completed: usize, total: usize) {
         let percentage = (completed as f64 / total as f64) * 100.0;
-        info!("Replay progress: {}/{} transactions ({:.1}%)", completed, total, percentage);
+        info_log!("Replay progress: {}/{} transactions ({:.1}%)", completed, total, percentage);
     }
 
     /// Get current replay statistics

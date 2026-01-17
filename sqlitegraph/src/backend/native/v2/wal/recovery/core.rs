@@ -6,16 +6,12 @@
 use super::{constants::*, errors::RecoveryError};
 use crate::backend::native::v2::wal::{V2WALConfig, V2WALRecord};
 use crate::backend::native::{NativeBackendError, NativeResult};
+use crate::debug::{info_log, debug_log, warn_log, error_log};
 use parking_lot::{Condvar, Mutex};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-macro_rules! info { ($($arg:tt)*) => { log::info!($($arg)*); }; }
-macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
-macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
-macro_rules! error { ($($arg:tt)*) => { log::error!($($arg)*); }; }
 
 /// Recovery state machine
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -200,13 +196,13 @@ impl V2WALRecoveryEngine {
         let start_time = Instant::now();
         let start_timestamp = self.get_current_timestamp()?;
 
-        info!("Starting V2 WAL recovery");
+        info_log!("Starting V2 WAL recovery");
         self.set_recovery_state(RecoveryState::Initializing)?;
 
         let mut warnings = Vec::new();
 
         for attempt in 1..=self.options.max_recovery_attempts {
-            debug!(
+            debug_log!(
                 "Recovery attempt {}/{}",
                 attempt, self.options.max_recovery_attempts
             );
@@ -221,11 +217,11 @@ impl V2WALRecoveryEngine {
                     );
                 }
                 Err(e) => {
-                    error!("Recovery attempt {} failed: {}", attempt, e);
+                    error_log!("Recovery attempt {} failed: {}", attempt, e);
 
                     if attempt == self.options.max_recovery_attempts {
                         if self.options.force_recovery {
-                            warn!("Force recovery enabled");
+                            warn_log!("Force recovery enabled");
                             return self.finalize_successful_recovery(
                                 start_time,
                                 start_timestamp,
@@ -307,7 +303,7 @@ impl V2WALRecoveryEngine {
         self.set_recovery_state(RecoveryState::Complete)?;
         self.recovery_cv.notify_all();
 
-        info!("Recovery completed successfully in {:?}", duration);
+        info_log!("Recovery completed successfully in {:?}", duration);
         Ok(RecoverySuccess {
             metrics: self.metrics.lock().clone(),
             warnings,
@@ -334,7 +330,7 @@ impl V2WALRecoveryEngine {
         self.set_recovery_state(RecoveryState::Failed)?;
         self.recovery_cv.notify_all();
 
-        error!("Recovery failed after {:?}: {}", duration, error);
+        error_log!("Recovery failed after {:?}: {}", duration, error);
         Err(error)
     }
 
@@ -350,7 +346,7 @@ impl V2WALRecoveryEngine {
         }
 
         *state = new_state;
-        debug!("Recovery state: {:?}", new_state);
+        debug_log!("Recovery state: {:?}", new_state);
         Ok(())
     }
 
@@ -434,7 +430,7 @@ impl V2WALRecoveryEngine {
             _ => {
                 *state = RecoveryState::Failed;
                 self.recovery_cv.notify_all();
-                info!("Recovery cancelled");
+                info_log!("Recovery cancelled");
                 Ok(())
             }
         }
@@ -563,7 +559,7 @@ impl V2WALRecoveryEngine {
             }
         }
 
-        debug!(
+        debug_log!(
             "Transaction validation complete, {} warnings",
             warnings.len()
         );

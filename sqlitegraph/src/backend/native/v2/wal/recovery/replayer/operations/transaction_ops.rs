@@ -10,9 +10,7 @@ use crate::backend::native::v2::{
 };
 use crate::backend::native::v2::wal::recovery::errors::RecoveryError;
 use crate::backend::native::v2::wal::recovery::replayer::types::RollbackOperation;
-
-macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
-macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
+use crate::debug::{debug_log, warn_log};
 
 impl super::DefaultReplayOperations {
     /// Handle string insertion during replay
@@ -22,7 +20,7 @@ impl super::DefaultReplayOperations {
         string_value: &str,
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
-        debug!("Replaying string insert: string_id={}, value='{}'", string_id, string_value);
+        debug_log!("Replaying string insert: string_id={}, value='{}'", string_id, string_value);
 
         // Initialize string table if needed
         {
@@ -52,7 +50,7 @@ impl super::DefaultReplayOperations {
             stats.record_bytes_written(string_value.len() as u64);
         }
 
-        debug!("Successfully replayed string insert: string_id={}", string_id);
+        debug_log!("Successfully replayed string insert: string_id={}", string_id);
         Ok(())
     }
 
@@ -66,12 +64,12 @@ impl super::DefaultReplayOperations {
         edge_data: &[u8],
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
-        debug!("Replaying cluster create: node_id={}, direction={:?}, cluster_offset={}, cluster_size={}",
+        debug_log!("Replaying cluster create: node_id={}, direction={:?}, cluster_offset={}, cluster_size={}",
                node_id, direction, cluster_offset, cluster_size);
 
         // Step 1: Input validation following SME methodology
         if node_id == 0 {
-            warn!("Invalid node_id=0 for cluster creation - treating as no-op");
+            warn_log!("Invalid node_id=0 for cluster creation - treating as no-op");
             return Ok(());
         }
 
@@ -117,7 +115,7 @@ impl super::DefaultReplayOperations {
                     format!("Failed to write cluster data to graph file: {}", e)
                 ))?;
 
-            debug!("Successfully wrote cluster data for node {} at offset {} ({} bytes)",
+            debug_log!("Successfully wrote cluster data for node {} at offset {} ({} bytes)",
                    node_id, cluster_offset, edge_data.len());
         } // graph_file lock is released here
 
@@ -152,7 +150,7 @@ impl super::DefaultReplayOperations {
                 Ok(record) => record,
                 Err(_) => {
                     // Node doesn't exist - create new NodeRecordV2
-                    debug!("Node {} not found - creating new NodeRecordV2 for cluster reference", node_id);
+                    debug_log!("Node {} not found - creating new NodeRecordV2 for cluster reference", node_id);
                     crate::backend::native::v2::node_record_v2::NodeRecordV2::new(
                         node_id as i64,
                         "Node".to_string(),
@@ -180,7 +178,7 @@ impl super::DefaultReplayOperations {
                     format!("Failed to update NodeRecordV2 with cluster reference: {:?}", e)
                 ))?;
 
-            debug!("Updated NodeRecordV2 cluster reference for node {} direction {:?} to offset {} (size: {})",
+            debug_log!("Updated NodeRecordV2 cluster reference for node {} direction {:?} to offset {} (size: {})",
                    node_id, direction, cluster_offset, cluster_size);
         } // NodeStore lock is released here
 
@@ -191,7 +189,7 @@ impl super::DefaultReplayOperations {
             stats.record_bytes_written(edge_data.len() as u64);
         }
 
-        debug!("Successfully completed cluster create: node_id={}, direction={:?}, offset={}, size={}",
+        debug_log!("Successfully completed cluster create: node_id={}, direction={:?}, offset={}, size={}",
                node_id, direction, cluster_offset, edge_data.len());
         Ok(())
     }
@@ -204,7 +202,7 @@ impl super::DefaultReplayOperations {
         block_type: u8,
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
-        debug!("Replaying free space allocate: block_offset={}, block_size={}, block_type={}",
+        debug_log!("Replaying free space allocate: block_offset={}, block_size={}, block_type={}",
                block_offset, block_size, block_type);
 
         // Step 1: Input validation following SME methodology
@@ -256,7 +254,7 @@ impl super::DefaultReplayOperations {
                     format!("Free space allocation failed: {:?}", e)
                 ))?;
 
-            debug!("Successfully allocated {} bytes at offset {} (type: {})",
+            debug_log!("Successfully allocated {} bytes at offset {} (type: {})",
                    block_size, allocated_offset, block_type);
             allocated_offset
         }; // FreeSpaceManager lock is released here
@@ -275,7 +273,7 @@ impl super::DefaultReplayOperations {
             stats.record_bytes_written(block_size);
         }
 
-        debug!("Successfully completed free space allocate: offset={}, size={}, type={}",
+        debug_log!("Successfully completed free space allocate: offset={}, size={}, type={}",
                allocated_offset, block_size, block_type);
         Ok(())
     }
@@ -312,7 +310,7 @@ impl super::DefaultReplayOperations {
         // All values are currently valid, but we document this for future type restrictions
         if block_type > 5 {
             // Future types may be reserved, for now accept all values 0-255
-            debug!("Unusual block_type={} for deallocation (accepted but may indicate WAL corruption)", block_type);
+            debug_log!("Unusual block_type={} for deallocation (accepted but may indicate WAL corruption)", block_type);
         }
 
         // Step 2: Create rollback operation BEFORE making changes (critical for transaction integrity)
@@ -322,7 +320,7 @@ impl super::DefaultReplayOperations {
             block_type,
         });
 
-        debug!("Creating rollback data for FreeSpaceDeallocate: offset={}, size={}, type={}",
+        debug_log!("Creating rollback data for FreeSpaceDeallocate: offset={}, size={}, type={}",
                block_offset, block_size, block_type);
 
         // Step 3: Perform deallocation using FreeSpaceManager::add_free_block()
@@ -345,7 +343,7 @@ impl super::DefaultReplayOperations {
             // - Statistics tracking (total_deallocations, total_deallocated_bytes)
             free_space_manager.add_free_block(block_offset, block_size as u32);
 
-            debug!("Successfully deallocated block at offset {} ({} bytes, type {})",
+            debug_log!("Successfully deallocated block at offset {} ({} bytes, type {})",
                    block_offset, block_size, block_type);
         } // FreeSpaceManager lock is released here
 
@@ -359,7 +357,7 @@ impl super::DefaultReplayOperations {
             stats_guard.record_free_space_operation();
         }
 
-        debug!("Free space deallocation replay completed: offset={}, size={}, type={}",
+        debug_log!("Free space deallocation replay completed: offset={}, size={}, type={}",
                block_offset, block_size, block_type);
 
         Ok(())
@@ -388,7 +386,7 @@ impl super::DefaultReplayOperations {
         old_data: Option<&[u8]>,
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
-        debug!("Replaying header update: offset={}, data_size={}", header_offset, new_data.len());
+        debug_log!("Replaying header update: offset={}, data_size={}", header_offset, new_data.len());
 
         // Step 1: Input validation
         // File: sqlitegraph/src/backend/native/constants.rs
@@ -432,7 +430,7 @@ impl super::DefaultReplayOperations {
                     format!("Failed to write header at offset {}: {:?}", header_offset, e)
                 ))?;
 
-            debug!("Successfully updated header at offset {} ({} bytes)", header_offset, new_data.len());
+            debug_log!("Successfully updated header at offset {} ({} bytes)", header_offset, new_data.len());
         }
 
         // Step 4: Update replay statistics
@@ -445,7 +443,7 @@ impl super::DefaultReplayOperations {
             stats_guard.record_bytes_written(new_data.len() as u64);
         }
 
-        debug!("Header update replay completed: offset={}, size={}", header_offset, new_data.len());
+        debug_log!("Header update replay completed: offset={}, size={}", header_offset, new_data.len());
 
         Ok(())
     }

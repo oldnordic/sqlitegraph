@@ -12,9 +12,7 @@ use crate::backend::native::v2::{
 };
 use crate::backend::native::v2::wal::recovery::errors::RecoveryError;
 use crate::backend::native::v2::wal::recovery::replayer::types::RollbackOperation;
-
-macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
-macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
+use crate::debug::{debug_log, warn_log};
 
 impl super::DefaultReplayOperations {
     /// Handle edge insertion during replay
@@ -25,7 +23,7 @@ impl super::DefaultReplayOperations {
         insertion_point: u32,
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
-        debug!("Replaying edge insert: cluster_key={:?}, insertion_point={}, edge_len={}",
+        debug_log!("Replaying edge insert: cluster_key={:?}, insertion_point={}, edge_len={}",
                cluster_key, insertion_point, edge_record.edge_data.len());
 
         // Step 1: Input validation following SME methodology
@@ -75,7 +73,7 @@ impl super::DefaultReplayOperations {
             // Serialize using EdgeCluster's serialize() method which produces correct format
             let cluster_bytes = edge_cluster.serialize();
 
-            debug!("Created cluster data: {} bytes total (edge_count=1)",
+            debug_log!("Created cluster data: {} bytes total (edge_count=1)",
                    cluster_bytes.len());
             cluster_bytes
         };
@@ -111,12 +109,12 @@ impl super::DefaultReplayOperations {
             };
 
             if allocated_offset < cluster_floor {
-                debug!("Allocated offset {} is below cluster floor {}, padding to {}",
+                debug_log!("Allocated offset {} is below cluster floor {}, padding to {}",
                        allocated_offset, cluster_floor, cluster_floor);
                 allocated_offset = cluster_floor;
             }
 
-            debug!("Successfully allocated {} bytes for edge cluster at offset {}",
+            debug_log!("Successfully allocated {} bytes for edge cluster at offset {}",
                    cluster_data.len(), allocated_offset);
             allocated_offset
         }; // FreeSpaceManager lock is released here
@@ -144,7 +142,7 @@ impl super::DefaultReplayOperations {
                     format!("Failed to write edge cluster to graph file: {:?}", e)
                 ))?;
 
-            debug!("Successfully wrote edge cluster data: {} bytes to offset {}",
+            debug_log!("Successfully wrote edge cluster data: {} bytes to offset {}",
                    cluster_data.len(), allocated_offset);
         }; // GraphFile lock is released here
 
@@ -182,7 +180,7 @@ impl super::DefaultReplayOperations {
                 Ok(record) => record,
                 Err(_) => {
                     // Node doesn't exist - create new NodeRecordV2
-                    debug!("Node {} not found - creating new NodeRecordV2 for cluster reference", node_id);
+                    debug_log!("Node {} not found - creating new NodeRecordV2 for cluster reference", node_id);
                     crate::backend::native::v2::node_record_v2::NodeRecordV2::new(
                         node_id as i64,
                         "Node".to_string(),
@@ -204,14 +202,14 @@ impl super::DefaultReplayOperations {
                     node_record.outgoing_cluster_offset = allocated_offset;
                     node_record.outgoing_cluster_size = cluster_data.len() as u32;
                     node_record.outgoing_edge_count += 1; // Critical: increment edge count to match cluster
-                    debug!("Before write: node_id={}, outgoing_cluster_offset={}, outgoing_edge_count={}",
+                    debug_log!("Before write: node_id={}, outgoing_cluster_offset={}, outgoing_edge_count={}",
                            node_record.id, node_record.outgoing_cluster_offset, node_record.outgoing_edge_count);
                 },
                 crate::backend::native::v2::edge_cluster::Direction::Incoming => {
                     node_record.incoming_cluster_offset = allocated_offset;
                     node_record.incoming_cluster_size = cluster_data.len() as u32;
                     node_record.incoming_edge_count += 1; // Critical: increment edge count to match cluster
-                    debug!("Before write: node_id={}, incoming_cluster_offset={}, incoming_edge_count={}",
+                    debug_log!("Before write: node_id={}, incoming_cluster_offset={}, incoming_edge_count={}",
                            node_record.id, node_record.incoming_cluster_offset, node_record.incoming_edge_count);
                 },
             }
@@ -222,7 +220,7 @@ impl super::DefaultReplayOperations {
                     format!("Failed to update NodeRecordV2 with cluster reference: {:?}", e)
                 ))?;
 
-            debug!("Updated NodeRecordV2 cluster reference for node {} direction {:?} to offset {} (size: {})",
+            debug_log!("Updated NodeRecordV2 cluster reference for node {} direction {:?} to offset {} (size: {})",
                    node_id, cluster_direction, allocated_offset, cluster_data.len());
         } // NodeStore lock is released here
 
@@ -233,7 +231,7 @@ impl super::DefaultReplayOperations {
             stats.record_bytes_written(cluster_data.len() as u64);
         }
 
-        debug!("Successfully completed edge insert: cluster_key={:?}, insertion_point={}, offset={}, size={}",
+        debug_log!("Successfully completed edge insert: cluster_key={:?}, insertion_point={}, offset={}, size={}",
                cluster_key, insertion_point, allocated_offset, cluster_data.len());
         Ok(())
     }
@@ -247,7 +245,7 @@ impl super::DefaultReplayOperations {
         old_edge: &CompactEdgeRecord,
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), RecoveryError> {
-        debug!("Replaying edge update: cluster_key={:?}, position={}, old_edge_len={}, new_edge_len={}",
+        debug_log!("Replaying edge update: cluster_key={:?}, position={}, old_edge_len={}, new_edge_len={}",
                cluster_key, position, old_edge.edge_data.len(), new_edge.edge_data.len());
 
         // Step 1: Input validation following SME methodology
@@ -310,7 +308,7 @@ impl super::DefaultReplayOperations {
             // Get cluster offset and size based on direction
             let (cluster_offset, cluster_size) = match direction {
                 crate::backend::native::v2::edge_cluster::Direction::Outgoing => {
-                    debug!("Reading Outgoing cluster: offset={}, size={}, node_id={}",
+                    debug_log!("Reading Outgoing cluster: offset={}, size={}, node_id={}",
                            node_record.outgoing_cluster_offset,
                            node_record.outgoing_cluster_size,
                            node_record.id);
@@ -322,7 +320,7 @@ impl super::DefaultReplayOperations {
                     (node_record.outgoing_cluster_offset, node_record.outgoing_cluster_size)
                 },
                 crate::backend::native::v2::edge_cluster::Direction::Incoming => {
-                    debug!("Reading Incoming cluster: offset={}, size={}, node_id={}",
+                    debug_log!("Reading Incoming cluster: offset={}, size={}, node_id={}",
                            node_record.incoming_cluster_offset,
                            node_record.incoming_cluster_size,
                            node_record.id);
@@ -335,7 +333,7 @@ impl super::DefaultReplayOperations {
                 },
             };
 
-            debug!("Found cluster at offset {} with size {} for node {:?} direction {:?}",
+            debug_log!("Found cluster at offset {} with size {} for node {:?} direction {:?}",
                    cluster_offset, cluster_size, node_id, direction);
 
             (cluster_offset, cluster_size)
@@ -381,14 +379,14 @@ impl super::DefaultReplayOperations {
         let edge_at_position = &existing_edges[position as usize];
         let edge_at_position_bytes = edge_at_position.serialize();
         if edge_at_position_bytes != old_edge_bytes {
-            warn!("Edge at position {} differs from expected old_edge - proceeding anyway for data recovery", position);
+            warn_log!("Edge at position {} differs from expected old_edge - proceeding anyway for data recovery", position);
             // In recovery mode, we continue even if the edge doesn't match exactly
         }
 
         // Step 6: Update edge at specified position
         existing_edges[position as usize] = new_edge.clone();
 
-        debug!("Updated edge at position {} in cluster for node {:?} direction {:?}",
+        debug_log!("Updated edge at position {} in cluster for node {:?} direction {:?}",
                position, node_id, direction);
 
         // Step 7: Reconstruct cluster with updated edge
@@ -459,12 +457,12 @@ impl super::DefaultReplayOperations {
             };
 
             if allocated_offset < cluster_floor {
-                debug!("Allocated offset {} is below cluster floor {}, padding to {}",
+                debug_log!("Allocated offset {} is below cluster floor {}, padding to {}",
                        allocated_offset, cluster_floor, cluster_floor);
                 allocated_offset = cluster_floor;
             }
 
-            debug!("Successfully allocated {} bytes for updated edge cluster at offset {}",
+            debug_log!("Successfully allocated {} bytes for updated edge cluster at offset {}",
                    updated_cluster_data.len(), allocated_offset);
             allocated_offset
         }; // FreeSpaceManager lock is released here
@@ -482,7 +480,7 @@ impl super::DefaultReplayOperations {
                     format!("Failed to write updated edge cluster: {:?}", e)
                 ))?;
 
-            debug!("Successfully wrote updated edge cluster: {} bytes to offset {}",
+            debug_log!("Successfully wrote updated edge cluster: {} bytes to offset {}",
                    updated_cluster_data.len(), allocated_offset);
         }; // GraphFile lock is released here
 
@@ -506,7 +504,7 @@ impl super::DefaultReplayOperations {
                 ))?;
 
             // Debug: Print state before update
-            debug!("Before NodeRecordV2 update: node_id={}, edge_count={}, allocated_offset={}, cluster_size={}",
+            debug_log!("Before NodeRecordV2 update: node_id={}, edge_count={}, allocated_offset={}, cluster_size={}",
                    node_record.id,
                    if direction == Direction::Outgoing { node_record.outgoing_edge_count } else { node_record.incoming_edge_count },
                    allocated_offset,
@@ -527,7 +525,7 @@ impl super::DefaultReplayOperations {
             }
 
             // Debug: Print state after update
-            debug!("After NodeRecordV2 update: node_id={}, outgoing_edge_count={}, outgoing_offset={}, outgoing_size={}",
+            debug_log!("After NodeRecordV2 update: node_id={}, outgoing_edge_count={}, outgoing_offset={}, outgoing_size={}",
                    node_record.id,
                    node_record.outgoing_edge_count,
                    node_record.outgoing_cluster_offset,
@@ -539,7 +537,7 @@ impl super::DefaultReplayOperations {
                     format!("Failed to update NodeRecordV2: {:?}", e)
                 ))?;
 
-            debug!("Updated NodeRecordV2 cluster reference for node {:?} direction {:?} to offset {}",
+            debug_log!("Updated NodeRecordV2 cluster reference for node {:?} direction {:?} to offset {}",
                    node_id, direction, allocated_offset);
         }; // NodeStore lock is released here
 
@@ -550,7 +548,7 @@ impl super::DefaultReplayOperations {
             stats.record_bytes_written(updated_cluster_data.len() as u64);
         }
 
-        debug!("Successfully completed edge update: cluster_key={:?}, position={}, old_offset={}, new_offset={}, old_size={}, new_size={}",
+        debug_log!("Successfully completed edge update: cluster_key={:?}, position={}, old_offset={}, new_offset={}, old_size={}, new_size={}",
                cluster_key, position, cluster_offset, allocated_offset, cluster_size, updated_cluster_data.len());
         Ok(())
     }
@@ -638,7 +636,7 @@ impl super::DefaultReplayOperations {
                 },
             };
 
-            debug!("Found cluster at offset {} with size {} for node {:?} direction {:?}",
+            debug_log!("Found cluster at offset {} with size {} for node {:?} direction {:?}",
                    cluster_offset, cluster_size, node_id, direction);
 
             (cluster_offset, cluster_size)
@@ -684,21 +682,21 @@ impl super::DefaultReplayOperations {
         let edge_at_position = &existing_edges[position as usize];
         let edge_at_position_bytes = edge_at_position.serialize();
         if edge_at_position_bytes != old_edge_bytes {
-            warn!("Edge at position {} differs from expected old_edge - proceeding anyway for data recovery", position);
+            warn_log!("Edge at position {} differs from expected old_edge - proceeding anyway for data recovery", position);
             // In recovery mode, we continue even if the edge doesn't match exactly
         }
 
         // Step 6: Delete edge at specified position
         existing_edges.remove(position as usize);
 
-        debug!("Deleted edge at position {} in cluster for node {:?} direction {:?} - {} edges remaining",
+        debug_log!("Deleted edge at position {} in cluster for node {:?} direction {:?} - {} edges remaining",
                position, node_id, direction, existing_edges.len());
 
         // Step 7: Reconstruct cluster without the deleted edge
         let updated_cluster_data = {
             // Handle empty cluster case (when all edges are deleted)
             if existing_edges.is_empty() {
-                debug!("Cluster became empty after deleting last edge for node {:?} direction {:?}", node_id, direction);
+                debug_log!("Cluster became empty after deleting last edge for node {:?} direction {:?}", node_id, direction);
                 // Create empty cluster following established patterns
                 let empty_cluster = EdgeCluster::create_from_compact_edges(
                     existing_edges, // empty vector
@@ -781,7 +779,7 @@ impl super::DefaultReplayOperations {
                     format!("Failed to allocate space for updated edge cluster: {:?}", e)
                 ))?;
 
-            debug!("Successfully allocated {} bytes for updated edge cluster at offset {}",
+            debug_log!("Successfully allocated {} bytes for updated edge cluster at offset {}",
                    updated_cluster_data.len(), allocated_offset);
             allocated_offset
         }; // FreeSpaceManager lock is released here
@@ -799,7 +797,7 @@ impl super::DefaultReplayOperations {
                     format!("Failed to write updated edge cluster: {:?}", e)
                 ))?;
 
-            debug!("Successfully wrote updated edge cluster: {} bytes to offset {}",
+            debug_log!("Successfully wrote updated edge cluster: {} bytes to offset {}",
                    updated_cluster_data.len(), allocated_offset);
         }; // GraphFile lock is released here
 
@@ -856,7 +854,7 @@ impl super::DefaultReplayOperations {
                     format!("Failed to update NodeRecordV2: {:?}", e)
                 ))?;
 
-            debug!("Updated NodeRecordV2 cluster reference for node {:?} direction {:?} to offset {}",
+            debug_log!("Updated NodeRecordV2 cluster reference for node {:?} direction {:?} to offset {}",
                    node_id, direction, if updated_cluster_data.len() == 0 { 0 } else { allocated_offset });
         }; // NodeStore lock is released here
 
@@ -867,7 +865,7 @@ impl super::DefaultReplayOperations {
             stats.record_bytes_written(updated_cluster_data.len() as u64);
         }
 
-        debug!("Successfully completed edge delete: cluster_key={:?}, position={}, old_offset={}, new_offset={}, old_size={}, new_size={}",
+        debug_log!("Successfully completed edge delete: cluster_key={:?}, position={}, old_offset={}, new_offset={}, old_size={}, new_size={}",
                cluster_key, position, cluster_offset, if updated_cluster_data.len() == 0 { 0 } else { allocated_offset }, cluster_size, updated_cluster_data.len());
         Ok(())
     }

@@ -16,11 +16,6 @@ mod node_ops;
 mod edge_ops;
 mod transaction_ops;
 
-// Logging macros
-macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
-macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
-macro_rules! error { ($($arg:tt)*) => { log::error!($($arg)*); }; }
-
 /// Production-grade replay operations handler
 ///
 /// This struct provides concrete implementations for all V2 WAL replay operations

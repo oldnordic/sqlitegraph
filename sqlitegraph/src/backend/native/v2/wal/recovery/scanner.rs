@@ -7,13 +7,10 @@
 
 use super::{constants::*, core::TransactionState, errors::RecoveryError};
 use crate::backend::native::v2::wal::{V2WALReader, V2WALRecord, V2WALRecordType};
+use crate::debug::{info_log, debug_log, warn_log};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
-
-macro_rules! info { ($($arg:tt)*) => { log::info!($($arg)*); }; }
-macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
-macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
 
 /// WAL scanner configuration options
 #[derive(Debug, Clone)]
@@ -123,7 +120,7 @@ impl WALScanner {
     ) -> Result<WALScanResult, RecoveryError> {
         let start_time = std::time::Instant::now();
 
-        info!("Starting WAL scan: {:?}", wal_path);
+        info_log!("Starting WAL scan: {:?}", wal_path);
 
         // Validate WAL file exists and is readable
         if !wal_path.exists() {
@@ -148,7 +145,7 @@ impl WALScanner {
 
         let duration = start_time.elapsed();
 
-        info!(
+        info_log!(
             "WAL scan completed: {} transactions, {} records in {:?}",
             result.transactions.len(),
             result.statistics.total_records,
@@ -188,7 +185,7 @@ impl TransactionScanner {
         let start_time = std::time::Instant::now();
         let header = self.reader.header().clone();
 
-        info!("Scanning WAL from LSN 1 to {}", header.current_lsn);
+        info_log!("Scanning WAL from LSN 1 to {}", header.current_lsn);
 
         // Reset active transactions
         self.active_transactions.lock().clear();
@@ -215,7 +212,7 @@ impl TransactionScanner {
 
             // Check memory usage
             if self.active_transactions.lock().len() > self.config.max_incomplete_transactions {
-                warn!("Too many active transactions, forcing completion");
+                warn_log!("Too many active transactions, forcing completion");
                 self.force_complete_incomplete_transactions(&mut transactions, &mut warnings);
             }
         }
@@ -243,7 +240,7 @@ impl TransactionScanner {
             statistics: self.statistics.clone(),
         };
 
-        info!(
+        info_log!(
             "WAL scan complete: {} total records, {} transactions",
             self.statistics.total_records, self.statistics.transactions_found
         );
@@ -448,7 +445,7 @@ impl TransactionScanner {
             tx_state.records.push(record);
         } else {
             // Record without active transaction - might be from a completed transaction
-            debug!("Record for inactive transaction TX {}", tx_id);
+            debug_log!("Record for inactive transaction TX {}", tx_id);
             warnings.push(format!("Record for inactive transaction TX {}", tx_id));
         }
 
@@ -521,7 +518,7 @@ impl TransactionScanner {
         let incomplete_count = active_tx.len();
 
         if incomplete_count > 0 {
-            warn!(
+            warn_log!(
                 "Forcing completion of {} incomplete transactions",
                 incomplete_count
             );
@@ -563,7 +560,7 @@ impl TransactionScanner {
             0.0
         };
 
-        debug!(
+        debug_log!(
             "WAL scan progress: {} records, LSN {}/{}, {:.1}% complete",
             record_count, current_lsn, total_lsn, percentage
         );

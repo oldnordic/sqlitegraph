@@ -14,14 +14,10 @@ use crate::backend::native::v2::{
     edge_cluster::{CompactEdgeRecord, Direction},
 };
 use super::types::{RollbackOperation, ReplayStatistics};
+use crate::debug::{info_log, debug_log, warn_log, error_log};
 
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
-
-macro_rules! info { ($($arg:tt)*) => { log::info!($($arg)*); }; }
-macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
-macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
-macro_rules! error { ($($arg:tt)*) => { log::error!($($arg)*); }; }
 
 /// Trait for replay operation handlers
 ///
@@ -229,7 +225,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
             stats.record_bytes_written(node_data.len() as u64);
         }
 
-        debug!("Replayed node insert: id={}, slot_offset={}, data_size={}",
+        debug_log!("Replayed node insert: id={}, slot_offset={}, data_size={}",
                node_id, slot_offset, node_data.len());
 
         Ok(())
@@ -262,7 +258,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
             let existing_offset = string_table_guard.get_or_add_offset(string_value)
                 .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(format!("Failed to add string to table: {}", e)))?;
 
-            debug!("String '{}' added to table with offset {} (deduplication: {})",
+            debug_log!("String '{}' added to table with offset {} (deduplication: {})",
                    string_value, existing_offset,
                    if string_table_guard.len() > 0 { "possibly duplicate" } else { "new" });
 
@@ -285,7 +281,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
             stats.record_bytes_written(string_value.len() as u64);
         }
 
-        info!("Replayed string insert: id={}, value='{}', offset={}, duration_ms={}",
+        info_log!("Replayed string insert: id={}, value='{}', offset={}, duration_ms={}",
               string_id, string_value, string_offset, start_time.elapsed().as_millis());
 
         Ok(())
@@ -301,7 +297,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         edge_data: &[u8],
         _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        warn!("Cluster create replay not yet implemented - placeholder (node_id: {}, direction: {:?}, cluster_offset: {}, cluster_size: {})",
+        warn_log!("Cluster create replay not yet implemented - placeholder (node_id: {}, direction: {:?}, cluster_offset: {}, cluster_size: {})",
               node_id, direction, cluster_offset, cluster_size);
         Ok(())
     }
@@ -313,7 +309,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         insertion_point: u32,
         _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        warn!("Edge insert replay not yet implemented - placeholder (cluster_key: {:?}, insertion_point: {})",
+        warn_log!("Edge insert replay not yet implemented - placeholder (cluster_key: {:?}, insertion_point: {})",
               cluster_key, insertion_point);
         Ok(())
     }
@@ -326,7 +322,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         _old_edge: Option<&CompactEdgeRecord>,
         _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        warn!("Edge update replay not yet implemented - placeholder (cluster_key: {:?}, position: {})",
+        warn_log!("Edge update replay not yet implemented - placeholder (cluster_key: {:?}, position: {})",
               cluster_key, position);
         Ok(())
     }
@@ -338,7 +334,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         _old_edge: Option<&CompactEdgeRecord>,
         _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        warn!("Edge delete replay not yet implemented - placeholder (cluster_key: {:?}, position: {})",
+        warn_log!("Edge delete replay not yet implemented - placeholder (cluster_key: {:?}, position: {})",
               cluster_key, position);
         Ok(())
     }
@@ -350,7 +346,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         block_type: u8,
         _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        warn!("Free space allocate replay not yet implemented - placeholder (offset: {}, size: {}, type: {})",
+        warn_log!("Free space allocate replay not yet implemented - placeholder (offset: {}, size: {}, type: {})",
               block_offset, block_size, block_type);
         Ok(())
     }
@@ -362,7 +358,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         block_type: u8,
         _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        warn!("Free space deallocate replay not yet implemented - placeholder (offset: {}, size: {}, type: {})",
+        warn_log!("Free space deallocate replay not yet implemented - placeholder (offset: {}, size: {}, type: {})",
               block_offset, block_size, block_type);
         Ok(())
     }
@@ -374,7 +370,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         _old_data: Option<&[u8]>,
         _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        warn!("Header update replay not yet implemented - placeholder (offset: {}, data_size: {})",
+        warn_log!("Header update replay not yet implemented - placeholder (offset: {}, data_size: {})",
               header_offset, new_data.len());
         Ok(())
     }
@@ -387,7 +383,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         old_data: Option<&Vec<u8>>,
         rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        debug!("Replaying node update: node_id={}, data_size={}", node_id, new_data.len());
+        debug_log!("Replaying node update: node_id={}, data_size={}", node_id, new_data.len());
 
         // Validate input data
         if new_data.is_empty() {
@@ -453,7 +449,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
             stats.record_bytes_written(new_data.len() as u64);
         }
 
-        debug!("Successfully replayed node update: node_id={}", node_id);
+        debug_log!("Successfully replayed node update: node_id={}", node_id);
         Ok(())
     }
 
@@ -465,7 +461,7 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         _rollback_data: &mut Vec<RollbackOperation>,
     ) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
         // TODO: Implement proper node deletion
-        warn!("Node delete replay not yet implemented - placeholder");
+        warn_log!("Node delete replay not yet implemented - placeholder");
         Ok(())
     }
 }

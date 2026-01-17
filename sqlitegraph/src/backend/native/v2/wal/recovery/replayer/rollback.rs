@@ -6,11 +6,8 @@
 use crate::backend::native::{GraphFile, NodeStore, NativeNodeId, NodeRecordV2};
 use crate::backend::native::v2::{StringTable, FreeSpaceManager};
 use super::types::RollbackOperation;
+use crate::debug::{debug_log, warn_log, error_log};
 use std::sync::{Arc, Mutex, RwLock};
-
-macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
-macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
-macro_rules! error { ($($arg:tt)*) => { log::error!($($arg)*); }; }
 
 /// Rollback system for transaction recovery
 ///
@@ -43,7 +40,7 @@ impl RollbackSystem {
 
     /// Add a rollback operation to the system
     pub fn add_operation(&mut self, operation: RollbackOperation) {
-        debug!("Adding rollback operation: {}", operation.operation_name());
+        debug_log!("Adding rollback operation: {}", operation.operation_name());
         self.operations.push(operation);
     }
 
@@ -59,7 +56,7 @@ impl RollbackSystem {
 
     /// Clear all rollback operations
     pub fn clear(&mut self) {
-        debug!("Clearing {} rollback operations", self.operations.len());
+        debug_log!("Clearing {} rollback operations", self.operations.len());
         self.operations.clear();
     }
 
@@ -69,24 +66,24 @@ impl RollbackSystem {
     /// to properly undo the transaction changes.
     pub fn execute_rollback(&self) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
         if self.operations.is_empty() {
-            debug!("No rollback operations to execute");
+            debug_log!("No rollback operations to execute");
             return Ok(());
         }
 
-        debug!("Executing rollback with {} operations", self.operations.len());
+        debug_log!("Executing rollback with {} operations", self.operations.len());
 
         // Apply rollback operations in reverse order (LIFO)
         for (index, operation) in self.operations.iter().rev().enumerate() {
-            debug!("Applying rollback operation {}/{}: {}",
+            debug_log!("Applying rollback operation {}/{}: {}",
                    index + 1, self.operations.len(), operation.operation_name());
 
             if let Err(e) = self.apply_rollback_operation(operation) {
-                error!("Failed to apply rollback operation {}: {}", operation.operation_name(), e);
+                error_log!("Failed to apply rollback operation {}: {}", operation.operation_name(), e);
                 // Continue with remaining operations even if one fails
             }
         }
 
-        debug!("Rollback completed successfully");
+        debug_log!("Rollback completed successfully");
         Ok(())
     }
 
@@ -132,7 +129,7 @@ impl RollbackSystem {
 
     /// Rollback node insertion by deleting the node
     fn rollback_node_insert(&self, node_id: NativeNodeId, _node_data: &[u8]) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        debug!("Rolling back node insert: node_id={}", node_id);
+        debug_log!("Rolling back node insert: node_id={}", node_id);
 
         // Ensure node store is initialized
         {
@@ -159,13 +156,13 @@ impl RollbackSystem {
                 .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(format!("Failed to delete node during rollback: {}", e)))?;
         }
 
-        debug!("Successfully rolled back node insert: node_id={}", node_id);
+        debug_log!("Successfully rolled back node insert: node_id={}", node_id);
         Ok(())
     }
 
     /// Rollback node update by restoring old data
     fn rollback_node_update(&self, node_id: NativeNodeId, old_data: &[u8]) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        debug!("Rolling back node update: node_id={}, data_size={}", node_id, old_data.len());
+        debug_log!("Rolling back node update: node_id={}, data_size={}", node_id, old_data.len());
 
         // Restore old node data
         let node_record = NodeRecordV2::deserialize(old_data)
@@ -196,13 +193,13 @@ impl RollbackSystem {
                 .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(format!("Failed to restore old node data: {}", e)))?;
         }
 
-        debug!("Successfully rolled back node update: node_id={}", node_id);
+        debug_log!("Successfully rolled back node update: node_id={}", node_id);
         Ok(())
     }
 
     /// Rollback node deletion by reinserting the node
     fn rollback_node_delete(&self, node_id: NativeNodeId, _slot_offset: u64, old_data: Vec<u8>) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        debug!("Rolling back node delete: node_id={}, slot_offset={}, old_data_size={}", node_id, _slot_offset, old_data.len());
+        debug_log!("Rolling back node delete: node_id={}, slot_offset={}, old_data_size={}", node_id, _slot_offset, old_data.len());
 
         // Step 1: Deserialize old node data
         let node_record = NodeRecordV2::deserialize(&old_data)
@@ -210,7 +207,7 @@ impl RollbackSystem {
                 format!("Failed to deserialize old node data: {}", e)
             ))?;
 
-        debug!("Deserialized node record: id={}, kind={}, name={}", node_record.id, node_record.kind, node_record.name);
+        debug_log!("Deserialized node record: id={}, kind={}, name={}", node_record.id, node_record.kind, node_record.name);
 
         // Step 2: Ensure NodeStore is initialized
         {
@@ -248,10 +245,10 @@ impl RollbackSystem {
                     format!("Failed to restore deleted node: {}", e)
                 ))?;
 
-            debug!("Successfully wrote restored node record to NodeStore");
+            debug_log!("Successfully wrote restored node record to NodeStore");
         }
 
-        debug!("Successfully rolled back node delete: node_id={}, restored kind={}, name={}, edge_counts=(outgoing={}, incoming={})",
+        debug_log!("Successfully rolled back node delete: node_id={}, restored kind={}, name={}, edge_counts=(outgoing={}, incoming={})",
                node_id, node_record.kind, node_record.name, node_record.outgoing_edge_count, node_record.incoming_edge_count);
 
         Ok(())
@@ -259,7 +256,7 @@ impl RollbackSystem {
 
     /// Rollback string insertion
     fn rollback_string_insert(&self, string_id: u64, string_value: &str) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        debug!("Rolling back string insert: id={}, value='{}'", string_id, string_value);
+        debug_log!("Rolling back string insert: id={}, value='{}'", string_id, string_value);
 
         // String rollback is complex due to deduplication in the string table
         // Multiple WAL records might reference the same string, so we can't
@@ -277,8 +274,8 @@ impl RollbackSystem {
             string_table_guard.len()
         };
 
-        debug!("String table currently has {} strings", current_string_count);
-        debug!("String '{}' remains in table due to deduplication complexity", string_value);
+        debug_log!("String table currently has {} strings", current_string_count);
+        debug_log!("String '{}' remains in table due to deduplication complexity", string_value);
 
         // In a production implementation with reference counting:
         // 1. Decrease reference count for the string
@@ -289,13 +286,13 @@ impl RollbackSystem {
         // This is generally safe as strings are small and deduplication
         // prevents excessive memory usage.
 
-        debug!("String insert rollback completed (limited implementation)");
+        debug_log!("String insert rollback completed (limited implementation)");
         Ok(())
     }
 
     /// Rollback header update by restoring old data
     fn rollback_header_update(&self, header_offset: u64, old_data: &[u8]) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        debug!("Rolling back header update: offset={}, data_size={}", header_offset, old_data.len());
+        debug_log!("Rolling back header update: offset={}, data_size={}", header_offset, old_data.len());
 
         // Step 1: Validate offset within header region
         use crate::backend::native::constants::HEADER_SIZE;
@@ -326,16 +323,16 @@ impl RollbackSystem {
                     format!("Failed to restore header at offset {}: {:?}", header_offset, e)
                 ))?;
 
-            debug!("Successfully restored header at offset {} ({} bytes)", header_offset, old_data.len());
+            debug_log!("Successfully restored header at offset {} ({} bytes)", header_offset, old_data.len());
         }
 
-        debug!("Header update rollback completed: offset={}, size={}", header_offset, old_data.len());
+        debug_log!("Header update rollback completed: offset={}, size={}", header_offset, old_data.len());
         Ok(())
     }
 
     /// Rollback free space allocation
     fn rollback_free_space_allocate(&self, block_offset: u64, block_size: u64, block_type: u8) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        debug!("Rolling back free space allocation: offset={}, size={}, type={}", block_offset, block_size, block_type);
+        debug_log!("Rolling back free space allocation: offset={}, size={}, type={}", block_offset, block_size, block_type);
 
         // Free space allocation rollback is complex because:
         // 1. The allocated block may have been used by subsequent operations
@@ -349,27 +346,27 @@ impl RollbackSystem {
         // 3. Future implementation would need sophisticated space tracking
 
         // Log the rollback attempt
-        debug!("Attempting to rollback allocation of {} bytes at offset {} (type: {})", block_size, block_offset, block_type);
+        debug_log!("Attempting to rollback allocation of {} bytes at offset {} (type: {})", block_size, block_offset, block_type);
 
         // Type-specific rollback considerations
         match block_type {
             1 => {
-                debug!("Rollback for CLUSTER storage type");     // Edge cluster storage
+                debug_log!("Rollback for CLUSTER storage type");     // Edge cluster storage
             },
             2 => {
-                debug!("Rollback for NODE_DATA storage type");   // Node record storage
+                debug_log!("Rollback for NODE_DATA storage type");   // Node record storage
             },
             3 => {
-                debug!("Rollback for STRING_TABLE storage type"); // String table storage
+                debug_log!("Rollback for STRING_TABLE storage type"); // String table storage
             },
             4 => {
-                debug!("Rollback for INDEX storage type");       // Index storage
+                debug_log!("Rollback for INDEX storage type");       // Index storage
             },
             5 => {
-                debug!("Rollback for METADATA storage type");    // Metadata/header storage
+                debug_log!("Rollback for METADATA storage type");    // Metadata/header storage
             },
             _ => {
-                debug!("Rollback for GENERAL storage type");     // General purpose storage
+                debug_log!("Rollback for GENERAL storage type");     // General purpose storage
             },
         }
 
@@ -387,8 +384,8 @@ impl RollbackSystem {
         // - Fragmentation is managed by the FreeSpaceManager
         // - Recovery scenarios are exceptional, not performance-critical
 
-        warn!("Free space allocation rollback completed (space preserved for consistency)");
-        warn!("Block at offset {} ({} bytes, type {}) remains allocated", block_offset, block_size, block_type);
+        warn_log!("Free space allocation rollback completed (space preserved for consistency)");
+        warn_log!("Block at offset {} ({} bytes, type {}) remains allocated", block_offset, block_size, block_type);
 
         // NOTE: A complete implementation would:
         // 1. Access the FreeSpaceManager and deallocate the block
@@ -397,13 +394,13 @@ impl RollbackSystem {
         // 4. Validate that the block wasn't reused by other operations
         // 5. Handle error cases gracefully
 
-        debug!("Free space allocate rollback logged (space preservation approach)");
+        debug_log!("Free space allocate rollback logged (space preservation approach)");
         Ok(())
     }
 
     /// Rollback free space deallocation by re-allocating the block
     fn rollback_free_space_deallocate(&self, block_offset: u64, block_size: u64, block_type: u8) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
-        debug!("Rolling back free space deallocation: offset={}, size={}, type={}", block_offset, block_size, block_type);
+        debug_log!("Rolling back free space deallocation: offset={}, size={}, type={}", block_offset, block_size, block_type);
 
         // Free space deallocation rollback is the inverse of allocation rollback:
         // 1. The deallocated block needs to be marked as allocated again
@@ -416,27 +413,27 @@ impl RollbackSystem {
         // 3. Future implementation would directly manipulate FreeSpaceManager state
 
         // Log the rollback attempt
-        debug!("Attempting to rollback deallocation of {} bytes at offset {} (type: {})", block_size, block_offset, block_type);
+        debug_log!("Attempting to rollback deallocation of {} bytes at offset {} (type: {})", block_size, block_offset, block_type);
 
         // Type-specific rollback considerations
         match block_type {
             1 => {
-                debug!("Rollback for CLUSTER storage type");     // Edge cluster storage
+                debug_log!("Rollback for CLUSTER storage type");     // Edge cluster storage
             },
             2 => {
-                debug!("Rollback for NODE_DATA storage type");   // Node record storage
+                debug_log!("Rollback for NODE_DATA storage type");   // Node record storage
             },
             3 => {
-                debug!("Rollback for STRING_TABLE storage type"); // String table storage
+                debug_log!("Rollback for STRING_TABLE storage type"); // String table storage
             },
             4 => {
-                debug!("Rollback for INDEX storage type");       // Index storage
+                debug_log!("Rollback for INDEX storage type");       // Index storage
             },
             5 => {
-                debug!("Rollback for METADATA storage type");    // Metadata/header storage
+                debug_log!("Rollback for METADATA storage type");    // Metadata/header storage
             },
             _ => {
-                debug!("Rollback for GENERAL storage type");     // General purpose storage
+                debug_log!("Rollback for GENERAL storage type");     // General purpose storage
             },
         }
 
@@ -453,8 +450,8 @@ impl RollbackSystem {
         // - Potential reuse of blocks that should remain allocated
         // - Generally acceptable for recovery scenarios
 
-        warn!("Free space deallocation rollback completed (block remains in free list)");
-        warn!("Block at offset {} ({} bytes, type {}) available for reuse", block_offset, block_size, block_type);
+        warn_log!("Free space deallocation rollback completed (block remains in free list)");
+        warn_log!("Block at offset {} ({} bytes, type {}) available for reuse", block_offset, block_size, block_type);
 
         // NOTE: A complete implementation would:
         // 1. Access the FreeSpaceManager and remove the block from free list
@@ -463,7 +460,7 @@ impl RollbackSystem {
         // 4. Handle coalescing reversal if adjacent blocks were merged
         // 5. Validate that the block hasn't been reused yet
 
-        debug!("Free space deallocate rollback logged (conservative approach)");
+        debug_log!("Free space deallocate rollback logged (conservative approach)");
         Ok(())
     }
 
@@ -480,7 +477,7 @@ impl RollbackSystem {
     {
         let (node_id, direction) = cluster_key;
 
-        debug!("Rolling back edge insert: node_id={}, direction={}, cluster_offset={}, cluster_size={}",
+        debug_log!("Rolling back edge insert: node_id={}, direction={}, cluster_offset={}, cluster_size={}",
                node_id, direction, cluster_offset, cluster_size);
 
         // Step 1: Deallocate cluster space via FreeSpaceManager
@@ -497,7 +494,7 @@ impl RollbackSystem {
 
             free_space_manager.add_free_block(cluster_offset, cluster_size);
 
-            debug!("Deallocated cluster: offset={}, size={}", cluster_offset, cluster_size);
+            debug_log!("Deallocated cluster: offset={}, size={}", cluster_offset, cluster_size);
         }
 
         // Step 2: Convert direction value to Direction enum
@@ -548,7 +545,7 @@ impl RollbackSystem {
                 Err(_) => {
                     // Node doesn't exist - this is acceptable for rollback scenarios
                     // where the node was deleted after edge insertion
-                    debug!("Node {} doesn't exist, skipping NodeRecordV2 cluster cleanup for direction={:?}",
+                    debug_log!("Node {} doesn't exist, skipping NodeRecordV2 cluster cleanup for direction={:?}",
                            node_id, direction_enum);
                     return Ok(());
                 }
@@ -557,14 +554,14 @@ impl RollbackSystem {
             // Clear cluster reference based on direction
             match direction_enum {
                 crate::backend::native::v2::edge_cluster::Direction::Outgoing => {
-                    debug!("Clearing outgoing cluster reference: node_id={}, old_offset={}, old_size={}",
+                    debug_log!("Clearing outgoing cluster reference: node_id={}, old_offset={}, old_size={}",
                            node_id, node_record.outgoing_cluster_offset, node_record.outgoing_cluster_size);
                     node_record.outgoing_cluster_offset = 0;
                     node_record.outgoing_cluster_size = 0;
                     node_record.outgoing_edge_count = 0;
                 },
                 crate::backend::native::v2::edge_cluster::Direction::Incoming => {
-                    debug!("Clearing incoming cluster reference: node_id={}, old_offset={}, old_size={}",
+                    debug_log!("Clearing incoming cluster reference: node_id={}, old_offset={}, old_size={}",
                            node_id, node_record.incoming_cluster_offset, node_record.incoming_cluster_size);
                     node_record.incoming_cluster_offset = 0;
                     node_record.incoming_cluster_size = 0;
@@ -578,11 +575,11 @@ impl RollbackSystem {
                     format!("Failed to update node {} after cluster cleanup: {}", node_id, e)
                 ))?;
 
-            debug!("Successfully cleared cluster reference from node_id={}, direction={:?}",
+            debug_log!("Successfully cleared cluster reference from node_id={}, direction={:?}",
                    node_id, direction_enum);
         }
 
-        debug!("Successfully completed edge insert rollback: node_id={}, direction={:?}, deallocated_offset={}",
+        debug_log!("Successfully completed edge insert rollback: node_id={}, direction={:?}, deallocated_offset={}",
                node_id, direction_enum, cluster_offset);
         Ok(())
     }
@@ -596,7 +593,7 @@ impl RollbackSystem {
         _cluster_data: Vec<u8>)
         -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError>
     {
-        debug!("Rolling back cluster create: node_id={}, direction={:?}, cluster_offset={}, cluster_size={}",
+        debug_log!("Rolling back cluster create: node_id={}, direction={:?}, cluster_offset={}, cluster_size={}",
                node_id, direction, cluster_offset, cluster_size);
 
         // Step 1: Deallocate cluster space via FreeSpaceManager
@@ -613,7 +610,7 @@ impl RollbackSystem {
 
             free_space_manager.add_free_block(cluster_offset, cluster_size as u32);
 
-            debug!("Deallocated cluster: offset={}, size={}", cluster_offset, cluster_size);
+            debug_log!("Deallocated cluster: offset={}, size={}", cluster_offset, cluster_size);
         }
 
         // Step 2: Remove cluster reference from NodeRecordV2
@@ -653,7 +650,7 @@ impl RollbackSystem {
                 Err(_) => {
                     // Node doesn't exist - this is acceptable for rollback scenarios
                     // where the node was deleted after cluster creation
-                    debug!("Node {} doesn't exist, skipping NodeRecordV2 cluster cleanup for direction={:?}",
+                    debug_log!("Node {} doesn't exist, skipping NodeRecordV2 cluster cleanup for direction={:?}",
                            node_id, direction);
                     return Ok(());
                 }
@@ -662,14 +659,14 @@ impl RollbackSystem {
             // Clear cluster reference based on direction
             match direction {
                 crate::backend::native::v2::edge_cluster::Direction::Outgoing => {
-                    debug!("Clearing outgoing cluster reference: node_id={}, old_offset={}, old_size={}",
+                    debug_log!("Clearing outgoing cluster reference: node_id={}, old_offset={}, old_size={}",
                            node_id, node_record.outgoing_cluster_offset, node_record.outgoing_cluster_size);
                     node_record.outgoing_cluster_offset = 0;
                     node_record.outgoing_cluster_size = 0;
                     node_record.outgoing_edge_count = 0;
                 },
                 crate::backend::native::v2::edge_cluster::Direction::Incoming => {
-                    debug!("Clearing incoming cluster reference: node_id={}, old_offset={}, old_size={}",
+                    debug_log!("Clearing incoming cluster reference: node_id={}, old_offset={}, old_size={}",
                            node_id, node_record.incoming_cluster_offset, node_record.incoming_cluster_size);
                     node_record.incoming_cluster_offset = 0;
                     node_record.incoming_cluster_size = 0;
@@ -683,11 +680,11 @@ impl RollbackSystem {
                     format!("Failed to update node {} after cluster cleanup: {}", node_id, e)
                 ))?;
 
-            debug!("Successfully cleared cluster reference from node_id={}, direction={:?}",
+            debug_log!("Successfully cleared cluster reference from node_id={}, direction={:?}",
                    node_id, direction);
         }
 
-        debug!("Successfully completed cluster create rollback: node_id={}, direction={:?}, deallocated_offset={}",
+        debug_log!("Successfully completed cluster create rollback: node_id={}, direction={:?}, deallocated_offset={}",
                node_id, direction, cluster_offset);
         Ok(())
     }
@@ -698,7 +695,7 @@ impl RollbackSystem {
     fn rollback_edge_update(&self, cluster_key: (i64, crate::backend::native::v2::edge_cluster::Direction), position: u32, old_edge: &[u8]) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
         let (node_id, direction) = cluster_key;
 
-        debug!("Rolling back edge update: node_id={}, direction={:?}, position={}, old_edge_size={}",
+        debug_log!("Rolling back edge update: node_id={}, direction={:?}, position={}, old_edge_size={}",
                node_id, direction, position, old_edge.len());
 
         // Step 1: Read NodeRecordV2 to locate cluster
@@ -732,7 +729,7 @@ impl RollbackSystem {
                 Ok(record) => record,
                 Err(_) => {
                     // Node doesn't exist - this is acceptable in test scenarios or if node was deleted
-                    debug!("Node {} doesn't exist, skipping edge update rollback (edge would be restored to non-existent node)", node_id);
+                    debug_log!("Node {} doesn't exist, skipping edge update rollback (edge would be restored to non-existent node)", node_id);
                     return Ok(());
                 }
             };
@@ -757,7 +754,7 @@ impl RollbackSystem {
                 },
             };
 
-            debug!("Found cluster at offset {} with size {} for node {} direction {:?}",
+            debug_log!("Found cluster at offset {} with size {} for node {} direction {:?}",
                    cluster_offset, cluster_size, node_id, direction);
 
             (cluster_offset, cluster_size)
@@ -807,7 +804,7 @@ impl RollbackSystem {
         // Step 5: Replace the edge at the specified position with old_edge
         existing_edges[position as usize] = old_edge_record;
 
-        debug!("Restored old edge at position {} in cluster for node {} direction {:?}",
+        debug_log!("Restored old edge at position {} in cluster for node {} direction {:?}",
                position, node_id, direction);
 
         // Step 6: Reconstruct cluster with restored edge
@@ -859,11 +856,11 @@ impl RollbackSystem {
                     format!("Failed to write restored cluster at offset {}: {:?}", cluster_offset, e)
                 ))?;
 
-            debug!("Successfully restored cluster at offset {} ({} bytes) with old edge at position {}",
+            debug_log!("Successfully restored cluster at offset {} ({} bytes) with old edge at position {}",
                    cluster_offset, restored_cluster_data.len(), position);
         }
 
-        debug!("Edge update rollback completed: node_id={}, direction={:?}, position={}, edges_restored={}",
+        debug_log!("Edge update rollback completed: node_id={}, direction={:?}, position={}, edges_restored={}",
                node_id, direction, position, existing_edges.len());
 
         Ok(())
@@ -872,7 +869,7 @@ impl RollbackSystem {
     fn rollback_edge_delete(&self, cluster_key: (i64, crate::backend::native::v2::edge_cluster::Direction), position: u32, old_edge: &[u8]) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
         let (node_id, direction) = cluster_key;
 
-        debug!("Rolling back edge delete: node_id={}, direction={:?}, position={}, old_edge_size={}",
+        debug_log!("Rolling back edge delete: node_id={}, direction={:?}, position={}, old_edge_size={}",
                node_id, direction, position, old_edge.len());
 
         // Step 1: Read NodeRecordV2 to locate cluster
@@ -906,7 +903,7 @@ impl RollbackSystem {
                 Ok(record) => record,
                 Err(_) => {
                     // Node doesn't exist - this is acceptable in test scenarios or if node was deleted
-                    debug!("Node {} doesn't exist, skipping edge delete rollback (edge would be restored to non-existent node)", node_id);
+                    debug_log!("Node {} doesn't exist, skipping edge delete rollback (edge would be restored to non-existent node)", node_id);
                     return Ok(());
                 }
             };
@@ -931,7 +928,7 @@ impl RollbackSystem {
                 },
             };
 
-            debug!("Found cluster at offset {} with size {} for node {} direction {:?}",
+            debug_log!("Found cluster at offset {} with size {} for node {} direction {:?}",
                    cluster_offset, cluster_size, node_id, direction);
 
             (cluster_offset, cluster_size)
@@ -983,7 +980,7 @@ impl RollbackSystem {
 
         let restored_edge_count = existing_edges.len();
 
-        debug!("Inserted deleted edge at position {} in cluster for node {} direction {:?} - {} edges total",
+        debug_log!("Inserted deleted edge at position {} in cluster for node {} direction {:?} - {} edges total",
                position, node_id, direction, restored_edge_count);
 
         // Step 6: Reconstruct cluster with the restored edge
@@ -1035,11 +1032,11 @@ impl RollbackSystem {
                     format!("Failed to write restored cluster at offset {}: {:?}", cluster_offset, e)
                 ))?;
 
-            debug!("Successfully restored cluster at offset {} ({} bytes) with reinserted edge at position {}",
+            debug_log!("Successfully restored cluster at offset {} ({} bytes) with reinserted edge at position {}",
                    cluster_offset, restored_cluster_data.len(), position);
         }
 
-        debug!("Edge delete rollback completed: node_id={}, direction={:?}, position={}, edges_restored={}",
+        debug_log!("Edge delete rollback completed: node_id={}, direction={:?}, position={}, edges_restored={}",
                node_id, direction, position, restored_edge_count);
 
         Ok(())
