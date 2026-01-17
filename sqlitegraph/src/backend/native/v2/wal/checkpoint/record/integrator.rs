@@ -503,15 +503,24 @@ impl V2GraphIntegrator {
 
     /// Apply string insert record
     fn apply_string_insert(&mut self, string_id: u32, string_value: &str, _lsn: u64) -> CheckpointResult<()> {
-        let mut _string_table = self.string_table.lock().map_err(|e| {
+        let mut string_table = self.string_table.lock().map_err(|e| {
             CheckpointError::state(format!("Failed to lock string table: {}", e))
         })?;
 
-        // TODO: Implement StringTable integration with proper API
-        // For now, this is a placeholder that logs the operation
-        println!("V2 String Insert: id {} -> {}", string_id, string_value);
+        // Use StringTable.get_or_add_offset() to add or retrieve the string offset
+        let offset = string_table.get_or_add_offset(string_value).map_err(|e| {
+            CheckpointError::v2_integration(format!(
+                "Failed to add string '{}' to string table: {}",
+                string_value, e
+            ))
+        })?;
 
-        // Future implementation needs to use proper StringTable API
+        // Note: The string_id from WAL might differ from the offset returned by get_or_add_offset()
+        // In a full implementation, we would maintain a mapping between WAL string IDs and table offsets
+        println!(
+            "V2 String Insert: id {} -> '{}' -> offset {}",
+            string_id, string_value, offset
+        );
 
         Ok(())
     }
@@ -651,17 +660,26 @@ impl V2GraphIntegrator {
     fn update_string_table_from_node_data(&mut self, node_record: &NodeRecordV2) -> CheckpointResult<()> {
         // Extract string data from node record and update string table
         // This is a simplified implementation - full version would parse node data
-        let mut _string_table = self.string_table.lock().map_err(|e| {
+        let mut string_table = self.string_table.lock().map_err(|e| {
             CheckpointError::state(format!("Failed to lock string table: {}", e))
         })?;
 
-        // For demonstration, we'll create a simple string representation
-        let _node_string = format!("node_{}", node_record.node_id());
-        // TODO: Implement StringTable integration with proper API
-        // For now, this is a placeholder that logs the operation
-        println!("V2 String Table Update: node {}", node_record.node_id());
+        // Add node kind to string table
+        let _kind_offset = string_table.get_or_add_offset(&node_record.kind).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to add node kind to string table: {}", e))
+        })?;
 
-        // Future implementation needs to use proper StringTable API
+        // Add node name to string table
+        let _name_offset = string_table.get_or_add_offset(&node_record.name).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to add node name to string table: {}", e))
+        })?;
+
+        println!(
+            "V2 String Table Update: node {} kind '{}' name '{}' - added to string table",
+            node_record.node_id(),
+            node_record.kind,
+            node_record.name
+        );
 
         Ok(())
     }
