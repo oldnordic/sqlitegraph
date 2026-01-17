@@ -3,17 +3,13 @@
 //! This module provides transaction-specific replay operations including
 //! string insertion, cluster creation, free space management, and header updates.
 
-use crate::backend::native::{
-    GraphFile, NodeStore,
-};
 use crate::backend::native::v2::{
-    StringTable, EdgeCluster,
+    EdgeCluster,
     edge_cluster::Direction,
     free_space::MIN_BLOCK_SIZE,
 };
 use crate::backend::native::v2::wal::recovery::errors::RecoveryError;
 use crate::backend::native::v2::wal::recovery::replayer::types::RollbackOperation;
-use std::sync::{Arc, Mutex, RwLock};
 
 macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
 macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }

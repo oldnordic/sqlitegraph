@@ -4,7 +4,7 @@
 //! edge insertion, update, and deletion with proper rollback support.
 
 use crate::backend::native::{
-    GraphFile, NodeStore, NativeNodeId,
+    NativeNodeId,
 };
 use crate::backend::native::v2::{
     EdgeCluster,
@@ -12,7 +12,6 @@ use crate::backend::native::v2::{
 };
 use crate::backend::native::v2::wal::recovery::errors::RecoveryError;
 use crate::backend::native::v2::wal::recovery::replayer::types::RollbackOperation;
-use std::sync::{Arc, Mutex, RwLock};
 
 macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
 macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }

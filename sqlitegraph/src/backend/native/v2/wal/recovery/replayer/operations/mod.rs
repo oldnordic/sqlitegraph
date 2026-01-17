@@ -9,7 +9,6 @@ use crate::backend::native::{
 use crate::backend::native::v2::{
     StringTable, FreeSpaceManager,
 };
-use crate::backend::native::v2::wal::recovery::errors::RecoveryError;
 use std::sync::{Arc, Mutex, RwLock};
 
 // Re-export operation handler implementations
@@ -18,7 +17,6 @@ mod edge_ops;
 mod transaction_ops;
 
 // Logging macros
-macro_rules! info { ($($arg:tt)*) => { log::info!($($arg)*); }; }
 macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
 macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
 macro_rules! error { ($($arg:tt)*) => { log::error!($($arg)*); }; }

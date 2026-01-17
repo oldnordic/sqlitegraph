@@ -4,20 +4,18 @@
 //! node insertion, update, and deletion with proper rollback support.
 
 use crate::backend::native::{
-    GraphFile, NodeStore, EdgeStore, NativeNodeId,
+    EdgeStore, NativeNodeId,
     adjacency::Direction,
 };
 use crate::backend::native::v2::{
-    StringTable, NodeRecordV2,
+    NodeRecordV2,
     free_space::AllocationStrategy, FreeSpaceManager,
 };
 use crate::backend::native::v2::wal::recovery::errors::RecoveryError;
 use crate::backend::native::v2::wal::recovery::replayer::types::RollbackOperation;
-use std::sync::{Arc, Mutex, RwLock};
 
 macro_rules! debug { ($($arg:tt)*) => { log::debug!($($arg)*); }; }
 macro_rules! warn { ($($arg:tt)*) => { log::warn!($($arg)*); }; }
-macro_rules! error { ($($arg:tt)*) => { log::error!($($arg)*); }; }
 
 impl super::DefaultReplayOperations {
     /// Handle node insertion during replay
