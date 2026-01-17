@@ -4,7 +4,7 @@
 //! below the 300‑line architectural limit. Public consumers should import
 //! items from this `mod.rs` re-export rather than submodules directly.
 
-mod cache;
+pub mod cache;
 mod cluster;
 mod cluster_serialization;
 mod cluster_trace;
