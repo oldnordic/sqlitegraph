@@ -86,6 +86,9 @@ Commands:
   wal-stats                  Show detailed WAL statistics with derived metrics
   snapshot-create --dir DIR  Create database snapshot
   snapshot-load --dir DIR     Load database snapshot
+  debug-stats                Show graph introspection data (JSON)
+  debug-dump --output PATH   Export graph structure for debugging
+  debug-trace COMMAND [...]  Enable trace logging for specific operation
 
 Traversal Options:
   --start                   Starting node ID for traversal

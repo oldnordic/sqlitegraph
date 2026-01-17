@@ -148,6 +148,9 @@ fn run_command(
         "wal-stats" => run_wal_stats(client, args),
         "snapshot-create" => run_snapshot_create(client, args),
         "snapshot-load" => run_snapshot_load(client, args),
+        "debug-stats" => run_debug_stats(client, args),
+        "debug-dump" => run_debug_dump(client, args),
+        "debug-trace" => run_debug_trace(client, args),
         // Reindex commands removed - not available in v0.2.5
         // "reindex-all" => run_reindex_all(client, args),
         // "reindex-syncore" => run_reindex_syncore(client, args),
@@ -1302,3 +1305,187 @@ fn run_wal_stats(_client: &BackendClient, _args: &[String]) -> Result<(), Sqlite
 }
 
 // Reindex functions removed - not available in v0.2.5
+
+fn run_debug_stats(client: &BackendClient, _args: &[String]) -> Result<(), SqliteGraphError> {
+    let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("debug-stats command requires SQLite backend"))?;
+
+    // Get introspection data
+    let intro = graph.introspect()?;
+
+    // Convert to JSON
+    let json = serde_json::to_string_pretty(&intro)
+        .map_err(|e| SqliteGraphError::invalid_input(format!("failed to serialize introspection: {e}")))?;
+
+    println!("{json}");
+    Ok(())
+}
+
+fn run_debug_dump(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {
+    let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("debug-dump command requires SQLite backend"))?;
+
+    let output = required_flag_value(args, "--output")?;
+
+    // Check format flag (default: jsonl)
+    let format_str = args.iter()
+        .position(|arg| arg == "--format")
+        .and_then(|idx| args.get(idx + 1))
+        .map(|s| s.as_str())
+        .unwrap_or("jsonl");
+
+    // Validate format
+    if format_str != "jsonl" && format_str != "json" {
+        return Err(SqliteGraphError::invalid_input(format!("invalid format: {format_str} (must be jsonl or json)")));
+    }
+
+    // Get all entities
+    let entity_ids = client.entity_ids()?.ok_or_else(|| SqliteGraphError::invalid_input("failed to get entity IDs"))?;
+
+    // Open output file
+    use std::io::BufWriter;
+    let file = std::fs::File::create(&output)
+        .map_err(|e| SqliteGraphError::invalid_input(format!("failed to create output file: {e}")))?;
+    let mut writer = BufWriter::new(file);
+
+    // Determine if we should use JSONL or JSON array format
+    let use_json_array = format_str == "json" && entity_ids.len() < 1000;
+
+    if use_json_array {
+        // JSON array format for small graphs
+        let mut entities = Vec::new();
+        for id in &entity_ids {
+            let entity = graph.get_entity(*id)?;
+            entities.push(json!({
+                "type": "node",
+                "id": entity.id,
+                "kind": entity.kind,
+                "name": entity.name,
+                "file_path": entity.file_path,
+                "data": entity.data
+            }));
+        }
+
+        // Get edges
+        let query = graph.query();
+        for id in &entity_ids {
+            if let Ok(outgoing) = query.outgoing(*id) {
+                for edge_id in outgoing {
+                    if let Ok(edge) = graph.get_edge(edge_id) {
+                        entities.push(json!({
+                            "type": "edge",
+                            "id": edge.id,
+                            "from": edge.from_id,
+                            "to": edge.to_id,
+                            "edge_type": edge.edge_type,
+                            "data": edge.data
+                        }));
+                    }
+                }
+            }
+        }
+
+        // Write as JSON array
+        let json_output = serde_json::to_string_pretty(&entities)
+            .map_err(|e| SqliteGraphError::invalid_input(format!("failed to serialize graph: {e}")))?;
+        use std::io::Write;
+        write!(writer, "{}", json_output)
+            .map_err(|e| SqliteGraphError::invalid_input(format!("failed to write output: {e}")))?;
+    } else {
+        // JSONL format (streaming, memory efficient)
+        use std::io::Write;
+
+        for id in &entity_ids {
+            let entity = graph.get_entity(*id)?;
+            let json_line = json!({
+                "type": "node",
+                "id": entity.id,
+                "kind": entity.kind,
+                "name": entity.name,
+                "file_path": entity.file_path,
+                "data": entity.data
+            });
+            let line = serde_json::to_string(&json_line)
+                .map_err(|e| SqliteGraphError::invalid_input(format!("failed to serialize entity: {e}")))?;
+            writeln!(writer, "{}", line)
+                .map_err(|e| SqliteGraphError::invalid_input(format!("failed to write entity: {e}")))?;
+        }
+
+        // Get edges
+        let query = graph.query();
+        for id in &entity_ids {
+            if let Ok(outgoing) = query.outgoing(*id) {
+                for edge_id in outgoing {
+                    if let Ok(edge) = graph.get_edge(edge_id) {
+                        let json_line = json!({
+                            "type": "edge",
+                            "id": edge.id,
+                            "from": edge.from_id,
+                            "to": edge.to_id,
+                            "edge_type": edge.edge_type,
+                            "data": edge.data
+                        });
+                        let line = serde_json::to_string(&json_line)
+                            .map_err(|e| SqliteGraphError::invalid_input(format!("failed to serialize edge: {e}")))?;
+                        writeln!(writer, "{}", line)
+                            .map_err(|e| SqliteGraphError::invalid_input(format!("failed to write edge: {e}")))?;
+                    }
+                }
+            }
+        }
+    }
+
+    // Flush the buffer
+    use std::io::Write;
+    writer.flush()
+        .map_err(|e| SqliteGraphError::invalid_input(format!("failed to flush output: {e}")))?;
+
+    let payload = json!({
+        "command": "debug-dump",
+        "output": output,
+        "format": format_str,
+        "entities_dumped": entity_ids.len(),
+        "status": "completed"
+    });
+    println!("{payload}");
+    Ok(())
+}
+
+fn run_debug_trace(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {
+    // Parse the command to trace
+    if args.is_empty() {
+        return Err(SqliteGraphError::invalid_input("debug-trace requires a command to trace"));
+    }
+
+    let trace_command = &args[0];
+    let trace_args = &args[1..];
+
+    // Enable trace logging for the duration of the command
+    // Note: This requires the env_logger or similar logging to be configured
+    // For now, we'll set RUST_LOG environment variable and re-run the command
+    eprintln!("debug-trace: enabling trace logging for command: {}", trace_command);
+
+    // Set RUST_LOG for this session
+    std::env::set_var("RUST_LOG", "debug");
+
+    // Re-run the command with trace logging enabled
+    match run_command(client, trace_command, trace_args) {
+        Ok(_) => {
+            let payload = json!({
+                "command": "debug-trace",
+                "traced_command": trace_command,
+                "status": "completed"
+            });
+            println!("{payload}");
+            Ok(())
+        }
+        Err(e) => {
+            let payload = json!({
+                "command": "debug-trace",
+                "traced_command": trace_command,
+                "error": e.to_string(),
+                "status": "error"
+            });
+            println!("{payload}");
+            Err(e)
+        }
+    }
+}
