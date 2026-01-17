@@ -4,7 +4,7 @@
 //! node insertion, update, and deletion with proper rollback support.
 
 use crate::backend::native::{
-    EdgeStore, NativeNodeId,
+    EdgeStore, NodeStore, NativeNodeId,
     adjacency::Direction,
 };
 use crate::backend::native::v2::{
