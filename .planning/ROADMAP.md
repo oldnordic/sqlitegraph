@@ -162,7 +162,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Foundation Cleanup | 3/3 | Complete | 2026-01-17 |
 | 2. WAL Integration | 3/3 | Complete | 2026-01-17 |
 | 3. Native V2 Reads | 3/3 | Complete | 2026-01-17 |
-| 4. MVCC Completion | 0/3 | Not started | - |
+| 4. MVCC Completion | 3/3 | Complete | 2026-01-17 |
 | 5. HNSW Persistence | 0/3 | Not started | - |
 | 6. HNSW CLI | 0/2 | Not started | - |
 | 7. Performance | 0/3 | Not started | - |
