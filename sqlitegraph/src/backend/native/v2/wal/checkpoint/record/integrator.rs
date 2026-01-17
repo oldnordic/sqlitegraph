@@ -172,10 +172,8 @@ impl V2GraphIntegrator {
                 self.apply_checkpoint_marker(*checkpointed_lsn, *timestamp, lsn)
             }
 
-            V2WALRecord::HeaderUpdate { header_offset, old_data, new_data } => {
-                // TODO: Implement database header updates
-                println!("V2 Header Update: header_offset {} old_len {} new_len {}", header_offset, old_data.len(), new_data.len());
-                Ok(())
+            V2WALRecord::HeaderUpdate { header_offset, old_data: _, new_data } => {
+                self.apply_header_update(*header_offset, new_data, lsn)
             }
 
             V2WALRecord::SegmentEnd { segment_lsn, checksum } => {
@@ -625,6 +623,37 @@ impl V2GraphIntegrator {
 
         // Note: In a full implementation, this could update a checkpoint LSN field
         // in the header or maintain checkpoint metadata separately
+
+        Ok(())
+    }
+
+    /// Apply header update record
+    /// Note: Header updates are applied directly to the graph file
+    fn apply_header_update(&mut self, header_offset: u64, new_data: &[u8], _lsn: u64) -> CheckpointResult<()> {
+        let mut graph_file = self.graph_file.write().map_err(|e| {
+            CheckpointError::state(format!("Failed to lock graph file: {}", e))
+        })?;
+
+        // Write the new header data directly to the file at the specified offset
+        graph_file
+            .write_bytes(header_offset, new_data)
+            .map_err(|e| {
+                CheckpointError::v2_integration(format!(
+                    "Failed to write header update at offset {}: {}",
+                    header_offset, e
+                ))
+            })?;
+
+        // Sync the file to ensure the header update is persisted
+        graph_file.sync().map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to sync file after header update: {}", e))
+        })?;
+
+        println!(
+            "V2 Header Update: offset {} data_len {} - written and synced",
+            header_offset,
+            new_data.len()
+        );
 
         Ok(())
     }
