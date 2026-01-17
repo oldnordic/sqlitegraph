@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 ## Current Position
 
 Phase: 2 of 10 (WAL Integration)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-01-17 — Completed 02-01 (Wire Automatic Checkpointing)
+Last activity: 2026-01-17 — Completed 02-02 (Fix Checkpoint V2 Integration TODOs)
 
 Progress: ████████░░ 30%
 

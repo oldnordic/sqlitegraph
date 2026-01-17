@@ -42,7 +42,7 @@ Plans:
 
 Plans:
 - [x] 02-01: Wire automatic checkpointing into commit path ✅
-- [ ] 02-02: Fix checkpoint V2 integration TODOs
+- [x] 02-02: Fix checkpoint V2 integration TODOs ✅
 - [ ] 02-03: Add WAL recovery edge case tests
 
 ### Phase 3: Native V2 Reads
@@ -146,7 +146,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation Cleanup | 3/3 | Complete | 2026-01-17 |
-| 2. WAL Integration | 1/3 | In progress | - |
+| 2. WAL Integration | 2/3 | In progress | - |
 | 3. Native V2 Reads | 0/3 | Not started | - |
 | 4. MVCC Completion | 0/3 | Not started | - |
 | 5. HNSW Persistence | 0/3 | Not started | - |
