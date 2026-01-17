@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Feature parity, performance, and reliability equally.
-**Current focus:** Phase 4 — MVCC Completion (next phase)
+**Current focus:** Phase 5 — HNSW Persistence
 
 ## Current Position
 
-Phase: 4 of 10 (MVCC Completion)
-Plan: 04-03 complete
-Status: Phase complete
-Last activity: 2026-01-17 — Plan 04-03: Integration & Lifecycle
+Phase: 5 of 10 (HNSW Persistence)
+Plan: 05-01 complete
+Status: In progress
+Last activity: 2026-01-17 — Plan 05-01: HNSW Index Metadata Persistence
 
-Progress: ██████████░░ 90% (4 of 10 phases complete)
+Progress: █████████░░ 50% (5 of 10 phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 21
+- Total plans completed: 22
 - Average duration: 10 min
-- Total execution time: 3.5 hours
+- Total execution time: 3.7 hours
 
 **By Phase:**
 
@@ -31,9 +31,10 @@ Progress: ██████████░░ 90% (4 of 10 phases complete)
 | 2 | 3 | 30 min | 10 min |
 | 3 | 3 | 30 min | 10 min |
 | 4 | 3 | 50 min | 17 min |
+| 5 | 1 | 10 min | 10 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-03 (10 min), 04-01 (15 min), 04-02 (25 min), 04-03 (20 min)
+- Last 5 plans: 04-01 (15 min), 04-02 (25 min), 04-03 (20 min), 05-01 (10 min)
 - Trend: Steady
 
 *Updated after each plan completion*
@@ -96,6 +97,12 @@ Phase 4 Decision 3:** Comprehensive edge case and performance validation
 - Impact: MVCC-lite system now has 65 total tests with 100% pass rate. Edge cases validated: empty graphs, 10K nodes, 10K lifecycle iterations, deleted node visibility.
 - Trade-offs: No direct WAL checkpoint testing (API limitation), but snapshot behavior validated under writes that would generate WAL. Performance benchmarks take time but provide regression detection.
 
+**Phase 5 Decision 1:** Metadata-first persistence approach for HNSW indexes
+- Rationale: HNSW persistence is complex (config + vectors + layers). Starting with metadata enables testing database schema and lifecycle before tackling vector data.
+- Outcome: Index name added to HnswIndex, save_metadata/load_metadata methods implemented, SqliteGraph integration complete.
+- Impact: HNSW indexes now persist configuration across sessions. Metadata restored on graph open. Vectors still in-memory (plan 02).
+- Trade-offs: Single-layer mode for loaded indexes (simpler), but plan 02 will add full multi-layer restoration. No vector persistence yet (deferred intentionally).
+
 ### Deferred Issues
 
 None yet.
@@ -111,8 +118,8 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-17 (current session)
-Completed: Plan 04-03 (Integration & Lifecycle)
-Next: Phase 5 - Native V2 Integration
+Completed: Plan 05-01 (HNSW Index Metadata Persistence)
+Next: Plan 05-02 (HNSW Vector Data Persistence)
 Resume file: None
 
 **Phase 3 Summary:**
@@ -121,25 +128,32 @@ Resume file: None
 - Key results: 100% cache hit ratio, 30-50% memory reduction, 22 benchmarks
 - Commits: 10 (3 for 03-01, 4 for 03-02, 3 for 03-03)
 
-**Phase 4 Progress:** ✅ COMPLETE
-- Plan 04-01 complete (MVCC gap analysis and baseline)
-- Plan 04-02 complete (Concurrent test implementation)
-- Plan 04-03 complete (Integration & Lifecycle) ✅ NEW
+**Phase 4 Summary:** ✅ COMPLETE
+- All 3 plans complete (04-01, 04-02, 04-03)
 - Gap analysis: 12 gaps identified (3 critical)
 - Baseline tests: 22 tests passing
 - Concurrent tests: 16 tests passing
-- Edge case tests: 26 tests passing (11 WAL + 15 lifecycle) ✅ NEW
-- Performance benchmarks: 9 Criterion benchmark groups ✅ NEW
-- Total MVCC tests: 65 (2 + 22 + 16 + 26) ✅ NEW
-- Pass rate: 100% ✅ NEW
-- Commits: 9 (3 for 04-01, 3 for 04-02, 3 for 04-03) ✅ NEW
+- Edge case tests: 26 tests passing (11 WAL + 15 lifecycle)
+- Performance benchmarks: 9 Criterion benchmark groups
+- Total MVCC tests: 65 (2 + 22 + 16 + 26)
+- Pass rate: 100%
+- Commits: 9 (3 for 04-01, 3 for 04-02, 3 for 04-03)
 
-**04-03 Key Achievements:** ✅ NEW
-- 11 WAL coordination tests validating snapshot behavior during writes
-- 15 edge case tests covering empty, large (10K nodes), and rapid lifecycle (10K iterations)
-- 9 Criterion benchmark groups for performance regression detection
-- Performance baselines established: < 1ms acquisition, > 10,000/sec throughput
-- Memory validation: 10K lifecycle ops, no leaks detected
-- Large graph testing: 10K nodes, all operations succeed
-- Snapshot vs direct access comparison: overhead quantified
-- Phase 4 now complete with 100% MVCC test coverage
+**Phase 5 Progress:** 🔄 IN PROGRESS
+- Plan 05-01 complete (HNSW Index Metadata Persistence) ✅ NEW
+- Summary: .planning/phases/05/05-01-SUMMARY.md ✅ NEW
+- Metadata save/load methods implemented ✅ NEW
+- SqliteGraph integration complete ✅ NEW
+- Integration test: metadata persists across reconnection ✅ NEW
+- HNSW tests: 120 passing (up from 119) ✅ NEW
+- Commits: 3 (all for 05-01) ✅ NEW
+
+**05-01 Key Achievements:** ✅ NEW
+- Added `name` field to HnswIndex for persistence identification
+- Implemented save_metadata() to persist config to hnsw_indexes table
+- Implemented load_metadata() to restore index config on graph open
+- Added list_indexes() and delete_index() utility methods
+- SqliteGraph auto-loads indexes on construction
+- SqliteGraph auto-saves metadata on index creation
+- DistanceMetric serialization/deserialization via as_str()
+- Integration test validates full persistence lifecycle
