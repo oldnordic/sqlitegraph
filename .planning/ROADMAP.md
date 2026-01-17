@@ -109,7 +109,11 @@ Plans:
 **Goal**: Fix HNSW indexes lost across CLI invocations
 **Depends on**: Phase 5
 **Research**: Unlikely (builds on Phase 5 persistence)
-**Plans**: TBD
+**Plans**: 2 plans created
+
+**Plan Details:**
+- **06-01**: Integrate persistent HNSW with CLI (add `hnsw_index_persistent()`, update CLI to use it, integration tests)
+- **06-02**: Add CLI commands for index management (`hnsw-list`, `hnsw-delete`, `hnsw-info`)
 
 Plans:
 - [ ] 06-01: Integrate persistent HNSW with CLI
