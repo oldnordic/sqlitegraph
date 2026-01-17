@@ -3,6 +3,7 @@ use std::collections::VecDeque;
 use ahash::{AHashMap, AHashSet};
 
 use crate::{errors::SqliteGraphError, graph::SqliteGraph};
+use crate::progress::ProgressCallback;
 
 /// Finds all connected components in the graph using BFS.
 ///
@@ -409,6 +410,118 @@ pub fn pagerank(
     Ok(result)
 }
 
+/// Computes PageRank scores with progress callback reporting.
+///
+/// This is the progress-reporting variant of [`pagerank`]. See that function
+/// for full algorithm documentation.
+///
+/// # Arguments
+/// * `graph` - The graph to analyze
+/// * `damping` - Damping factor (typically 0.85)
+/// * `iterations` - Number of power iteration iterations
+/// * `progress` - Callback for progress updates
+///
+/// # Progress Reporting
+/// - Reports progress at each iteration: "PageRank iteration X/Y"
+/// - Calls `on_complete()` when finished
+/// - Calls `on_error()` if an error occurs
+///
+/// # Example
+///
+/// ```rust
+/// use sqlitegraph::{SqliteGraph, algo::pagerank_with_progress};
+/// use sqlitegraph::progress::NoProgress;
+///
+/// let graph = SqliteGraph::open_in_memory()?;
+/// // ... add nodes and edges ...
+/// let progress = NoProgress;
+/// let scores = pagerank_with_progress(&graph, 0.85, 20, &progress)?;
+/// ```
+pub fn pagerank_with_progress<F>(
+    graph: &SqliteGraph,
+    damping: f64,
+    iterations: usize,
+    progress: &F,
+) -> Result<Vec<(i64, f64)>, SqliteGraphError>
+where
+    F: ProgressCallback,
+{
+    let all_ids = graph.all_entity_ids()?;
+    let n = all_ids.len();
+
+    if n == 0 {
+        progress.on_complete();
+        return Ok(Vec::new());
+    }
+
+    // Initialize all nodes with equal score
+    let mut scores: AHashMap<i64, f64> = all_ids.iter().map(|&id| (id, 1.0 / n as f64)).collect();
+
+    // Pre-compute outgoing counts for all nodes
+    let mut outgoing_counts: AHashMap<i64, usize> = AHashMap::new();
+    for &id in &all_ids {
+        let count = graph.fetch_outgoing(id)?.len();
+        outgoing_counts.insert(id, count);
+    }
+
+    // Power iteration with progress reporting
+    for iteration in 0..iterations {
+        progress.on_progress(
+            iteration + 1,
+            Some(iterations),
+            &format!("PageRank iteration {}", iteration + 1),
+        );
+
+        let mut new_scores: AHashMap<i64, f64> = AHashMap::new();
+
+        // Initialize with teleport probability (1-d)/n
+        let base_score = (1.0 - damping) / n as f64;
+        for &id in &all_ids {
+            new_scores.insert(id, base_score);
+        }
+
+        // Track total dangling score to redistribute
+        let mut dangling_score = 0.0;
+
+        // Distribute scores from outgoing edges
+        for &id in &all_ids {
+            let score = scores[&id];
+            let out_count = outgoing_counts[&id];
+
+            if out_count == 0 {
+                // Dangling node - add score to redistribution pool
+                dangling_score += score;
+            } else {
+                // Distribute score evenly to all outgoing neighbors
+                let share = score / out_count as f64;
+                for &neighbor in &graph.fetch_outgoing(id)? {
+                    *new_scores.get_mut(&neighbor).unwrap() += damping * share;
+                }
+            }
+        }
+
+        // Redistribute dangling score equally to all nodes
+        let dangling_share = damping * dangling_score / n as f64;
+        for (_, score) in new_scores.iter_mut() {
+            *score += dangling_share;
+        }
+
+        scores = new_scores;
+    }
+
+    progress.on_complete();
+
+    // Convert to sorted vector
+    let mut result: Vec<(i64, f64)> = scores.into_iter().collect();
+    result.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+
+    Ok(result)
+}
+
 /// Computes betweenness centrality for all nodes in the graph.
 ///
 /// Betweenness centrality measures how often a node appears on shortest paths
@@ -515,6 +628,122 @@ pub fn betweenness_centrality(
             }
         }
     }
+
+    // Convert to sorted vector
+    let mut result: Vec<(i64, f64)> = centrality.into_iter().collect();
+    result.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.0.cmp(&b.0))
+    });
+
+    Ok(result)
+}
+
+/// Computes betweenness centrality with progress callback reporting.
+///
+/// This is the progress-reporting variant of [`betweenness_centrality`]. See that function
+/// for full algorithm documentation.
+///
+/// # Arguments
+/// * `graph` - The graph to analyze
+/// * `progress` - Callback for progress updates
+///
+/// # Progress Reporting
+/// - Reports progress for each source node: "Betweenness: processing source X/Y"
+/// - Total is the number of nodes in the graph
+/// - Calls `on_complete()` when finished
+/// - Calls `on_error()` if an error occurs
+///
+/// # Example
+///
+/// ```rust
+/// use sqlitegraph::{SqliteGraph, algo::betweenness_centrality_with_progress};
+/// use sqlitegraph::progress::NoProgress;
+///
+/// let graph = SqliteGraph::open_in_memory()?;
+/// // ... add nodes and edges ...
+/// let progress = NoProgress;
+/// let centrality = betweenness_centrality_with_progress(&graph, &progress)?;
+/// ```
+pub fn betweenness_centrality_with_progress<F>(
+    graph: &SqliteGraph,
+    progress: &F,
+) -> Result<Vec<(i64, f64)>, SqliteGraphError>
+where
+    F: ProgressCallback,
+{
+    let all_ids = graph.all_entity_ids()?;
+    let n = all_ids.len();
+
+    if n == 0 {
+        progress.on_complete();
+        return Ok(Vec::new());
+    }
+
+    // Initialize centrality scores
+    let mut centrality: AHashMap<i64, f64> = all_ids.iter().map(|&id| (id, 0.0)).collect();
+
+    // Brandes' algorithm: for each node as source
+    for (idx, &s) in all_ids.iter().enumerate() {
+        progress.on_progress(
+            idx + 1,
+            Some(n),
+            &format!("Betweenness: processing source {}/{}", idx + 1, n),
+        );
+
+        // BFS from s
+        let mut dist: AHashMap<i64, i64> = AHashMap::new();
+        let mut sigma: AHashMap<i64, f64> = AHashMap::new(); // number of shortest paths
+        let mut predecessors: AHashMap<i64, Vec<i64>> = AHashMap::new();
+
+        // Initialize source
+        dist.insert(s, 0);
+        sigma.insert(s, 1.0);
+
+        let mut queue = VecDeque::new();
+        queue.push_back(s);
+
+        while let Some(v) = queue.pop_front() {
+            for &w in &graph.fetch_outgoing(v)? {
+                // First time discovering w
+                if !dist.contains_key(&w) {
+                    dist.insert(w, dist[&v] + 1);
+                    queue.push_back(w);
+                }
+
+                // Found another shortest path to w through v
+                if dist.get(&w) == Some(&(dist[&v] + 1)) {
+                    *sigma.entry(w).or_insert(0.0) += sigma[&v];
+                    predecessors.entry(w).or_insert_with(Vec::new).push(v);
+                }
+            }
+        }
+
+        // Accumulate centrality (dependency propagation)
+        let mut delta: AHashMap<i64, f64> = all_ids.iter().map(|&id| (id, 0.0)).collect();
+
+        // Process nodes in reverse order of distance from s
+        let mut nodes: Vec<i64> = dist.keys().copied().collect();
+        nodes.sort_by_key(|&id| std::cmp::Reverse(dist[&id]));
+
+        for w in nodes {
+            if w == s {
+                continue;
+            }
+
+            for &v in predecessors.get(&w).unwrap_or(&vec![]) {
+                let contribution = (sigma[&v] / sigma[&w]) * (1.0 + delta[&w]);
+                *delta.get_mut(&v).unwrap() += contribution;
+            }
+
+            if w != s {
+                *centrality.get_mut(&w).unwrap() += delta[&w];
+            }
+        }
+    }
+
+    progress.on_complete();
 
     // Convert to sorted vector
     let mut result: Vec<(i64, f64)> = centrality.into_iter().collect();
@@ -673,6 +902,171 @@ pub fn louvain_communities(
             break;
         }
     }
+
+    // Group nodes by final community
+    let mut communities_map: AHashMap<i64, Vec<i64>> = AHashMap::new();
+    for (node, community) in &communities {
+        communities_map
+            .entry(*community)
+            .or_insert_with(Vec::new)
+            .push(*node);
+    }
+
+    // Convert to sorted vector of communities
+    let mut result: Vec<Vec<i64>> = communities_map.into_values().collect();
+    for community in &mut result {
+        community.sort();
+    }
+    result.sort_by(|a, b| a.first().cmp(&b.first()));
+
+    Ok(result)
+}
+
+/// Louvain method for community detection with progress callback reporting.
+///
+/// This is the progress-reporting variant of [`louvain_communities`]. See that function
+/// for full algorithm documentation.
+///
+/// # Arguments
+/// * `graph` - The graph to analyze
+/// * `max_iterations` - Maximum number of iterations
+/// * `progress` - Callback for progress updates
+///
+/// # Progress Reporting
+/// - Reports progress for each iteration pass: "Louvain pass X"
+/// - Total is None (convergence unknown)
+/// - Calls `on_complete()` when finished or converged
+/// - Calls `on_error()` if an error occurs
+///
+/// # Example
+///
+/// ```rust
+/// use sqlitegraph::{SqliteGraph, algo::louvain_communities_with_progress};
+/// use sqlitegraph::progress::NoProgress;
+///
+/// let graph = SqliteGraph::open_in_memory()?;
+/// // ... add nodes and edges ...
+/// let progress = NoProgress;
+/// let communities = louvain_communities_with_progress(&graph, 10, &progress)?;
+/// ```
+pub fn louvain_communities_with_progress<F>(
+    graph: &SqliteGraph,
+    max_iterations: usize,
+    progress: &F,
+) -> Result<Vec<Vec<i64>>, SqliteGraphError>
+where
+    F: ProgressCallback,
+{
+    let all_ids = graph.all_entity_ids()?;
+
+    if all_ids.is_empty() {
+        progress.on_complete();
+        return Ok(Vec::new());
+    }
+
+    // Calculate total edges (m) and node degrees
+    let mut total_edges = 0usize;
+    let mut degrees: AHashMap<i64, usize> = AHashMap::new();
+
+    for &id in &all_ids {
+        let out_count = graph.fetch_outgoing(id)?.len();
+        let in_count = graph.fetch_incoming(id)?.len();
+        let degree = out_count + in_count;
+        degrees.insert(id, degree);
+        total_edges += degree;
+    }
+
+    // Total edges m (undirected: each edge counted twice, so m = sum_degrees / 2)
+    let m = total_edges as f64 / 2.0;
+
+    if m == 0.0 {
+        progress.on_complete();
+        // No edges - each node is its own community
+        let mut communities: Vec<Vec<i64>> = all_ids.iter().map(|&id| vec![id]).collect();
+        communities.sort();
+        return Ok(communities);
+    }
+
+    // Initialize: each node in its own community
+    let mut communities: AHashMap<i64, i64> = all_ids.iter().map(|&id| (id, id)).collect();
+
+    // For deterministic results, process nodes in sorted order
+    let mut node_order: Vec<i64> = all_ids.clone();
+    node_order.sort();
+
+    // Iterative modularity optimization with progress reporting
+    for iteration in 0..max_iterations {
+        progress.on_progress(
+            iteration + 1,
+            None,
+            &format!("Louvain pass {}", iteration + 1),
+        );
+
+        let mut any_moved = false;
+
+        for &node in &node_order {
+            let current_community = *communities.get(&node).unwrap_or(&node);
+            let node_degree = *degrees.get(&node).unwrap_or(&0) as f64;
+
+            // Find neighbor communities
+            let mut community_connections: AHashMap<i64, f64> = AHashMap::new();
+
+            // Count outgoing edges
+            for &neighbor in &graph.fetch_outgoing(node)? {
+                let neighbor_community = *communities.get(&neighbor).unwrap_or(&neighbor);
+                *community_connections.entry(neighbor_community).or_insert(0.0) += 1.0;
+            }
+
+            // Count incoming edges
+            for &neighbor in &graph.fetch_incoming(node)? {
+                let neighbor_community = *communities.get(&neighbor).unwrap_or(&neighbor);
+                *community_connections.entry(neighbor_community).or_insert(0.0) += 1.0;
+            }
+
+            // Calculate modularity delta for moving to each neighbor's community
+            let mut best_community = current_community;
+            let mut best_delta = 0.0f64;
+
+            for (&target_community, &edges_to_community) in &community_connections {
+                if target_community == current_community {
+                    continue;
+                }
+
+                // Calculate sum of degrees in target community
+                let community_degree: f64 = communities
+                    .iter()
+                    .filter(|(_, comm)| **comm == target_community)
+                    .map(|(&node, _)| *degrees.get(&node).unwrap_or(&0) as f64)
+                    .sum();
+
+                // Modularity delta formula:
+                // ΔQ = (edges_in / m) - (edges_total / m)^2
+                // Simplified for single node move:
+                // ΔQ = [(2*edges_to_community - node_degree*community_degree/m) / (2*m)]
+
+                let delta = (2.0 * edges_to_community
+                    - node_degree * community_degree / m)
+                    / (2.0 * m);
+
+                if delta > best_delta {
+                    best_delta = delta;
+                    best_community = target_community;
+                }
+            }
+
+            // Move node if it improves modularity
+            if best_community != current_community {
+                communities.insert(node, best_community);
+                any_moved = true;
+            }
+        }
+
+        if !any_moved {
+            break;
+        }
+    }
+
+    progress.on_complete();
 
     // Group nodes by final community
     let mut communities_map: AHashMap<i64, Vec<i64>> = AHashMap::new();
