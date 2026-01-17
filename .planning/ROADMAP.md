@@ -183,7 +183,7 @@ Plans:
 **Plans**: 3
 
 Plans:
-- [ ] 10-01: Fix broken WAL tests and add edge case tests
+- [x] 10-01: Fix broken WAL tests and add edge case tests ✅
 - [ ] 10-02: Add concurrent operation tests
 - [ ] 10-03: Add module documentation
 
