@@ -140,15 +140,20 @@ Resume file: None
 - Commits: 9 (3 for 04-01, 3 for 04-02, 3 for 04-03)
 
 **Phase 5 Progress:** 🔄 IN PROGRESS
-- Plan 05-01 complete (HNSW Index Metadata Persistence) ✅ NEW
-- Summary: .planning/phases/05/05-01-SUMMARY.md ✅ NEW
-- Metadata save/load methods implemented ✅ NEW
-- SqliteGraph integration complete ✅ NEW
-- Integration test: metadata persists across reconnection ✅ NEW
-- HNSW tests: 120 passing (up from 119) ✅ NEW
-- Commits: 3 (all for 05-01) ✅ NEW
+- Plan 05-01 complete (HNSW Index Metadata Persistence) ✅
+- Plan 05-02 complete (HNSW Vector Data Persistence) ✅ NEW
+- Summary: .planning/phases/05/05-01-SUMMARY.md
+- Summary: .planning/phases/05/05-02-SUMMARY.md ✅ NEW
+- Metadata save/load methods implemented ✅
+- SqliteGraph integration complete ✅
+- Integration test: metadata persists across reconnection ✅
+- SQLiteVectorStorage implemented ✅ NEW
+- Vector loading and HNSW rebuild implemented ✅ NEW
+- SqliteGraph loads vectors on startup ✅ NEW
+- HNSW tests: 126 passing (up from 120) ✅ NEW
+- Commits: 6 (3 for 05-01, 3 for 05-02) ✅ NEW
 
-**05-01 Key Achievements:** ✅ NEW
+**05-01 Key Achievements:**
 - Added `name` field to HnswIndex for persistence identification
 - Implemented save_metadata() to persist config to hnsw_indexes table
 - Implemented load_metadata() to restore index config on graph open
@@ -157,3 +162,18 @@ Resume file: None
 - SqliteGraph auto-saves metadata on index creation
 - DistanceMetric serialization/deserialization via as_str()
 - Integration test validates full persistence lifecycle
+
+**05-02 Key Achievements:** ✅ NEW
+- Implemented SQLiteVectorStorage with full VectorStorage trait
+  - Vectors persisted to hnsw_vectors table as BLOB
+  - Metadata stored as JSON TEXT
+  - Batch operations with transaction support
+- Implemented vector loading and HNSW graph rebuild
+  - load_with_vectors() fully restores indexes
+  - Graph structure rebuilt from persisted vectors
+  - Pragmatic O(N log N) rebuild approach
+- Updated SqliteGraph to load vectors on startup
+  - load_hnsw_indexes() uses load_with_vectors()
+  - Graceful failure handling with warnings
+- E2E test confirms complete persistence workflow
+- All 126 HNSW tests passing
