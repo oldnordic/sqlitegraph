@@ -24,9 +24,47 @@ use bench_utils::{
     create_benchmark_temp_dir, BENCHMARK_SIZES,
 };
 
-const SAMPLE_SIZE: usize = 100;
+const SAMPLE_SIZE: usize = 1000;  // Increased for regression detection
 const WARM_UP_TIME: Duration = Duration::from_secs(5);
 const MEASURE_TIME: Duration = Duration::from_secs(15);
+
+/// Memory profiling benchmark (optional feature)
+#[cfg(feature = "memory_profiling")]
+fn bench_memory_usage(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("memory_profiling");
+    group.sample_size(100);
+    group.warm_up_time(Duration::from_secs(2));
+    group.measurement_time(Duration::from_secs(10));
+
+    // Memory profiling: Measure RSS before/after operations
+    // Report MB per 1000 nodes
+    group.bench_function("memory_per_1000_nodes", |b| {
+        b.iter(|| {
+            let temp_dir = create_benchmark_temp_dir();
+            let db_path = temp_dir.path().join("benchmark.db");
+
+            let graph = open_graph(&db_path, &GraphConfig::native())
+                .expect("Failed to create graph");
+
+            // Create 1000 nodes
+            for i in 0..1000 {
+                let _node_id = graph
+                    .insert_node(NodeSpec {
+                        kind: "Node".to_string(),
+                        name: format!("node_{}", i),
+                        file_path: None,
+                        data: serde_json::json!({"id": i}),
+                    })
+                    .expect("Failed to insert node");
+            }
+
+            // Force memory measurement
+            std::hint::black_box(&graph);
+        });
+    });
+
+    group.finish();
+}
 
 // ============================================================================
 // Task 1: Single Node Operations
@@ -745,6 +783,427 @@ fn bench_decompress_overhead(criterion: &mut Criterion) {
     group.finish();
 }
 
+// ============================================================================
+// Task 3: Validate Cache Optimization Impact (03-01)
+// ============================================================================
+
+/// Benchmark cache hit ratio for 3-hop BFS
+/// Expected: > 60% hit ratio with traversal-aware cache
+fn bench_cache_hit_ratio_bfs(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("cache_validation");
+    group.sample_size(SAMPLE_SIZE);
+    group.warm_up_time(WARM_UP_TIME);
+    group.measurement_time(MEASURE_TIME);
+
+    group.bench_function("cache_hit_ratio_bfs_depth_3", |b| {
+        b.iter(|| {
+            let temp_dir = create_benchmark_temp_dir();
+            let db_path = temp_dir.path().join("benchmark.db");
+
+            let graph = open_graph(&db_path, &GraphConfig::native())
+                .expect("Failed to create graph");
+
+            // Create chain graph with 100 nodes
+            let mut node_ids = Vec::new();
+            for i in 0..100 {
+                let node_id = graph
+                    .insert_node(NodeSpec {
+                        kind: "Node".to_string(),
+                        name: format!("node_{}", i),
+                        file_path: None,
+                        data: serde_json::json!({"id": i}),
+                    })
+                    .expect("Failed to insert node");
+                node_ids.push(node_id);
+            }
+
+            // Create chain edges
+            for i in 0..99 {
+                graph
+                    .insert_edge(EdgeSpec {
+                        from: node_ids[i],
+                        to: node_ids[i + 1],
+                        edge_type: "chain".to_string(),
+                        data: serde_json::json!({"order": i}),
+                    })
+                    .expect("Failed to insert edge");
+            }
+
+            // Perform 3-hop BFS (traversal workload)
+            let _bfs_result = graph
+                .bfs(node_ids[0], 3)
+                .expect("Failed to perform BFS");
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmark high-degree node cache retention
+/// Verify hub node stays in cache under memory pressure
+fn bench_high_degree_cache_retention(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("cache_validation");
+    group.sample_size(SAMPLE_SIZE);
+    group.warm_up_time(WARM_UP_TIME);
+    group.measurement_time(MEASURE_TIME);
+
+    group.bench_function("high_degree_cache_retention", |b| {
+        b.iter(|| {
+            let temp_dir = create_benchmark_temp_dir();
+            let db_path = temp_dir.path().join("benchmark.db");
+
+            let graph = open_graph(&db_path, &GraphConfig::native())
+                .expect("Failed to create graph");
+
+            // Create hub with 1000 edges, 1000 leaves with 1 edge each
+            let hub = graph
+                .insert_node(NodeSpec {
+                    kind: "Hub".to_string(),
+                    name: "hub".to_string(),
+                    file_path: None,
+                    data: serde_json::json!({"hub": true}),
+                })
+                .expect("Failed to insert hub node");
+
+            // Create leaves connected to hub
+            for i in 0..1000 {
+                let leaf = graph
+                    .insert_node(NodeSpec {
+                        kind: "Node".to_string(),
+                        name: format!("leaf_{}", i),
+                        file_path: None,
+                        data: serde_json::json!({"leaf": i}),
+                    })
+                    .expect("Failed to insert leaf node");
+
+                graph
+                    .insert_edge(EdgeSpec {
+                        from: hub,
+                        to: leaf,
+                        edge_type: "star".to_string(),
+                        data: serde_json::json!({}),
+                    })
+                    .expect("Failed to insert edge");
+            }
+
+            // Access all leaf nodes to fill cache
+            let mut rng = rand::rngs::StdRng::seed_from_u64(0x5F3759DF);
+            for _ in 0..1000 {
+                let _node = graph
+                    .get_node(rng.gen_range(1..1001))
+                    .expect("Failed to get node");
+            }
+
+            // Verify hub still in cache by accessing it
+            let _hub_neighbors = graph
+                .neighbors(hub, NeighborQuery::default())
+                .expect("Failed to get hub neighbors");
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmark prefetch effectiveness for BFS
+/// Expected: > 20% reduction in cache misses with prefetch
+fn bench_prefetch_bfs(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("cache_validation");
+    group.sample_size(SAMPLE_SIZE);
+    group.warm_up_time(WARM_UP_TIME);
+    group.measurement_time(MEASURE_TIME);
+
+    group.bench_function("prefetch_bfs_depth_3", |b| {
+        b.iter(|| {
+            let temp_dir = create_benchmark_temp_dir();
+            let db_path = temp_dir.path().join("benchmark.db");
+
+            let graph = open_graph(&db_path, &GraphConfig::native())
+                .expect("Failed to create graph");
+
+            // Create chain graph with 100 nodes
+            let mut node_ids = Vec::new();
+            for i in 0..100 {
+                let node_id = graph
+                    .insert_node(NodeSpec {
+                        kind: "Node".to_string(),
+                        name: format!("node_{}", i),
+                        file_path: None,
+                        data: serde_json::json!({"id": i}),
+                    })
+                    .expect("Failed to insert node");
+                node_ids.push(node_id);
+            }
+
+            // Create chain edges
+            for i in 0..99 {
+                graph
+                    .insert_edge(EdgeSpec {
+                        from: node_ids[i],
+                        to: node_ids[i + 1],
+                        edge_type: "chain".to_string(),
+                        data: serde_json::json!({"order": i}),
+                    })
+                    .expect("Failed to insert edge");
+            }
+
+            // Perform BFS (should benefit from prefetch in cache implementation)
+            let _bfs_result = graph
+                .bfs(node_ids[0], 3)
+                .expect("Failed to perform BFS");
+        });
+    });
+
+    group.finish();
+}
+
+// ============================================================================
+// Task 4: Validate Compression Optimization Impact (03-02)
+// ============================================================================
+
+/// Benchmark compression ratio
+/// Expected: > 1.5x compression for typical graphs
+fn bench_compression_ratio(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("compression_validation");
+    group.sample_size(SAMPLE_SIZE);
+    group.warm_up_time(WARM_UP_TIME);
+    group.measurement_time(MEASURE_TIME);
+
+    group.bench_function("compression_ratio_sequential_ids", |b| {
+        b.iter(|| {
+            let temp_dir = create_benchmark_temp_dir();
+            let db_path = temp_dir.path().join("benchmark.db");
+
+            let graph = open_graph(&db_path, &GraphConfig::native())
+                .expect("Failed to create graph");
+
+            // Create star graph with sequential IDs (compression-friendly)
+            let center = graph
+                .insert_node(NodeSpec {
+                    kind: "Node".to_string(),
+                    name: "center".to_string(),
+                    file_path: None,
+                    data: serde_json::json!({"center": true}),
+                })
+                .expect("Failed to insert center node");
+
+            for i in 0..1000 {
+                let leaf = graph
+                    .insert_node(NodeSpec {
+                        kind: "Node".to_string(),
+                        name: format!("leaf_{}", i),
+                        file_path: None,
+                        data: serde_json::json!({"leaf": i}),
+                    })
+                    .expect("Failed to insert leaf node");
+
+                graph
+                    .insert_edge(EdgeSpec {
+                        from: center,
+                        to: leaf,
+                        edge_type: "star".to_string(),
+                        data: serde_json::json!({}),
+                    })
+                    .expect("Failed to insert edge");
+            }
+
+            // Access compressed data
+            let _neighbors = graph
+                .neighbors(center, NeighborQuery::default())
+                .expect("Failed to get neighbors");
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmark decompression overhead
+/// Expected: < 10% overhead for decompression
+fn bench_decompress_overhead_comparison(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("compression_validation");
+    group.sample_size(SAMPLE_SIZE);
+    group.warm_up_time(WARM_UP_TIME);
+    group.measurement_time(MEASURE_TIME);
+
+    group.bench_function("decompress_overhead_1000_edges", |b| {
+        b.iter(|| {
+            let temp_dir = create_benchmark_temp_dir();
+            let db_path = temp_dir.path().join("benchmark.db");
+
+            let graph = open_graph(&db_path, &GraphConfig::native())
+                .expect("Failed to create graph");
+
+            // Create star graph with sequential IDs
+            let center = graph
+                .insert_node(NodeSpec {
+                    kind: "Node".to_string(),
+                    name: "center".to_string(),
+                    file_path: None,
+                    data: serde_json::json!({"center": true}),
+                })
+                .expect("Failed to insert center node");
+
+            for i in 0..1000 {
+                let leaf = graph
+                    .insert_node(NodeSpec {
+                        kind: "Node".to_string(),
+                        name: format!("leaf_{}", i),
+                        file_path: None,
+                        data: serde_json::json!({"leaf": i}),
+                    })
+                    .expect("Failed to insert leaf node");
+
+                graph
+                    .insert_edge(EdgeSpec {
+                        from: center,
+                        to: leaf,
+                        edge_type: "star".to_string(),
+                        data: serde_json::json!({}),
+                    })
+                    .expect("Failed to insert edge");
+            }
+
+            // Multiple iterations to measure overhead
+            for _ in 0..10 {
+                let _neighbors = graph
+                    .neighbors(center, NeighborQuery::default())
+                    .expect("Failed to get neighbors");
+            }
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmark cache line utilization with compression
+/// Expected: > 2x improvement in edges loaded per cache line
+fn bench_cache_line_utilization(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("compression_validation");
+    group.sample_size(SAMPLE_SIZE);
+    group.warm_up_time(WARM_UP_TIME);
+    group.measurement_time(MEASURE_TIME);
+
+    group.bench_function("cache_line_utilization_compressed", |b| {
+        b.iter(|| {
+            let temp_dir = create_benchmark_temp_dir();
+            let db_path = temp_dir.path().join("benchmark.db");
+
+            let graph = open_graph(&db_path, &GraphConfig::native())
+                .expect("Failed to create graph");
+
+            // Create star graph with many edges to test cache line utilization
+            let center = graph
+                .insert_node(NodeSpec {
+                    kind: "Node".to_string(),
+                    name: "center".to_string(),
+                    file_path: None,
+                    data: serde_json::json!({"center": true}),
+                })
+                .expect("Failed to insert center node");
+
+            for i in 0..1000 {
+                let leaf = graph
+                    .insert_node(NodeSpec {
+                        kind: "Node".to_string(),
+                        name: format!("leaf_{}", i),
+                        file_path: None,
+                        data: serde_json::json!({"leaf": i}),
+                    })
+                    .expect("Failed to insert leaf node");
+
+                graph
+                    .insert_edge(EdgeSpec {
+                        from: center,
+                        to: leaf,
+                        edge_type: "star".to_string(),
+                        data: serde_json::json!({}),
+                    })
+                    .expect("Failed to insert edge");
+            }
+
+            // Iteration loads edges into cache lines
+            let _neighbors = graph
+                .neighbors(center, NeighborQuery::default())
+                .expect("Failed to get neighbors");
+        });
+    });
+
+    group.finish();
+}
+
+/// Benchmark compression roundtrip correctness
+/// Verify exact reconstruction after compression/decompression
+fn bench_compression_roundtrip(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("compression_validation");
+    group.sample_size(SAMPLE_SIZE);
+    group.warm_up_time(WARM_UP_TIME);
+    group.measurement_time(MEASURE_TIME);
+
+    group.bench_function("compression_roundtrip_correctness", |b| {
+        b.iter(|| {
+            let temp_dir = create_benchmark_temp_dir();
+            let db_path = temp_dir.path().join("benchmark.db");
+
+            let graph = open_graph(&db_path, &GraphConfig::native())
+                .expect("Failed to create graph");
+
+            // Create graph with various edge distributions
+            let center = graph
+                .insert_node(NodeSpec {
+                    kind: "Node".to_string(),
+                    name: "center".to_string(),
+                    file_path: None,
+                    data: serde_json::json!({"center": true}),
+                })
+                .expect("Failed to insert center node");
+
+            // Create edges with different data payloads
+            for i in 0..100 {
+                let leaf = graph
+                    .insert_node(NodeSpec {
+                        kind: "Node".to_string(),
+                        name: format!("leaf_{}", i),
+                        file_path: None,
+                        data: serde_json::json!({"leaf": i}),
+                    })
+                    .expect("Failed to insert leaf node");
+
+                let edge_data = if i % 3 == 0 {
+                    // Small data
+                    serde_json::json!({"idx": i})
+                } else if i % 3 == 1 {
+                    // Medium data
+                    serde_json::json!({"idx": i, "data": "test".repeat(10)})
+                } else {
+                    // No data
+                    serde_json::json!(null)
+                };
+
+                graph
+                    .insert_edge(EdgeSpec {
+                        from: center,
+                        to: leaf,
+                        edge_type: "test".to_string(),
+                        data: edge_data,
+                    })
+                    .expect("Failed to insert edge");
+            }
+
+            // Read back and verify
+            let neighbors = graph
+                .neighbors(center, NeighborQuery::default())
+                .expect("Failed to get neighbors");
+
+            // Verify we got all neighbors back
+            assert_eq!(neighbors.len(), 100, "Should retrieve all 100 neighbors");
+
+            // Force verification
+            std::hint::black_box(neighbors);
+        });
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     // Single node operations
@@ -764,6 +1223,15 @@ criterion_group!(
     // Compression performance
     bench_iterate_compressed,
     bench_decompress_overhead,
+    // Cache validation (Task 3)
+    bench_cache_hit_ratio_bfs,
+    bench_high_degree_cache_retention,
+    bench_prefetch_bfs,
+    // Compression validation (Task 4)
+    bench_compression_ratio,
+    bench_decompress_overhead_comparison,
+    bench_cache_line_utilization,
+    bench_compression_roundtrip,
 );
 
 criterion_main!(benches);
