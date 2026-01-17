@@ -91,6 +91,15 @@ pub struct V2WALConfig {
 
     /// Compression level if enabled (1-9, default: 3)
     pub compression_level: u8,
+
+    /// Enable automatic checkpointing after commits (default: true)
+    pub auto_checkpoint: bool,
+
+    /// Spawn background thread for periodic checkpoint checks (default: false)
+    pub background_checkpoint_thread: bool,
+
+    /// Interval for background checkpoint checks in seconds (default: 60)
+    pub background_checkpoint_interval_secs: u64,
 }
 
 impl Default for V2WALConfig {
@@ -106,6 +115,9 @@ impl Default for V2WALConfig {
             max_group_commit_size: 100,
             enable_compression: false,
             compression_level: 3,
+            auto_checkpoint: true,
+            background_checkpoint_thread: false, // Opt-in for now
+            background_checkpoint_interval_secs: 60,
         }
     }
 }
