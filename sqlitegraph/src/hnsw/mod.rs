@@ -1,29 +1,150 @@
 //! Hierarchical Navigable Small World (HNSW) Vector Search
 //!
-//! This module provides high-performance approximate nearest neighbor search
-//! capabilities using the HNSW algorithm with full SQLiteGraph integration.
+//! This module provides high-performance approximate nearest neighbor (ANN) search
+//! using the HNSW algorithm. HNSW builds a multi-layer graph structure where
+//! higher layers provide "express lanes" for fast navigation, while the bottom
+//! layer contains all vectors for precise search.
 //!
-//! # Architecture
+//! # What is HNSW?
+//!
+//! HNSW (Hierarchical Navigable Small World) is a graph-based algorithm for
+//! efficient approximate nearest neighbor search in high-dimensional vector spaces.
+//! It constructs a hierarchical graph where:
+//!
+//! - **Layer 0** contains all vectors with dense connectivity
+//! - **Higher layers** contain exponentially fewer vectors, forming "skip lists"
+//! - **Search starts** at the top layer and greedily descends to the bottom
+//! - **Result**: O(log N) search complexity with high recall
+//!
+//! This design provides excellent trade-offs between search speed, accuracy,
+//! and memory usage for vector similarity search.
+//!
+//! # Module Architecture
 //!
 //! The HNSW implementation is organized into focused modules:
 //!
-//! - **config**: HNSW algorithm configuration and parameters
-//! - **builder**: Fluent configuration builder with validation
+//! - **config**: [`HnswConfig`] - Algorithm configuration and parameters
+//! - **builder**: [`HnswConfigBuilder`] - Fluent configuration builder with validation
+//! - **index**: [`HnswIndex`] - Main HNSW index implementation with search/insert
+//! - **storage**: [`VectorStorage`] trait - Pluggable vector persistence (in-memory/SQLite)
 //! - **distance_metric**: SIMD-ready vector distance calculations
 //! - **errors**: Comprehensive error handling for all HNSW operations
+//! - **multilayer**: Multi-layer graph construction and management
+//! - **neighborhood**: Neighbor selection and heuristics for graph connectivity
 //!
-//! # Features
+//! # Key Types
 //!
-//! - **High Performance**: O(log N) average search complexity
-//! - **Memory Efficient**: 2-3x vector size memory overhead
-//! - **Dynamic Updates**: Insert and delete without full rebuilds
-//! - **SIMD Optimized**: AVX2/AVX-512 support for distance calculations
-//! - **SQLite Integration**: Persistent storage with SQLite backend
+//! - [`HnswIndex`] - Main HNSW index with insert, search, and persistence
+//! - [`HnswConfig`] - Configuration parameters (dimension, M, ef_construction)
+//! - [`VectorStorage`] - Pluggable storage backend for vectors
+//! - [`DistanceMetric`] - Supported distance metrics (Cosine, Euclidean, etc.)
 //!
-//! # Quick Start
+//! # Invariants and Guarantees
 //!
-//! ```rust
-//! use sqlitegraph::hnsw::{HnswConfig, DistanceMetric};
+//! ## Approximate Results
+//!
+//! HNSW provides **approximate** nearest neighbor search, not exact results:
+//!
+//! - **Recall depends** on `ef_construction` and `ef_search` parameters
+//! - **Higher ef = better recall** but slower search
+//! - **Typical recall**: 95%+ for well-tuned parameters
+//! - **No guarantee** of finding exact nearest neighbor
+//!
+//! ## Determinism
+//!
+//! - **Same input + same config → same results** (deterministic)
+//! - **Random seed** controls layer assignment (via `multilayer_deterministic_seed`)
+//! - **Insert order affects** graph structure (but not correctness)
+//!
+//! ## Thread Safety
+//!
+//! **NOT thread-safe for concurrent writes.** `HnswIndex` uses interior mutability
+//! and is not `Sync`. Do not share across threads for insert operations.
+//!
+//! For concurrent search:
+//! - Read-only search operations can access shared data
+//! - Use separate indexes per thread for writes
+//! - Or wrap in `Mutex`/`RwLock` for explicit synchronization
+//!
+//! ## Vector Dimension Consistency
+//!
+//! All vectors in an index must have the **same dimension**:
+//!
+//! - **Configured at** index creation time via `HnswConfig::dimension`
+//! - **Enforced on** insert - returns error for mismatched dimensions
+//! - **Cannot change** after index creation (recreate index to change)
+//!
+//! # Performance Characteristics
+//!
+//! ## Search Performance
+//! - **Time Complexity**: O(log N) average case
+//! - **Space Complexity**: O(N × M) where M = max_connections per node
+//! - **Accuracy**: 95%+ recall for typical workloads with proper tuning
+//!
+//! ## Insert Performance
+//! - **Time Complexity**: O(log N) average case
+//! - **Amortized**: Faster than rebuilding entire index
+//! - **Dynamic**: No full rebuild required for new vectors
+//!
+//! ## Memory Usage
+//! - **Base overhead**: 2-3x vector data size
+//! - **Graph edges**: O(N × M) where M is configurable (default 16)
+//! - **Multi-layer**: Additional ~15% overhead for higher layers
+//!
+//! # Configuration Parameters
+//!
+//! Key parameters in [`HnswConfig`]:
+//!
+//! ## `dimension` (Required)
+//! - Vector dimensionality (e.g., 768 for sentence embeddings)
+//! - Must match all vectors inserted into the index
+//! - Cannot be changed after index creation
+//!
+//! ## `m` (max_connections, default: 16)
+//! - **Max connections** per node in the graph
+//! - **Higher M**: Better recall, more memory, slower inserts
+//! - **Lower M**: Faster inserts, less memory, lower recall
+//! - **Recommended**: 12-32 depending on dataset size
+//!
+//! ## `ef_construction` (default: 200)
+//! - **Candidate list size** during index construction
+//! - **Higher ef**: Better graph quality, higher recall, slower builds
+//! - **Must be ≥ M**: Required for valid index construction
+//! - **Recommended**: 2× M for good quality
+//!
+//! ## `ef_search` (default: 50)
+//! - **Candidate list size** during search operations
+//! - **Higher ef**: Better recall, slower search
+//! - **Can adjust** at runtime without rebuilding index
+//! - **Recommended**: Same as ef_construction or slightly lower
+//!
+//! # Persistence Behavior
+//!
+//! HNSW indexes persist across database sessions:
+//!
+//! ## Metadata Persistence
+//! - Index name and configuration saved to `hnsw_indexes` table
+//! - Automatically restored on `SqliteGraph::open()`
+//! - Survives database restarts and reconnections
+//!
+//! ## Vector Persistence
+//! - Vectors persisted to `hnsw_vectors` table (file-based databases)
+//! - In-memory databases use in-memory storage (no persistence)
+//! - Graph structure rebuilt from persisted vectors on load
+//!
+//! ## Limitations
+//! - **Graph edges NOT persisted** - rebuilt from vectors on load
+//! - **Rebuild cost**: O(N log N) on index open
+//! - **Workaround**: Keep index in-memory for hot restarts
+//!
+//! # Usage Examples
+//!
+//! ## Create Index and Insert Vectors
+//!
+//! ```rust,ignore
+//! use sqlitegraph::{SqliteGraph, hnsw::{HnswConfig, DistanceMetric}};
+//!
+//! let graph = SqliteGraph::open("vectors.db")?;
 //!
 //! let config = HnswConfig::builder()
 //!     .dimension(768)
@@ -33,58 +154,52 @@
 //!     .distance_metric(DistanceMetric::Cosine)
 //!     .build()?;
 //!
-//! // HNSW index ready for use
-//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! let mut index = graph.create_hnsw_index("docs", config)?;
+//!
+//! // Insert vectors
+//! for (id, vector) in vectors {
+//!     index.insert(id, &vector)?;
+//! }
 //! ```
 //!
-//! # Performance Characteristics
+//! ## Search for Nearest Neighbors
 //!
-//! ## Search Performance
-//! - **Time Complexity**: O(log N) average case
-//! - **Space Complexity**: O(N * M) where M is connections per node
-//! - **Accuracy**: 95%+ recall for typical workloads
+//! ```rust,ignore
+//! # use sqlitegraph::hnsw::HnswIndex;
+//! # let mut index: HnswIndex = unsafe { std::mem::zeroed() };
+//! # let query_vector: Vec<f32> = vec![];
+//! let results = index.search(&query_vector, 10)?;
 //!
-//! ## Construction Performance
-//! - **Build Time**: O(N log N) with parallel construction support
-//! - **Memory Usage**: 2.5x vector data size during construction
-//! - **Batch Insert**: Optimized for bulk loading scenarios
-//!
-//! # Configuration Guidelines
-//!
-//! ## For High Accuracy
-//! ```rust
-//! let precise_config = HnswConfig::builder()
-//!     .dimension(768)
-//!     .m_connections(32)        // Higher M for better recall
-//!     .ef_construction(400)     // Higher ef for better quality
-//!     .ef_search(100)           // Higher ef for better search
-//!     .build()?;
-//! ```
-//!
-//! ## For Fast Construction
-//! ```rust
-//! let fast_config = HnswConfig::builder()
-//!     .dimension(768)
-//!     .m_connections(12)        // Lower M for faster build
-//!     .ef_construction(100)     // Lower ef for faster build
-//!     .ef_search(20)            // Lower ef for faster search
-//!     .build()?;
+//! for (vector_id, distance) in results {
+//!     println!("ID: {}, Distance: {}", vector_id, distance);
+//! }
 //! ```
 //!
 //! # Distance Metrics
 //!
-//! The HNSW implementation supports multiple distance metrics:
+//! Supported distance metrics via [`DistanceMetric`]:
 //!
 //! - **Cosine**: Ideal for normalized vectors and text embeddings
-//! - **Euclidean**: L2 distance, suitable for general-purpose similarity
+//!   - Range: [0, 2] where 0 = identical
+//!   - Use case: Semantic similarity, document embeddings
+//!
+//! - **Euclidean**: L2 distance, general-purpose similarity
+//!   - Range: [0, ∞) where 0 = identical
+//!   - Use case: Image embeddings, feature vectors
+//!
 //! - **Dot Product**: Fast approximate cosine for normalized vectors
+//!   - Range: [-1, 1] where 1 = identical (negated for min-heap)
+//!   - Use case: Pre-normalized embeddings, fast approximate search
+//!
 //! - **Manhattan**: L1 distance, robust to outliers
+//!   - Range: [0, ∞) where 0 = identical
+//!   - Use case: Sparse vectors, robust similarity search
 //!
 //! # Error Handling
 //!
-//! All HNSW operations return Result types with comprehensive error information:
+//! All HNSW operations return `Result` types with comprehensive errors:
 //!
-//! ```rust
+//! ```rust,ignore
 //! use sqlitegraph::hnsw::{HnswConfig, HnswConfigError};
 //!
 //! match HnswConfig::builder().dimension(0).build() {
@@ -94,20 +209,6 @@
 //!     }
 //!     Err(e) => println!("Other error: {}", e),
 //! }
-//! ```
-//!
-//! # Integration with SQLiteGraph
-//!
-//! The HNSW module is designed to integrate seamlessly with SQLiteGraph's
-//! graph database capabilities, enabling vector-augmented graph queries
-//! and semantic search over graph entities.
-//!
-//! ```rust
-//! // Future integration example (planned)
-//! let graph = SqliteGraph::open("example.db")?;
-//! let hnsw = graph.hnsw_index("vectors")?;
-//! let results = hnsw.vector_search(query_vector, 10)?;
-//! let graph_results = graph.filter_entities_by_ids(results)?;
 //! ```
 
 // Re-export public API
