@@ -155,7 +155,7 @@ pub fn label_propagation(
             // Find most frequent label (deterministic tiebreak: smallest label)
             if let Some((&most_frequent_label, _)) = label_counts
                 .iter()
-                .max_by_key(|(_, &count)| count)
+                .max_by_key(|(_, count)| *count)
                 .map(|(label, count)| (label, *count))
             {
                 // In case of ties, max_by_key returns arbitrary one
@@ -163,7 +163,7 @@ pub fn label_propagation(
                 let max_count = *label_counts.values().max().unwrap_or(&0);
                 let best_label = label_counts
                     .iter()
-                    .filter(|(_, &count)| count == max_count)
+                    .filter(|(_, count)| **count == max_count)
                     .map(|(&label, _)| label)
                     .min()
                     .unwrap_or(node);
@@ -475,7 +475,7 @@ pub fn louvain_communities(
                 // Calculate sum of degrees in target community
                 let community_degree: f64 = communities
                     .iter()
-                    .filter(|(_, &comm)| comm == target_community)
+                    .filter(|(_, comm)| **comm == target_community)
                     .map(|(&node, _)| *degrees.get(&node).unwrap_or(&0) as f64)
                     .sum();
 
