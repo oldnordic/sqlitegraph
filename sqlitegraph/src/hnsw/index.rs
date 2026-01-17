@@ -583,6 +583,183 @@ impl HnswIndex {
         })
     }
 
+    /// Load all vectors from database and rebuild HNSW index
+    ///
+    /// # Arguments
+    /// * `conn` - SQLite connection
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) if successful
+    ///
+    /// # Errors
+    ///
+    /// Returns HnswError on database failure or vector loading errors
+    ///
+    /// # Note
+    ///
+    /// This method loads all vectors from the database and rebuilds the HNSW
+    /// graph structure by inserting each vector. The O(N log N) rebuild cost
+    /// is a trade-off for simpler implementation compared to persisting layers.
+    pub fn load_vectors_and_rebuild(&mut self, conn: &Connection) -> Result<(), HnswError> {
+        let index_id = Self::get_index_id(conn, &self.name)?
+            .ok_or_else(|| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::VectorNotFound(0)
+            ))?;
+
+        // Load all vectors from database
+        let vectors = Self::load_vectors_from_db(conn, index_id)?;
+
+        // Clear vector_count since we're rebuilding
+        self.vector_count = 0;
+
+        // Rebuild HNSW graph by inserting each vector
+        for (vector_id, data, metadata) in vectors {
+            // Use internal insert that doesn't re-persist to database
+            self.insert_vector_internal(vector_id, &data, metadata)?;
+        }
+
+        Ok(())
+    }
+
+    /// Load vectors from database
+    ///
+    /// # Arguments
+    ///
+    /// * `conn` - SQLite connection
+    /// * `index_id` - Index ID in database
+    ///
+    /// # Returns
+    ///
+    /// Vector of (id, data, metadata) tuples
+    fn load_vectors_from_db(
+        conn: &Connection,
+        index_id: i64,
+    ) -> Result<Vec<(u64, Vec<f32>, Option<Value>)>, HnswError> {
+        let mut stmt = conn
+            .prepare("SELECT id, vector_data, metadata FROM hnsw_vectors WHERE index_id = ? ORDER BY id")
+            .map_err(|e| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::DatabaseError(e.to_string())
+            ))?;
+
+        let vectors = stmt
+            .query_map([index_id], |row| {
+                let id: i64 = row.get(0)?;
+                let vector_data: Vec<u8> = row.get(1)?;
+                let metadata_json: Option<String> = row.get(2)?;
+                Ok((id as u64, vector_data, metadata_json))
+            })
+            .map_err(|e| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::DatabaseError(e.to_string())
+            ))?
+            .map(|row| {
+                let (vector_id, vector_bytes, metadata_json) = row.map_err(|e| {
+                    HnswError::Storage(crate::hnsw::errors::HnswStorageError::DatabaseError(
+                        e.to_string(),
+                    ))
+                })?;
+
+                // Deserialize vector
+                let vector = if vector_bytes.len() % std::mem::size_of::<f32>() != 0 {
+                    return Err(HnswError::Storage(
+                        crate::hnsw::errors::HnswStorageError::InvalidVectorData,
+                    ));
+                } else {
+                    bytemuck::cast_slice::<u8, f32>(&vector_bytes).to_vec()
+                };
+
+                // Parse metadata
+                let metadata = metadata_json
+                    .map(|s| {
+                        serde_json::from_str(&s).map_err(|e| {
+                            HnswError::Storage(crate::hnsw::errors::HnswStorageError::IoError(
+                                format!("Failed to parse metadata: {}", e),
+                            ))
+                        })
+                    })
+                    .transpose()?;
+
+                Ok((vector_id, vector, metadata))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(vectors)
+    }
+
+    /// Internal insert without persistence
+    ///
+    /// # Arguments
+    ///
+    /// * `vector_id` - Explicit vector ID (from database)
+    /// * `vector` - Vector data
+    /// * `metadata` - Optional metadata
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) if successful
+    ///
+    /// # Note
+    ///
+    /// This inserts into the HNSW graph structure using existing logic
+    /// but skips database write since the vector is already persisted.
+    fn insert_vector_internal(
+        &mut self,
+        vector_id: u64,
+        vector: &[f32],
+        metadata: Option<Value>,
+    ) -> Result<(), HnswError> {
+        // Validate vector dimension
+        if vector.len() != self.config.dimension {
+            return Err(HnswError::Index(HnswIndexError::VectorDimensionMismatch {
+                expected: self.config.dimension,
+                actual: vector.len(),
+            }));
+        }
+
+        // Store the vector in memory (not to database)
+        self.storage.store_vector_with_id(vector_id, vector.to_vec(), metadata)?;
+
+        // Determine insertion layer using exponential distribution
+        let insertion_level = self.determine_insertion_level();
+
+        // Insert into layers from insertion_level down to 0
+        for level in (0..=insertion_level).rev() {
+            self.insert_into_layer(vector_id, level)?;
+        }
+
+        // Update entry points if this is a high-level vector
+        if insertion_level >= self.entry_points.len() {
+            self.entry_points.push(vector_id);
+        }
+
+        self.vector_count += 1;
+        Ok(())
+    }
+
+    /// Load index with vectors from database
+    ///
+    /// # Arguments
+    ///
+    /// * `conn` - SQLite connection
+    /// * `name` - Index name
+    ///
+    /// # Returns
+    ///
+    /// Fully loaded HnswIndex with all vectors
+    ///
+    /// # Errors
+    ///
+    /// Returns HnswError on database failure or if index not found
+    ///
+    /// # Note
+    ///
+    /// This is a convenience method that loads metadata and vectors in one call.
+    pub fn load_with_vectors(conn: &Connection, name: &str) -> Result<Self, HnswError> {
+        let mut hnsw = Self::load_metadata(conn, name)?;
+        hnsw.load_vectors_and_rebuild(conn)?;
+        Ok(hnsw)
+    }
+
     /// Parse distance metric from string
     ///
     /// # Arguments
@@ -1132,6 +1309,78 @@ mod tests {
             }).unwrap();
 
             assert_eq!(loaded_hnsw, 128);
+        }
+
+        // Clean up
+        let _ = fs::remove_dir_all(test_dir);
+    }
+
+    #[test]
+    fn test_vector_loading_and_rebuild() {
+        use rusqlite::Connection;
+        use std::fs;
+
+        let test_dir = "/tmp/test_hnsw_vector_loading";
+        let db_path = format!("{}/test.db", test_dir);
+
+        // Clean up any existing test database
+        let _ = fs::remove_dir_all(test_dir);
+
+        // Create directory
+        fs::create_dir_all(test_dir).unwrap();
+
+        // Create index and manually persist vectors to database
+        {
+            let conn = Connection::open(&db_path).unwrap();
+
+            // Create schema
+            crate::schema::ensure_schema(&conn).unwrap();
+
+            // Create HNSW index metadata
+            conn.execute(
+                "INSERT INTO hnsw_indexes (name, dimension, m, ef_construction, distance_metric, vector_count, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params!["load_test", 3, 16, 200, "euclidean", 5, 1000, 1000],
+            ).unwrap();
+
+            let index_id = conn.last_insert_rowid();
+
+            // Manually insert vectors into database
+            for i in 0..5 {
+                let vector = vec![i as f32, (i * 2) as f32, (i * 3) as f32];
+                let vector_bytes = bytemuck::cast_slice::<f32, u8>(&vector).to_vec();
+
+                conn.execute(
+                    "INSERT INTO hnsw_vectors (index_id, vector_data, metadata, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![index_id, vector_bytes, None::<String>, 1000, 1000],
+                ).unwrap();
+            }
+        }
+
+        // Load index with vectors and verify rebuild works
+        {
+            let conn2 = Connection::open(&db_path).unwrap();
+            crate::schema::ensure_schema(&conn2).unwrap();
+
+            // Load metadata only (vectors not loaded yet)
+            let hnsw_metadata = HnswIndex::load_metadata(&conn2, "load_test").unwrap();
+            assert_eq!(hnsw_metadata.vector_count, 5);
+            assert_eq!(hnsw_metadata.storage.vector_count().unwrap(), 0); // No vectors loaded
+
+            // Load with vectors - this rebuilds the graph
+            let mut hnsw_loaded = HnswIndex::load_with_vectors(&conn2, "load_test").unwrap();
+            assert_eq!(hnsw_loaded.vector_count, 5);
+            assert_eq!(hnsw_loaded.storage.vector_count().unwrap(), 5); // Vectors loaded
+
+            // Verify we can retrieve vectors
+            let (vector, _) = hnsw_loaded.get_vector(1).unwrap().unwrap();
+            assert_eq!(vector, vec![0.0, 0.0, 0.0]);
+
+            // Verify search works (graph was rebuilt)
+            let query = vec![2.0, 4.0, 6.0];
+            let results = hnsw_loaded.search(&query, 3).unwrap();
+            assert!(!results.is_empty());
         }
 
         // Clean up
