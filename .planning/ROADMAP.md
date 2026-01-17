@@ -173,7 +173,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. WAL Integration | 3/3 | Complete | 2026-01-17 |
 | 3. Native V2 Reads | 3/3 | Complete | 2026-01-17 |
 | 4. MVCC Completion | 3/3 | Complete | 2026-01-17 |
-| 5. HNSW Persistence | 0/3 | Not started | - |
+| 5. HNSW Persistence | 3/3 | Complete | 2026-01-17 |
 | 6. HNSW CLI | 0/2 | Not started | - |
 | 7. Performance | 0/3 | Not started | - |
 | 8. Graph Algorithms | 0/3 | Not started | - |
