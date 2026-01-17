@@ -137,7 +137,7 @@ pub struct DefaultReplayOperations {
     node_store: Arc<Mutex<Option<NodeStore<'static>>>>,
     edge_store: Arc<Mutex<Option<EdgeStore<'static>>>>,
     string_table: Arc<Mutex<StringTable>>,
-    statistics: Arc<Mutex<ReplayStatistics>>,
+    statistics: Arc<ReplayStatistics>,
 }
 
 impl DefaultReplayOperations {
@@ -147,7 +147,8 @@ impl DefaultReplayOperations {
         node_store: Arc<Mutex<Option<NodeStore<'static>>>>,
         edge_store: Arc<Mutex<Option<EdgeStore<'static>>>>,
         string_table: Arc<Mutex<StringTable>>,
-        statistics: Arc<Mutex<ReplayStatistics>>,
+        free_space_manager: Arc<Mutex<Option<FreeSpaceManager>>>,
+        statistics: Arc<ReplayStatistics>,
     ) -> Self {
         Self {
             graph_file,
@@ -217,13 +218,10 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         };
         rollback_data.push(rollback_op);
 
-        // Update statistics
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_node_operation();
-            stats.update_timing(start_time.elapsed().as_millis() as u64);
-            stats.record_bytes_written(node_data.len() as u64);
-        }
+        // Update statistics (lock-free)
+        self.statistics.record_node_operation();
+        self.statistics.update_timing(start_time.elapsed().as_millis() as u64);
+        self.statistics.record_bytes_written(node_data.len() as u64);
 
         debug_log!("Replayed node insert: id={}, slot_offset={}, data_size={}",
                node_id, slot_offset, node_data.len());
@@ -273,13 +271,10 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         };
         rollback_data.push(rollback_op);
 
-        // Update statistics
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_string_operation();
-            stats.update_timing(start_time.elapsed().as_millis() as u64);
-            stats.record_bytes_written(string_value.len() as u64);
-        }
+        // Update statistics (lock-free)
+        self.statistics.record_string_operation();
+        self.statistics.update_timing(start_time.elapsed().as_millis() as u64);
+        self.statistics.record_bytes_written(string_value.len() as u64);
 
         info_log!("Replayed string insert: id={}, value='{}', offset={}, duration_ms={}",
               string_id, string_value, string_offset, start_time.elapsed().as_millis());
@@ -442,12 +437,9 @@ impl ReplayOperationHandler for DefaultReplayOperations {
                 format!("Failed to write node update: {}", e)
             ))?;
 
-        // Update statistics
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_node_operation();
-            stats.record_bytes_written(new_data.len() as u64);
-        }
+        // Update statistics (lock-free)
+        self.statistics.record_node_operation();
+        self.statistics.record_bytes_written(new_data.len() as u64);
 
         debug_log!("Successfully replayed node update: node_id={}", node_id);
         Ok(())
@@ -487,7 +479,7 @@ mod tests {
             Arc::new(Mutex::new(None)),
             Arc::new(Mutex::new(StringTable::new())),
             Arc::new(Mutex::new(None)),
-            Arc::new(Mutex::new(ReplayStatistics::new())),
+            Arc::new(ReplayStatistics::new()),
         )
     }
 

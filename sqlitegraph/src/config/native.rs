@@ -13,6 +13,8 @@ pub struct NativeConfig {
     pub reserve_edge_capacity: Option<usize>,
     /// CPU Profile for performance optimizations
     pub cpu_profile: Option<CpuProfile>,
+    /// Maximum number of parallel WAL recovery transactions (default: 4)
+    pub max_parallel_transactions: usize,
 }
 
 impl Default for NativeConfig {
@@ -22,6 +24,7 @@ impl Default for NativeConfig {
             reserve_node_capacity: None,
             reserve_edge_capacity: None,
             cpu_profile: None,
+            max_parallel_transactions: 4, // Default parallelism degree
         }
     }
 }
@@ -52,6 +55,12 @@ impl NativeConfig {
     /// Set the CPU profile (builder pattern)
     pub fn with_cpu_profile(mut self, profile: CpuProfile) -> Self {
         self.cpu_profile = Some(profile);
+        self
+    }
+
+    /// Set the maximum parallel WAL recovery transactions (builder pattern)
+    pub fn with_parallel_recovery(mut self, degree: usize) -> Self {
+        self.max_parallel_transactions = degree;
         self
     }
 }

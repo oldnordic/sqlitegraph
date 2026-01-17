@@ -36,8 +36,8 @@ pub struct DefaultReplayOperations {
     pub(in crate::backend::native::v2::wal::recovery::replayer) string_table: Arc<Mutex<StringTable>>,
     /// Free space manager for slot deallocation
     pub(in crate::backend::native::v2::wal::recovery::replayer) free_space_manager: Arc<Mutex<Option<FreeSpaceManager>>>,
-    /// Statistics tracking
-    pub(in crate::backend::native::v2::wal::recovery::replayer) statistics: Arc<Mutex<crate::backend::native::v2::wal::recovery::replayer::types::ReplayStatistics>>,
+    /// Statistics tracking (lock-free atomic counters)
+    pub(in crate::backend::native::v2::wal::recovery::replayer) statistics: Arc<crate::backend::native::v2::wal::recovery::replayer::types::ReplayStatistics>,
 }
 
 impl DefaultReplayOperations {
@@ -48,7 +48,7 @@ impl DefaultReplayOperations {
         edge_store: Arc<Mutex<Option<EdgeStore<'static>>>>,
         string_table: Arc<Mutex<StringTable>>,
         free_space_manager: Arc<Mutex<Option<FreeSpaceManager>>>,
-        statistics: Arc<Mutex<crate::backend::native::v2::wal::recovery::replayer::types::ReplayStatistics>>,
+        statistics: Arc<crate::backend::native::v2::wal::recovery::replayer::types::ReplayStatistics>,
     ) -> Self {
         Self {
             graph_file,
@@ -85,7 +85,7 @@ impl DefaultReplayOperations {
         free_space_mgr.add_free_block(2048, 1024 * 1024); // 1MB of free space starting at offset 2048
 
         let free_space_manager = Arc::new(Mutex::new(Some(free_space_mgr)));
-        let statistics = Arc::new(Mutex::new(crate::backend::native::v2::wal::recovery::replayer::types::ReplayStatistics::new()));
+        let statistics = Arc::new(crate::backend::native::v2::wal::recovery::replayer::types::ReplayStatistics::new());
 
         DefaultReplayOperations {
             graph_file,
@@ -120,7 +120,7 @@ mod tests {
         let edge_store: Arc<Mutex<Option<EdgeStore<'static>>>> = Arc::new(Mutex::new(None));
         let string_table = Arc::new(Mutex::new(StringTable::new()));
         let free_space_manager = Arc::new(Mutex::new(None));
-        let statistics = Arc::new(Mutex::new(crate::backend::native::v2::wal::recovery::replayer::types::ReplayStatistics::new()));
+        let statistics = Arc::new(crate::backend::native::v2::wal::recovery::replayer::types::ReplayStatistics::new());
 
         let ops = DefaultReplayOperations::new(
             graph_file,
@@ -132,6 +132,6 @@ mod tests {
         );
 
         // Verify the operations handler was created successfully
-        assert_eq!(ops.statistics.lock().unwrap().total_operations(), 0);
+        assert_eq!(ops.statistics.total_operations(), 0);
     }
 }

@@ -77,3 +77,8 @@ harness = false
 [[bench]]
 name = "comprehensive_performance"
 harness = false
+
+# Phase 7.01: Parallel WAL Recovery
+[[bench]]
+name = "wal_recovery_benchmarks"
+harness = false

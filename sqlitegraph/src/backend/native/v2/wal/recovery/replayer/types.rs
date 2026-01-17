@@ -5,6 +5,7 @@
 
 use crate::backend::native::{NativeNodeId};
 use crate::backend::native::v2::edge_cluster::Direction;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Configuration for V2 transaction replay operations
 #[derive(Debug, Clone)]
@@ -19,6 +20,8 @@ pub struct ReplayConfig {
     pub create_backup: bool,
     /// Progress reporting interval (operations)
     pub progress_interval: usize,
+    /// Maximum number of transactions to replay in parallel (default: 4)
+    pub max_parallel_transactions: usize,
 }
 
 impl Default for ReplayConfig {
@@ -31,6 +34,7 @@ impl Default for ReplayConfig {
             operation_timeout_ms: constants::validation::CONSISTENCY_CHECK_TIMEOUT_MS,
             create_backup: false, // Backup handled by recovery core
             progress_interval: constants::RECOVERY_PROGRESS_INTERVAL,
+            max_parallel_transactions: 4, // Default parallelism degree
         }
     }
 }
@@ -42,15 +46,146 @@ pub struct ReplayResult {
     pub successful_operations: u64,
     /// Failed operations with details
     pub failed_operations: Vec<(crate::backend::native::v2::wal::V2WALRecord, crate::backend::native::v2::wal::recovery::errors::RecoveryError)>,
-    /// Replay statistics
-    pub statistics: ReplayStatistics,
+    /// Replay statistics snapshot
+    pub statistics: StatisticsSnapshot,
     /// Any warnings encountered
     pub warnings: Vec<String>,
 }
 
 /// Detailed replay statistics and performance metrics
-#[derive(Debug, Clone, Default)]
+///
+/// This struct uses AtomicU64 for lock-free concurrent access,
+/// reducing contention during parallel WAL replay operations.
 pub struct ReplayStatistics {
+    /// Total replay duration in milliseconds
+    pub total_duration_ms: AtomicU64,
+    /// Number of node operations
+    pub node_operations: AtomicU64,
+    /// Number of edge operations
+    pub edge_operations: AtomicU64,
+    /// Number of string operations
+    pub string_operations: AtomicU64,
+    /// Number of free space operations
+    pub free_space_operations: AtomicU64,
+    /// Maximum operation time in milliseconds
+    pub max_operation_time_ms: AtomicU64,
+    /// Bytes written to graph file
+    pub bytes_written: AtomicU64,
+    /// Average operation time in milliseconds (non-atomic, computed on demand)
+    avg_operation_time_ms_cache: f64,
+}
+
+impl Default for ReplayStatistics {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ReplayStatistics {
+    /// Create new empty statistics with all counters initialized to zero
+    pub fn new() -> Self {
+        Self {
+            total_duration_ms: AtomicU64::new(0),
+            node_operations: AtomicU64::new(0),
+            edge_operations: AtomicU64::new(0),
+            string_operations: AtomicU64::new(0),
+            free_space_operations: AtomicU64::new(0),
+            max_operation_time_ms: AtomicU64::new(0),
+            bytes_written: AtomicU64::new(0),
+            avg_operation_time_ms_cache: 0.0,
+        }
+    }
+
+    /// Get the total number of operations performed
+    pub fn total_operations(&self) -> u64 {
+        self.node_operations.load(Ordering::Relaxed) +
+        self.edge_operations.load(Ordering::Relaxed) +
+        self.string_operations.load(Ordering::Relaxed) +
+        self.free_space_operations.load(Ordering::Relaxed)
+    }
+
+    /// Record a node operation (lock-free)
+    pub fn record_node_operation(&self) {
+        self.node_operations.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record an edge operation (lock-free)
+    pub fn record_edge_operation(&self) {
+        self.edge_operations.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a string operation (lock-free)
+    pub fn record_string_operation(&self) {
+        self.string_operations.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record a free space operation (lock-free)
+    pub fn record_free_space_operation(&self) {
+        self.free_space_operations.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Record bytes written to graph file (lock-free)
+    pub fn record_bytes_written(&self, bytes: u64) {
+        self.bytes_written.fetch_add(bytes, Ordering::Relaxed);
+    }
+
+    /// Update operation timing statistics (lock-free for max, computed for avg)
+    pub fn update_timing(&self, operation_time_ms: u64) {
+        // Update max operation time (lock-free)
+        let mut current_max = self.max_operation_time_ms.load(Ordering::Relaxed);
+        while operation_time_ms > current_max {
+            match self.max_operation_time_ms.compare_exchange_weak(
+                current_max,
+                operation_time_ms,
+                Ordering::Relaxed,
+                Ordering::Relaxed
+            ) {
+                Ok(_) => break,
+                Err(new_max) => current_max = new_max,
+            }
+        }
+        // Note: avg_operation_time_ms is computed on-demand in snapshot()
+    }
+
+    /// Set total duration (called once at end of replay)
+    pub fn set_total_duration(&self, duration_ms: u64) {
+        self.total_duration_ms.store(duration_ms, Ordering::Relaxed);
+    }
+
+    /// Create a consistent snapshot of all statistics
+    ///
+    /// This provides a point-in-time view of all counters, useful for
+    /// reporting and analysis. The snapshot may not be perfectly consistent
+    /// across all fields due to concurrent updates, but this is acceptable
+    /// for statistics reporting.
+    pub fn snapshot(&self) -> StatisticsSnapshot {
+        let total_ops = self.total_operations();
+        let duration = self.total_duration_ms.load(Ordering::Relaxed);
+        let avg_time = if total_ops > 0 {
+            duration as f64 / total_ops as f64
+        } else {
+            0.0
+        };
+
+        StatisticsSnapshot {
+            total_duration_ms: duration,
+            node_operations: self.node_operations.load(Ordering::Relaxed),
+            edge_operations: self.edge_operations.load(Ordering::Relaxed),
+            string_operations: self.string_operations.load(Ordering::Relaxed),
+            free_space_operations: self.free_space_operations.load(Ordering::Relaxed),
+            avg_operation_time_ms: avg_time,
+            max_operation_time_ms: self.max_operation_time_ms.load(Ordering::Relaxed),
+            bytes_written: self.bytes_written.load(Ordering::Relaxed),
+        }
+    }
+}
+
+/// Immutable snapshot of replay statistics
+///
+/// This struct provides a consistent, immutable view of statistics
+/// at a point in time, suitable for reporting and analysis.
+#[derive(Debug, Clone, Default)]
+pub struct StatisticsSnapshot {
     /// Total replay duration in milliseconds
     pub total_duration_ms: u64,
     /// Number of node operations
@@ -69,7 +204,7 @@ pub struct ReplayStatistics {
     pub bytes_written: u64,
 }
 
-impl ReplayStatistics {
+impl StatisticsSnapshot {
     /// Get the total number of operations performed
     pub fn total_operations(&self) -> u64 {
         self.node_operations + self.edge_operations +
@@ -152,48 +287,6 @@ pub enum RollbackOperation {
     },
 }
 
-impl ReplayStatistics {
-    /// Create new empty statistics
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Record a node operation
-    pub fn record_node_operation(&mut self) {
-        self.node_operations += 1;
-    }
-
-    /// Record an edge operation
-    pub fn record_edge_operation(&mut self) {
-        self.edge_operations += 1;
-    }
-
-    /// Record a string operation
-    pub fn record_string_operation(&mut self) {
-        self.string_operations += 1;
-    }
-
-    /// Record a free space operation
-    pub fn record_free_space_operation(&mut self) {
-        self.free_space_operations += 1;
-    }
-
-    /// Update operation timing statistics
-    pub fn update_timing(&mut self, operation_time_ms: u64) {
-        self.max_operation_time_ms = self.max_operation_time_ms.max(operation_time_ms);
-
-        if self.node_operations + self.edge_operations + self.string_operations + self.free_space_operations > 0 {
-            let total_ops = self.node_operations + self.edge_operations + self.string_operations + self.free_space_operations;
-            self.avg_operation_time_ms = ((self.total_duration_ms as f64) + (operation_time_ms as f64)) / total_ops as f64;
-        }
-    }
-
-    /// Record bytes written to graph file
-    pub fn record_bytes_written(&mut self, bytes: u64) {
-        self.bytes_written += bytes;
-    }
-}
-
 impl RollbackOperation {
     /// Get a descriptive name for the rollback operation
     pub fn operation_name(&self) -> &'static str {
@@ -244,30 +337,49 @@ mod tests {
         assert_eq!(config.create_backup, false);
         assert!(config.max_batch_size > 0);
         assert!(config.operation_timeout_ms > 0);
+        assert_eq!(config.max_parallel_transactions, 4);
     }
 
     #[test]
     fn test_replay_statistics_default() {
         let stats = ReplayStatistics::default();
-        assert_eq!(stats.total_duration_ms, 0);
-        assert_eq!(stats.node_operations, 0);
-        assert_eq!(stats.edge_operations, 0);
-        assert_eq!(stats.string_operations, 0);
-        assert_eq!(stats.free_space_operations, 0);
-        assert_eq!(stats.bytes_written, 0);
+        assert_eq!(stats.total_duration_ms.load(Ordering::Relaxed), 0);
+        assert_eq!(stats.node_operations.load(Ordering::Relaxed), 0);
+        assert_eq!(stats.edge_operations.load(Ordering::Relaxed), 0);
+        assert_eq!(stats.string_operations.load(Ordering::Relaxed), 0);
+        assert_eq!(stats.free_space_operations.load(Ordering::Relaxed), 0);
+        assert_eq!(stats.bytes_written.load(Ordering::Relaxed), 0);
     }
 
     #[test]
     fn test_replay_statistics_recording() {
-        let mut stats = ReplayStatistics::new();
+        let stats = ReplayStatistics::new();
 
         stats.record_node_operation();
         stats.record_string_operation();
         stats.record_bytes_written(1024);
 
-        assert_eq!(stats.node_operations, 1);
-        assert_eq!(stats.string_operations, 1);
-        assert_eq!(stats.bytes_written, 1024);
+        assert_eq!(stats.node_operations.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.string_operations.load(Ordering::Relaxed), 1);
+        assert_eq!(stats.bytes_written.load(Ordering::Relaxed), 1024);
+    }
+
+    #[test]
+    fn test_replay_statistics_snapshot() {
+        let stats = ReplayStatistics::new();
+
+        stats.record_node_operation();
+        stats.record_string_operation();
+        stats.record_bytes_written(1024);
+        stats.set_total_duration(100);
+
+        let snapshot = stats.snapshot();
+
+        assert_eq!(snapshot.node_operations, 1);
+        assert_eq!(snapshot.string_operations, 1);
+        assert_eq!(snapshot.bytes_written, 1024);
+        assert_eq!(snapshot.total_duration_ms, 100);
+        assert_eq!(snapshot.total_operations(), 2);
     }
 
     #[test]

@@ -110,6 +110,7 @@ impl RecoveryFactory {
             create_backup: true,
             max_recovery_attempts: 5,
             force_recovery: false,
+            max_parallel_transactions: 4,
         };
         V2WALRecoveryEngine::create(config, database_path, options).map_err(RecoveryError::from)
     }
@@ -127,6 +128,7 @@ impl RecoveryFactory {
             create_backup: false, // Skip backup for speed
             max_recovery_attempts: 1,
             force_recovery: true,
+            max_parallel_transactions: 4,
         };
         V2WALRecoveryEngine::create(config, database_path, options).map_err(RecoveryError::from)
     }

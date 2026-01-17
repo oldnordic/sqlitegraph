@@ -224,12 +224,9 @@ impl super::DefaultReplayOperations {
                    node_id, cluster_direction, allocated_offset, cluster_data.len());
         } // NodeStore lock is released here
 
-        // Step 8: Update statistics tracking
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_edge_operation();
-            stats.record_bytes_written(cluster_data.len() as u64);
-        }
+        // Step 8: Update statistics tracking (lock-free)
+        self.statistics.record_edge_operation();
+        self.statistics.record_bytes_written(cluster_data.len() as u64);
 
         debug_log!("Successfully completed edge insert: cluster_key={:?}, insertion_point={}, offset={}, size={}",
                cluster_key, insertion_point, allocated_offset, cluster_data.len());
@@ -541,12 +538,9 @@ impl super::DefaultReplayOperations {
                    node_id, direction, allocated_offset);
         }; // NodeStore lock is released here
 
-        // Step 11: Update statistics tracking
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_edge_operation();
-            stats.record_bytes_written(updated_cluster_data.len() as u64);
-        }
+        // Step 11: Update statistics tracking (lock-free)
+        self.statistics.record_edge_operation();
+        self.statistics.record_bytes_written(updated_cluster_data.len() as u64);
 
         debug_log!("Successfully completed edge update: cluster_key={:?}, position={}, old_offset={}, new_offset={}, old_size={}, new_size={}",
                cluster_key, position, cluster_offset, allocated_offset, cluster_size, updated_cluster_data.len());
@@ -858,12 +852,9 @@ impl super::DefaultReplayOperations {
                    node_id, direction, if updated_cluster_data.len() == 0 { 0 } else { allocated_offset });
         }; // NodeStore lock is released here
 
-        // Step 11: Update statistics tracking
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_edge_operation();
-            stats.record_bytes_written(updated_cluster_data.len() as u64);
-        }
+        // Step 11: Update statistics tracking (lock-free)
+        self.statistics.record_edge_operation();
+        self.statistics.record_bytes_written(updated_cluster_data.len() as u64);
 
         debug_log!("Successfully completed edge delete: cluster_key={:?}, position={}, old_offset={}, new_offset={}, old_size={}, new_size={}",
                cluster_key, position, cluster_offset, if updated_cluster_data.len() == 0 { 0 } else { allocated_offset }, cluster_size, updated_cluster_data.len());

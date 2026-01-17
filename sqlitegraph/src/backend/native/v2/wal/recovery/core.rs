@@ -36,6 +36,8 @@ pub struct RecoveryOptions {
     pub create_backup: bool,
     pub max_recovery_attempts: u32,
     pub force_recovery: bool,
+    /// Maximum number of parallel WAL recovery transactions (default: 4)
+    pub max_parallel_transactions: usize,
 }
 
 impl Default for RecoveryOptions {
@@ -48,6 +50,7 @@ impl Default for RecoveryOptions {
             create_backup: true,
             max_recovery_attempts: MAX_RECOVERY_ATTEMPTS,
             force_recovery: false,
+            max_parallel_transactions: 4, // Default parallelism degree
         }
     }
 }
@@ -483,6 +486,7 @@ impl V2WALRecoveryEngine {
             operation_timeout_ms: validation::CONSISTENCY_CHECK_TIMEOUT_MS,
             create_backup: false, // Handled by recovery core
             progress_interval: RECOVERY_PROGRESS_INTERVAL,
+            max_parallel_transactions: self.options.max_parallel_transactions,
         };
 
         let replayer = V2GraphFileReplayer::create(self.database_path.clone(), config)
@@ -633,6 +637,7 @@ mod tests {
         assert!(options.create_backup);
         assert_eq!(options.max_recovery_attempts, MAX_RECOVERY_ATTEMPTS);
         assert!(!options.force_recovery);
+        assert_eq!(options.max_parallel_transactions, 4);
     }
 
     fn is_valid_transition_static(from: RecoveryState, to: RecoveryState) -> bool {

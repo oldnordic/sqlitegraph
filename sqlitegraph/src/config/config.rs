@@ -50,6 +50,12 @@ impl GraphConfig {
         self
     }
 
+    /// Set the maximum parallel WAL recovery transactions (builder pattern)
+    pub fn with_parallel_recovery(mut self, degree: usize) -> Self {
+        self.native.max_parallel_transactions = degree;
+        self
+    }
+
     /// Configure SQLite backend with custom settings (builder pattern)
     pub fn with_sqlite_config<F>(mut self, config_fn: F) -> Self
     where

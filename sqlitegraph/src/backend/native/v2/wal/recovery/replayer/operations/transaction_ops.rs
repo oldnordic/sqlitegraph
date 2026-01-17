@@ -43,12 +43,9 @@ impl super::DefaultReplayOperations {
         };
         rollback_data.push(rollback_op);
 
-        // Update statistics
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_string_operation();
-            stats.record_bytes_written(string_value.len() as u64);
-        }
+        // Update statistics (lock-free)
+        self.statistics.record_string_operation();
+        self.statistics.record_bytes_written(string_value.len() as u64);
 
         debug_log!("Successfully replayed string insert: string_id={}", string_id);
         Ok(())
@@ -182,12 +179,9 @@ impl super::DefaultReplayOperations {
                    node_id, direction, cluster_offset, cluster_size);
         } // NodeStore lock is released here
 
-        // Step 7: Update statistics tracking
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_edge_operation();
-            stats.record_bytes_written(edge_data.len() as u64);
-        }
+        // Step 7: Update statistics tracking (lock-free)
+        self.statistics.record_edge_operation();
+        self.statistics.record_bytes_written(edge_data.len() as u64);
 
         debug_log!("Successfully completed cluster create: node_id={}, direction={:?}, offset={}, size={}",
                node_id, direction, cluster_offset, edge_data.len());
@@ -266,12 +260,9 @@ impl super::DefaultReplayOperations {
             }
         }
 
-        // Step 5: Update statistics tracking
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_free_space_operation();
-            stats.record_bytes_written(block_size);
-        }
+        // Step 5: Update statistics tracking (lock-free)
+        self.statistics.record_free_space_operation();
+        self.statistics.record_bytes_written(block_size);
 
         debug_log!("Successfully completed free space allocate: offset={}, size={}, type={}",
                allocated_offset, block_size, block_type);
@@ -347,15 +338,8 @@ impl super::DefaultReplayOperations {
                    block_offset, block_size, block_type);
         } // FreeSpaceManager lock is released here
 
-        // Step 4: Update replay statistics
-        {
-            let mut stats_guard = self.statistics.lock()
-                .map_err(|e| RecoveryError::replay_failure(
-                    format!("Failed to lock statistics: {}", e)
-                ))?;
-
-            stats_guard.record_free_space_operation();
-        }
+        // Step 4: Update replay statistics (lock-free)
+        self.statistics.record_free_space_operation();
 
         debug_log!("Free space deallocation replay completed: offset={}, size={}, type={}",
                block_offset, block_size, block_type);
@@ -433,15 +417,8 @@ impl super::DefaultReplayOperations {
             debug_log!("Successfully updated header at offset {} ({} bytes)", header_offset, new_data.len());
         }
 
-        // Step 4: Update replay statistics
-        {
-            let mut stats_guard = self.statistics.lock()
-                .map_err(|e| RecoveryError::replay_failure(
-                    format!("Failed to lock statistics: {}", e)
-                ))?;
-
-            stats_guard.record_bytes_written(new_data.len() as u64);
-        }
+        // Step 4: Update replay statistics (lock-free)
+        self.statistics.record_bytes_written(new_data.len() as u64);
 
         debug_log!("Header update replay completed: offset={}, size={}", header_offset, new_data.len());
 

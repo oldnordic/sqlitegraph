@@ -60,12 +60,9 @@ impl super::DefaultReplayOperations {
                 ))?;
         } // graph_file lock and node_store are released here
 
-        // Update statistics
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_node_operation();
-            stats.record_bytes_written(node_data.len() as u64);
-        }
+        // Update statistics (lock-free)
+        self.statistics.record_node_operation();
+        self.statistics.record_bytes_written(node_data.len() as u64);
 
         debug_log!("Successfully replayed node insert: node_id={}", node_id);
         Ok(())
@@ -124,12 +121,9 @@ impl super::DefaultReplayOperations {
                 ))?;
         } // graph_file lock and node_store are released here
 
-        // Update statistics
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_node_operation();
-            stats.record_bytes_written(new_data.len() as u64);
-        }
+        // Update statistics (lock-free)
+        self.statistics.record_node_operation();
+        self.statistics.record_bytes_written(new_data.len() as u64);
 
         debug_log!("Successfully replayed node update: node_id={}", node_id);
         Ok(())
@@ -294,12 +288,9 @@ impl super::DefaultReplayOperations {
                 ))?;
         } // graph_file lock, node_store, and free_space_manager are released here
 
-        // Step 9: Update statistics
-        {
-            let mut stats = self.statistics.lock().unwrap();
-            stats.record_node_operation();
-            stats.record_bytes_written(old_data_len as u64);
-        }
+        // Step 9: Update statistics (lock-free)
+        self.statistics.record_node_operation();
+        self.statistics.record_bytes_written(old_data_len as u64);
 
         debug_log!("Successfully completed node delete: node_id={}, rollback_data_count={}",
                node_id, rollback_data.len());
