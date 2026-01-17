@@ -3,7 +3,7 @@
 //! This module provides rollback functionality for transaction recovery
 //! operations, allowing the system to undo changes when replay fails.
 
-use crate::backend::native::{GraphFile, NodeStore, NativeResult, NativeNodeId, NodeRecordV2};
+use crate::backend::native::{GraphFile, NodeStore, NativeNodeId, NodeRecordV2};
 use crate::backend::native::v2::{StringTable, FreeSpaceManager};
 use super::types::RollbackOperation;
 use std::sync::{Arc, Mutex, RwLock};
