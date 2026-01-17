@@ -3,19 +3,196 @@
 //! This module provides callback-based progress reporting for algorithms
 //! that may take significant time to execute (PageRank, betweenness centrality, etc.).
 //!
-//! # Example
+//! # Key Types
 //!
-//! ```rust
-//! use sqlitegraph::progress::{ProgressCallback, NoProgress, ConsoleProgress};
+//! - [`ProgressCallback`] - Trait for progress reporting
+//! - [`NoProgress`] - Zero-overhead no-op implementation (default)
+//! - [`ConsoleProgress`] - CLI-friendly stderr output
+//! - [`ProgressState`] - Throttled wrapper to avoid spam
 //!
-//! // Use no-op callback (default)
+//! # Usage Patterns
+//!
+//! ## Zero-Overhead Progress (Default)
+//!
+//! Use [`NoProgress`] when you don't need progress reporting:
+//!
+//! ```rust,ignore
+//! use sqlitegraph::{algo::pagerank, progress::NoProgress};
+//!
+//! let results = pagerank(&graph)?;
+//! // No progress output, zero overhead
+//! ```
+//!
+//! ## Console Progress for CLI
+//!
+//! Use [`ConsoleProgress`] for CLI applications:
+//!
+//! ```rust,ignore
+//! use sqlitegraph::{algo::pagerank_with_progress, progress::ConsoleProgress};
+//!
+//! let progress = ConsoleProgress::new();
+//! let results = pagerank_with_progress(&graph, progress)?;
+//! // Output to stderr:
+//! // PageRank iteration 1/100...
+//! // PageRank iteration 2/100...
+//! // ...
+//! ```
+//!
+//! Note: Progress is written to **stderr** to avoid interfering with
+//! data output on stdout.
+//!
+//! # ProgressCallback Trait
+//!
+//! The [`ProgressCallback`] trait defines the interface for progress reporting:
+//!
+//! ## Thread Safety
+//!
+//! All implementations must be `Send + Sync` for thread-safe use:
+//!
+//! ```rust,ignore
+//! use std::sync::Arc;
+//! use sqlitegraph::progress::ConsoleProgress;
+//!
+//! let progress = Arc::new(ConsoleProgress::new());
+//! // Safe to share across threads
+//! ```
+//!
+//! ## Callback Methods
+//!
+//! - **`on_progress(current, total, message)`**: Called repeatedly during operation
+//! - **`on_complete()`**: Called exactly once on success
+//! - **`on_error(error)`**: Called exactly once on failure
+//!
+//! # Implementations
+//!
+//! ## NoProgress
+//!
+//! Zero-overhead no-op implementation:
+//!
+//! - **Cost**: Zero (all methods are `#[inline]` no-ops)
+//! - **Use case**: Library code, batch processing, tests
+//! - **Output**: None
+//!
+//! ```rust,ignore
 //! let progress = NoProgress;
-//! progress.on_progress(5, Some(10), "Processing...");
+//! progress.on_progress(50, Some(100), "Processing"); // Does nothing
+//! ```
 //!
-//! // Use console progress for CLI output
+//! ## ConsoleProgress
+//!
+//! CLI-friendly stderr output:
+//!
+//! - **Cost**: Minimal (formatted write to stderr)
+//! - **Use case**: Interactive CLI applications
+//! - **Output**: `Message [current/total]` or `Message: current`
+//!
+//! ```rust,ignore
 //! let console = ConsoleProgress::new();
-//! console.on_progress(5, Some(10), "Processing...");
-//! // Output: Processing... [5/10]
+//! console.on_progress(5, Some(10), "Processing");
+//! // Output: Processing [5/10]
+//!
+//! console.on_progress(5, None, "Processing");
+//! // Output: Processing: 5
+//! ```
+//!
+//! ## ProgressState
+//!
+//! Throttled wrapper to avoid spam:
+//!
+//! - **Cost**: Minimal (time-checked throttling)
+//! - **Use case**: High-frequency progress updates
+//! - **Behavior**: Only calls underlying callback every N milliseconds
+//!
+//! ```rust,ignore
+//! use std::time::Duration;
+//! use sqlitegraph::progress::ProgressState;
+//!
+//! let base = ConsoleProgress::new();
+//! let throttled = ProgressState::new(base, Duration::from_millis(100));
+//!
+//! // Only outputs every 100ms, even if called more frequently
+//! for i in 0..1000 {
+//!     throttled.on_progress(i, Some(1000), "Processing");
+//! }
+//! ```
+//!
+//! # Progress Throttling
+//!
+//! High-frequency progress updates can cause performance issues and output spam.
+//! [`ProgressState`] addresses this with **time-based throttling**:
+//!
+//! ## Throttling Behavior
+//!
+//! - **Minimum interval**: Configurable (default 100ms)
+//! - **First call**: Always executes
+//! - **Subsequent calls**: Only if `now - last_call >= min_interval`
+//! - **Completion**: Always calls `on_complete()` (not throttled)
+//! - **Errors**: Always calls `on_error()` (not throttled)
+//!
+//! ## Why Throttle?
+//!
+//! - **Performance**: Avoid excessive I/O from rapid updates
+//! - **UX**: Prevent unreadable rapid-fire output
+//! - **LLM-friendly**: Provide summarized progress for AI consumption
+//!
+//! # Using with Algorithms
+//!
+//! Progress-tracking variants are available for long-running algorithms:
+//!
+//! ```rust,ignore
+//! use sqlitegraph::{
+//!     algo::{pagerank_with_progress, louvain_communities_with_progress},
+//!     progress::ConsoleProgress
+//! };
+//!
+//! let progress = ConsoleProgress::new();
+//!
+//! // PageRank with progress
+//! let rankings = pagerank_with_progress(&graph, progress.clone())?;
+//!
+//! // Louvain with progress
+//! let communities = louvain_communities_with_progress(&graph, progress)?;
+//! ```
+//!
+//! Available `_with_progress` variants:
+//! - [`pagerank_with_progress`](crate::algo::pagerank_with_progress)
+//! - [`betweenness_centrality_with_progress`](crate::algo::betweenness_centrality_with_progress)
+//! - [`louvain_communities_with_progress`](crate::algo::louvain_communities_with_progress)
+//!
+//! # Custom Implementations
+//!
+//! Implement [`ProgressCallback`] for custom behavior:
+//!
+//! ```rust,ignore
+//! use sqlitegraph::progress::ProgressCallback;
+//!
+//! struct CustomProgress {
+//!     start_time: std::time::Instant,
+//! }
+//!
+//! impl ProgressCallback for CustomProgress {
+//!     fn on_progress(&self, current: usize, total: Option<usize>, message: &str) {
+//!         let elapsed = self.start_time.elapsed().as_secs_f64();
+//!         match total {
+//!             Some(total) => {
+//!                 let percent = (current as f64 / total as f64) * 100.0;
+//!                 println!("{}: {:.1}% ({:.2}s elapsed)", message, percent, elapsed);
+//!             }
+//!             None => {
+//!                 println!("{}: {} ({:.2}s elapsed)", message, current, elapsed);
+//!             }
+//!         }
+//!     }
+//!
+//!     fn on_complete(&self) {
+//!         let elapsed = self.start_time.elapsed().as_secs_f64();
+//!         println!("Complete in {:.2}s", elapsed);
+//!     }
+//!
+//!     fn on_error(&self, error: &dyn std::error::Error) {
+//!         eprintln!("Error: {}", error);
+//!     }
+//! }
 //! ```
 
 use std::sync::Mutex;

@@ -3,6 +3,181 @@
 //! This module provides structured introspection capabilities for SQLiteGraph,
 //! enabling developers and AI agents to inspect internal graph state for debugging
 //! and observability purposes.
+//!
+//! # What is GraphIntrospection?
+//!
+//! [`GraphIntrospection`] provides a JSON-serializable snapshot of graph state,
+//! designed for both human debugging and LLM consumption. It exposes internal
+//! metrics that are otherwise difficult to access:
+//!
+//! - **Backend type**: SQLite vs Native backend
+//! - **Node/edge counts**: Graph size metrics
+//! - **Cache statistics**: Hit ratios and entry counts
+//! - **File sizes**: Database and WAL file sizes
+//! - **Memory usage**: In-memory vs file-based detection
+//!
+//! # Key Types
+//!
+//! - [`GraphIntrospection`] - Comprehensive introspection snapshot
+//! - [`EdgeCount`] - Edge count with exact/estimate/unavailable states
+//! - [`IntrospectError`] - Introspection-specific errors
+//!
+//! # Usage for Debugging
+//!
+//! ## Basic Introspection
+//!
+//! ```rust,ignore
+//! use sqlitegraph::{open_graph, GraphConfig};
+//!
+//! let graph = open_graph("my_graph.db", &GraphConfig::sqlite())?;
+//! let intro = graph.introspect()?;
+//!
+//! println!("Backend: {}", intro.backend_type);
+//! println!("Nodes: {}", intro.node_count);
+//! println!("Edges: {:?}", intro.edge_count);
+//! println!("Cache hit ratio: {:.2}%", intro.cache_stats.hit_ratio().unwrap_or(0.0));
+//! ```
+//!
+//! ## Cache Performance Analysis
+//!
+//! ```rust,ignore
+//! let intro = graph.introspect()?;
+//!
+//! match intro.cache_stats.hit_ratio() {
+//!     Some(ratio) if ratio < 50.0 => {
+//!         println!("Warning: Low cache hit ratio ({:.1}%)", ratio);
+//!         println!("Consider adjusting cache size or workload");
+//!     }
+//!     Some(ratio) => {
+//!         println!("Good cache performance: {:.1}% hit ratio", ratio);
+//!     }
+//!     None => {
+//!         println!("No cache activity yet");
+//!     }
+//! }
+//! ```
+//!
+//! # Edge Count Strategy
+//!
+//! The [`EdgeCount`] enum provides **adaptive edge counting** based on graph size:
+//!
+//! ## Exact Count (< 10K edges)
+//!
+//! For small to medium graphs, edges are counted exactly:
+//!
+//! ```rust,ignore
+//! match intro.edge_count {
+//!     EdgeCount::Exact(count) => {
+//!         println!("Graph has {} edges", count);
+//!     }
+//!     _ => {}
+//! }
+//! ```
+//!
+//! ## Sampled Estimate (≥ 10K edges)
+//!
+//! For large graphs, edges are estimated via sampling to avoid expensive scans:
+//!
+//! ```rust,ignore
+//! match intro.edge_count {
+//!     EdgeCount::Estimate { count, min, max, sample_size } => {
+//!         println!("Estimated {} edges (95% CI: {}-{})", count, min, max);
+//!         println!("Based on {} node sample", sample_size);
+//!     }
+//!     _ => {}
+//! }
+//! ```
+//!
+//! ### Estimation Algorithm
+//!
+//! - **Sample size**: 1000 nodes (or all nodes if smaller)
+//! - **Confidence interval**: 95% via binomial proportion
+//! - **Accuracy**: Typically ±5% for uniform degree distributions
+//! - **Cost**: O(sample_size) vs O(V) for exact count
+//!
+//! ## Unavailable (Backend-Specific)
+//!
+//! Some backends may not support edge counting:
+//!
+//! ```rust,ignore
+//! match intro.edge_count {
+//!     EdgeCount::Unavailable => {
+//!         println!("Edge counting not available for this backend");
+//!     }
+//!     _ => {}
+//! }
+//! ```
+//!
+//! # File Size Detection
+//!
+//! Introspection provides **file size metrics** for file-based databases:
+//!
+//! ## Database File Size
+//!
+//! ```rust,ignore
+//! if let Some(size) = intro.file_size {
+//!     println!("Database file: {} MB", size / 1_048_576);
+//! } else {
+//!     println!("In-memory database (no file)");
+//! }
+//! ```
+//!
+//! ## WAL File Size
+//!
+//! ```rust,ignore
+//! if let Some(wal_size) = intro.wal_size {
+//!     println!("WAL file: {} MB", wal_size / 1_048_576);
+//!     if wal_size > 100_000_000 {
+//!         println!("Warning: Large WAL - consider checkpoint");
+//!     }
+//! }
+//! ```
+//!
+//! # JSON Serialization for LLMs
+//!
+//! The introspection data structure is fully JSON-serializable for LLM consumption:
+//!
+//! ```rust,ignore
+//! use serde_json;
+//!
+//! let intro = graph.introspect()?;
+//! let json = serde_json::to_string_pretty(&intro)?;
+//!
+//! // Pass to LLM for analysis
+//! let analysis = llm.analyze(&json)?;
+//! ```
+//!
+//! Example JSON output:
+//!
+//! ```json
+//! {
+//!   "backend_type": "sqlite",
+//!   "node_count": 10000,
+//!   "edge_count": {
+//!     "Estimate": {
+//!       "count": 45000,
+//!       "min": 44000,
+//!       "max": 46000,
+//!       "sample_size": 1000
+//!     }
+//!   },
+//!   "cache_stats": {
+//!     "hits": 85000,
+//!     "misses": 15000,
+//!     "entries": 5000
+//!   },
+//!   "file_size": 10485760,
+//!   "wal_size": 524288,
+//!   "is_in_memory": false
+//! }
+//! ```
+//!
+//! # Performance Considerations
+//!
+//! - **Introspection cost**: O(sample_size) for edge estimation, O(1) for other metrics
+//! - **Cache stats**: Aggregated from atomic counters (no locking)
+//! - **File sizes**: Cached `stat()` calls (negligible overhead)
+//! - **Safe for production**: Minimal performance impact
 
 use serde::Serialize;
 use std::path::Path;
