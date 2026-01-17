@@ -931,7 +931,7 @@ fn test_wal_recreation_after_deletion() -> NativeResult<()> {
 
     // Should be able to create new WAL
     let manager = V2WALManager::create(config)?;
-    let metrics = manager.get_metrics();
+    let _metrics = manager.get_metrics();
 
     // Should start fresh
     assert!(setup.wal_exists(), "WAL should be recreated");
