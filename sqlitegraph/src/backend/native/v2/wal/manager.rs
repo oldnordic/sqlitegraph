@@ -383,7 +383,7 @@ impl V2WALManager {
         self.check_group_commit();
 
         // Check if checkpoint is needed after commit
-        if self.requires_checkpoint() {
+        if self.config.auto_checkpoint && self.requires_checkpoint() {
             // Spawn background checkpoint to avoid blocking commit
             let checkpoint_manager = self.checkpoint_manager.clone();
             std::thread::spawn(move || {
