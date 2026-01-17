@@ -14,9 +14,6 @@ use crate::backend::native::{
 };
 use std::io::{Read, Seek, SeekFrom};
 
-#[cfg(feature = "native-v2")]
-use memmap2::MmapMut;
-
 impl<'a> MemoryResourceManager<'a> {
     /// Perform memory-aware read operation with appropriate routing
     ///
