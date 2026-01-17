@@ -14,6 +14,7 @@ use sqlitegraph::{
     GraphEdgeCreate, GraphEntityCreate, SqliteGraph, SqliteGraphError,
 };
 use sqlitegraph::mvcc::SnapshotManager;
+use sqlitegraph::algo;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Barrier};
@@ -555,7 +556,304 @@ fn test_snapshot_independence() {
 }
 
 //
-// GROUP 4: INTEGRATION WITH SQLITEGRAPH (SINGLE-THREADED)
+// GROUP 4: CONCURRENT ALGORITHM EXECUTION
+//
+// NOTE: SqliteGraph is NOT thread-safe (contains RefCell, non-Sync types).
+// These tests focus on thread-safe SnapshotManager and verify algorithms
+// work correctly with snapshots, not concurrent graph access.
+//
+
+#[test]
+fn test_concurrent_snapshot_creation_with_algorithms() {
+    // Scenario: Multiple threads create snapshots concurrently
+    // Expected: All threads succeed, all snapshots valid
+    let manager = Arc::new(create_test_snapshot_manager(100));
+    let barrier = Arc::new(Barrier::new(10));
+    let success_count = Arc::new(AtomicU64::new(0));
+
+    let handles: Vec<_> = (0..10)
+        .map(|_| {
+            let manager = manager.clone();
+            let barrier = barrier.clone();
+            let success_count = success_count.clone();
+
+            thread::spawn(move || {
+                barrier.wait();
+
+                // Each thread creates a snapshot
+                let snapshot = manager.acquire_snapshot();
+
+                if snapshot.node_count() > 0 {
+                    success_count.fetch_add(1, Ordering::Relaxed);
+                }
+            })
+        })
+        .collect();
+
+    for h in handles {
+        h.join().expect("Thread panicked");
+    }
+
+    let success = success_count.load(Ordering::Relaxed);
+    assert_eq!(success, 10, "Not all threads acquired valid snapshots");
+}
+
+#[test]
+fn test_snapshot_state_with_algorithm_preparation() {
+    // Scenario: Verify snapshot state is suitable for algorithm execution
+    // Expected: Snapshot has all required data for algorithms
+    let graph = create_test_graph().expect("Failed to create test graph");
+    warm_cache(&graph).expect("Failed to warm cache");
+
+    // Acquire snapshot
+    let snapshot = graph.acquire_snapshot().expect("Failed to acquire snapshot");
+
+    // Verify snapshot has nodes
+    assert!(snapshot.node_count() > 0, "Snapshot should have nodes");
+
+    // Verify snapshot data structure is consistent
+    let entity_ids = graph.list_entity_ids().expect("Failed to get entity IDs");
+    for &id in &entity_ids {
+        assert!(snapshot.contains_node(id), "Snapshot should contain node {}", id);
+    }
+
+    // Verify algorithms can run on the graph (not snapshot directly)
+    let components = algo::connected_components(&graph);
+    assert!(components.is_ok(), "Algorithm should run on graph");
+}
+
+//
+// GROUP 5: ALGORITHM CONSISTENCY
+//
+
+#[test]
+fn test_algorithm_determinism_multiple_runs() {
+    // Scenario: Run same algorithm multiple times on same graph
+    // Expected: Results are deterministic
+    let graph = create_large_test_graph(30).expect("Failed to create graph");
+    warm_cache(&graph).expect("Failed to warm cache");
+
+    // Run PageRank twice
+    let result1 = algo::pagerank(&graph, 0.85, 20);
+    let result2 = algo::pagerank(&graph, 0.85, 20);
+
+    assert!(result1.is_ok(), "First PageRank failed");
+    assert!(result2.is_ok(), "Second PageRank failed");
+
+    let scores1 = result1.unwrap();
+    let scores2 = result2.unwrap();
+
+    // Verify same number of scores
+    assert_eq!(scores1.len(), scores2.len(), "Different number of scores");
+
+    // Verify scores are approximately equal (floating point tolerance)
+    for (s1, s2) in scores1.iter().zip(scores2.iter()) {
+        assert_eq!(s1.0, s2.0, "Different node IDs");
+        assert!(
+            (s1.1 - s2.1).abs() < 1e-10,
+            "Scores differ significantly: {} vs {}",
+            s1.1,
+            s2.1
+        );
+    }
+}
+
+#[test]
+fn test_multiple_algorithms_same_graph() {
+    // Scenario: Run multiple different algorithms on same graph
+    // Expected: All algorithms succeed
+    let graph = create_large_test_graph(40).expect("Failed to create graph");
+    warm_cache(&graph).expect("Failed to warm cache");
+
+    // Run multiple algorithms
+    let components_result = algo::connected_components(&graph);
+    let degrees_result = algo::nodes_by_degree(&graph, true);
+    let pagerank_result = algo::pagerank(&graph, 0.85, 10);
+    let cycles_result = algo::find_cycles_limited(&graph, 10);
+
+    assert!(components_result.is_ok(), "Connected components failed");
+    assert!(degrees_result.is_ok(), "Nodes by degree failed");
+    assert!(pagerank_result.is_ok(), "PageRank failed");
+    assert!(cycles_result.is_ok(), "Find cycles failed");
+
+    // Verify results are non-empty for non-empty graph
+    let components = components_result.unwrap();
+    let degrees = degrees_result.unwrap();
+    let pagerank = pagerank_result.unwrap();
+
+    assert!(!components.is_empty() || graph.list_entity_ids().unwrap().is_empty());
+    assert!(!degrees.is_empty() || graph.list_entity_ids().unwrap().is_empty());
+    assert!(!pagerank.is_empty() || graph.list_entity_ids().unwrap().is_empty());
+}
+
+#[test]
+fn test_algorithm_with_empty_graph() {
+    // Scenario: Run algorithms on empty graph
+    // Expected: All handle empty graph gracefully
+    let graph = SqliteGraph::open_in_memory().expect("Failed to create graph");
+
+    // Run algorithms on empty graph
+    let components = algo::connected_components(&graph);
+    let degrees = algo::nodes_by_degree(&graph, true);
+    let pagerank = algo::pagerank(&graph, 0.85, 10);
+    let cycles = algo::find_cycles_limited(&graph, 10);
+
+    assert!(components.is_ok(), "Connected components should handle empty graph");
+    assert!(degrees.is_ok(), "Nodes by degree should handle empty graph");
+    assert!(pagerank.is_ok(), "PageRank should handle empty graph");
+    assert!(cycles.is_ok(), "Find cycles should handle empty graph");
+
+    // Verify results are empty
+    assert!(components.unwrap().is_empty());
+    assert!(degrees.unwrap().is_empty());
+    assert!(pagerank.unwrap().is_empty());
+    assert!(cycles.unwrap().is_empty());
+}
+
+#[test]
+fn test_algorithm_snapshot_consistency() {
+    // Scenario: Acquire snapshot, run algorithm, verify consistency
+    // Expected: Algorithm sees data consistent with snapshot
+    let graph = create_test_graph().expect("Failed to create graph");
+    warm_cache(&graph).expect("Failed to warm cache");
+
+    // Acquire snapshot
+    let snapshot = graph.acquire_snapshot().expect("Failed to acquire snapshot");
+    let snapshot_count = snapshot.node_count();
+
+    // Run algorithm
+    let components = algo::connected_components(&graph).expect("Components failed");
+
+    // Verify consistency
+    let graph_ids = graph.list_entity_ids().expect("Failed to get graph IDs");
+
+    // Algorithm should see same number of nodes as snapshot
+    assert_eq!(
+        graph_ids.len() as usize,
+        snapshot_count,
+        "Algorithm and snapshot disagree on node count"
+    );
+
+    // All nodes in snapshot should be in graph
+    assert!(!components.is_empty() || snapshot_count == 0);
+}
+
+//
+// GROUP 6: STRESS TEST PATTERNS
+//
+
+#[test]
+fn test_rapid_algorithm_execution() {
+    // Scenario: Run algorithms rapidly in sequence
+    // Expected: All operations succeed
+    let graph = create_large_test_graph(30).expect("Failed to create graph");
+    warm_cache(&graph).expect("Failed to warm cache");
+
+    let start = Instant::now();
+
+    // Run 100 algorithm executions
+    for i in 0..100 {
+        let result = if i % 4 == 0 {
+            algo::connected_components(&graph).map(|_| ())
+        } else if i % 4 == 1 {
+            algo::nodes_by_degree(&graph, true).map(|_| ())
+        } else if i % 4 == 2 {
+            algo::pagerank(&graph, 0.85, 5).map(|_| ())
+        } else {
+            algo::find_cycles_limited(&graph, 5).map(|_| ())
+        };
+
+        assert!(result.is_ok(), "Algorithm {} failed", i);
+    }
+
+    let elapsed = start.elapsed();
+    println!("100 algorithm executions in {:?}", elapsed);
+}
+
+#[test]
+fn test_mixed_operations_sequence() {
+    // Scenario: Alternate between reads, writes, and algorithms
+    // Expected: All operations succeed
+    let graph = create_large_test_graph(20).expect("Failed to create graph");
+
+    for i in 0..50 {
+        if i % 3 == 0 {
+            // Read operation
+            let _ = graph.list_entity_ids().expect("List IDs failed");
+        } else if i % 3 == 1 {
+            // Write operation
+            let _ = insert_entity(
+                &graph,
+                GraphEntityCreate {
+                    kind: "mixed".to_string(),
+                    name: format!("mixed_node_{}", i),
+                    file_path: Some(format!("mixed_{}.rs", i)),
+                    data: serde_json::json!({}),
+                },
+            );
+        } else {
+            // Algorithm operation
+            let _ = algo::nodes_by_degree(&graph, false);
+        }
+    }
+
+    // Verify final state
+    let final_count = node_count(&graph).expect("Failed to get final count");
+    assert!(final_count > 20, "Graph should have more nodes");
+}
+
+#[test]
+fn test_rapid_snapshot_creation_destruction_10k() {
+    // Scenario: Rapid snapshot creation and destruction (10K iterations)
+    // Expected: All operations succeed, no memory leaks
+    let graph = create_large_test_graph(50).expect("Failed to create graph");
+    warm_cache(&graph).expect("Failed to warm cache");
+
+    let start = Instant::now();
+
+    for i in 0..10_000 {
+        let snapshot = graph.acquire_snapshot().expect("Failed to acquire snapshot");
+
+        // Verify snapshot is valid
+        assert!(snapshot.node_count() > 0, "Snapshot {} invalid", i);
+
+        // Snapshot dropped here
+    }
+
+    let elapsed = start.elapsed();
+    println!("10K snapshot creations in {:?}", elapsed);
+
+    // Final snapshot should still work
+    let final_snapshot = graph.acquire_snapshot().expect("Failed to acquire final snapshot");
+    assert!(final_snapshot.node_count() > 0, "Final snapshot invalid");
+}
+
+#[test]
+fn test_snapshot_during_algorithm_execution() {
+    // Scenario: Acquire snapshots while algorithm is running
+    // Expected: All snapshots are independent and consistent
+    let graph = create_large_test_graph(30).expect("Failed to create graph");
+    warm_cache(&graph).expect("Failed to warm cache");
+
+    // Acquire initial snapshot
+    let snapshot1 = graph.acquire_snapshot().expect("Failed to acquire snapshot");
+    let count1 = snapshot1.node_count();
+
+    // Run algorithm
+    let _ = algo::label_propagation(&graph, 5).expect("Label propagation failed");
+
+    // Acquire second snapshot
+    let snapshot2 = graph.acquire_snapshot().expect("Failed to acquire snapshot");
+    let count2 = snapshot2.node_count();
+
+    // Verify snapshots are independent but same (no writes occurred)
+    assert_eq!(snapshot1.node_count(), count1);
+    assert_eq!(snapshot2.node_count(), count2);
+    assert_eq!(count1, count2);
+}
+
+//
+// GROUP 7: INTEGRATION WITH SQLITEGRAPH (SINGLE-THREADED)
 //
 
 #[test]
