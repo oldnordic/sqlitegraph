@@ -141,12 +141,20 @@ Plans:
 **Depends on**: Phase 7
 **Research**: Likely (algorithm selection, implementation patterns)
 **Research topics**: PageRank, betweenness centrality, Louvain method, label propagation
-**Plans**: TBD
+**Plans**: 3
 
 Plans:
-- [ ] 08-01: Implement centrality algorithms (PageRank, betweenness)
-- [ ] 08-02: Implement community detection (Louvain, label propagation)
-- [ ] 08-03: Add algorithm benchmarks and tests
+- [x] 08-01: Implement centrality algorithms (PageRank, betweenness) ✅
+- [x] 08-02: Implement community detection (Louvain, label propagation) ✅
+- [x] 08-03: Add algorithm benchmarks and tests ✅
+
+**Status**: Complete ✅ (2026-01-17)
+**Key Results**:
+- 4 production algorithms implemented: PageRank, Betweenness Centrality, Label Propagation, Louvain
+- 27 tests passing (100% pass rate)
+- 4 benchmark groups with multiple topologies (random, cycle, star, barbell)
+- Comprehensive rustdoc with complexity analysis
+- 10 commits total
 
 ### Phase 9: Developer Tooling
 **Goal**: Add debugging, profiling, and introspection utilities
@@ -185,6 +193,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. HNSW Persistence | v0.2 | 3/3 | Complete | 2026-01-17 |
 | 6. HNSW CLI | v0.2 | 2/2 | Complete | 2026-01-17 |
 | 7. Performance | v0.2 | 3/3 | Complete | 2026-01-17 |
-| 8. Graph Algorithms | v1.0 | 0/3 | Not started | - |
+| 8. Graph Algorithms | v1.0 | 3/3 | Complete | 2026-01-17 |
 | 9. Developer Tooling | v1.0 | 0/3 | Not started | - |
 | 10. Testing & Docs | v1.0 | 0/3 | Not started | - |
