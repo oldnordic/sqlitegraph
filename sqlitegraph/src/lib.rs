@@ -75,6 +75,8 @@
 //! - [`GraphSnapshot`] - MVCC snapshot system
 //! - [`recovery`] - Database backup and restore utilities
 //! - [`query::GraphQuery`] - High-level query interface
+//! - [`GraphIntrospection`] - Introspection and debugging APIs
+//! - [`ProgressCallback`] - Algorithm progress tracking
 
 // Core public modules
 pub mod backend;
@@ -82,6 +84,7 @@ pub mod config;
 pub mod debug;
 pub mod errors;
 pub mod graph;
+pub mod introspection;
 
 // Re-export core utilities that are stable public APIs
 pub use api_ergonomics::{Label, NodeId, PropertyKey, PropertyValue};
@@ -125,8 +128,15 @@ pub use graph::{GraphEdge, GraphEntity, SqliteGraph};
 // Re-export graph algorithms
 pub use algo::{betweenness_centrality, label_propagation, louvain_communities, pagerank};
 
+// Re-export progress tracking
+pub use progress::{ConsoleProgress, NoProgress, ProgressCallback, ProgressState};
+
+// Re-export introspection API
+pub use introspection::{GraphIntrospection, EdgeCount, IntrospectError};
+
 // Internal modules - not part of public API
 pub mod algo; // Public for tests
+pub mod progress; // Public for tests and progress API usage
 mod api_ergonomics;
 pub mod backend_selector;
 pub mod bfs; // Public for tests
