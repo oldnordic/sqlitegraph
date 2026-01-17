@@ -86,14 +86,24 @@ Plans:
 ### Phase 5: HNSW Persistence
 **Goal**: Enable HNSW index save/restore to disk
 **Depends on**: Phase 4
-**Research**: Likely (index serialization, incremental updates)
+**Research**: Complete (schema exists, pragmatic approach documented)
 **Research topics**: HNSW serialization format, incremental index updates, recovery from corruption
-**Plans**: TBD
+**Plans**: 3 plans created
+
+**Plan Details**:
+- **05-01**: Metadata persistence (save/load index config to hnsw_indexes table)
+- **05-02**: Vector persistence and index rebuild (vectors to hnsw_vectors, rebuild graph on load)
+- **05-03**: Tests, error handling, and benchmarks (comprehensive validation, corruption recovery)
+
+**Approach**: Pragmatic vector storage + index rebuild (from docs/hnsw_persistence_implementation_status_20241223.md)
+- Store vectors as BLOB in hnsw_vectors table
+- On load: read vectors, rebuild HNSW graph structure (O(N log N) rebuild cost)
+- Simpler than full graph serialization to hnsw_layers table
 
 Plans:
-- [ ] 05-01: Design HNSW persistence format
-- [ ] 05-02: Implement index save to disk
-- [ ] 05-03: Implement index restore from disk
+- [ ] 05-01: Implement HNSW index metadata persistence
+- [ ] 05-02: Implement vector persistence and index restore
+- [ ] 05-03: Add comprehensive persistence tests and benchmarks
 
 ### Phase 6: HNSW CLI
 **Goal**: Fix HNSW indexes lost across CLI invocations
