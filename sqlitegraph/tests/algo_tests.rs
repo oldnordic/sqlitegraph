@@ -134,7 +134,7 @@ fn test_pagerank_dangling_nodes() {
     let graph = SqliteGraph::open_in_memory().unwrap();
     let a = insert_entity(&graph, "A");
     let b = insert_entity(&graph, "B");
-    let c = insert_entity(&graph, "C");
+    let _c = insert_entity(&graph, "C");
 
     // A -> B (C is dangling - no outgoing edges)
     insert_edge(&graph, a, b, "LINK");
@@ -197,7 +197,8 @@ fn test_betweenness_star_graph() {
 
     // Center should have highest centrality (all paths go through it)
     assert_eq!(centrality[0].0, center);
-    assert!(centrality[0].1 > 0.0);
+    let center_centrality = centrality[0].1;
+    assert!(center_centrality > 0.0);
 
     // Leaves should have zero or very low centrality
     let leaf_values: Vec<(i64, f64)> = centrality.into_iter()
@@ -205,7 +206,7 @@ fn test_betweenness_star_graph() {
         .collect();
 
     for (_, value) in leaf_values {
-        assert!(value < centrality[0].1);
+        assert!(value < center_centrality);
     }
 }
 
