@@ -18,6 +18,7 @@ fn test_wal_config_validation() -> NativeResult<()> {
 
     // Valid configuration
     let valid_config = V2WALConfig {
+        graph_path: temp_dir.path().join("valid.db"),
         wal_path: temp_dir.path().join("valid.wal"),
         checkpoint_path: temp_dir.path().join("checkpoint.tracker"),
         max_wal_size: 64 * 1024 * 1024, // 64MB
@@ -27,6 +28,9 @@ fn test_wal_config_validation() -> NativeResult<()> {
         max_group_commit_size: 8,
         enable_compression: true,
         compression_level: 3,
+        auto_checkpoint: false,
+        background_checkpoint_thread: false,
+        background_checkpoint_interval_secs: 0,
     };
 
     // Config creation test - verify fields are set correctly
@@ -213,6 +217,7 @@ fn test_lsn_formatting_parsing() -> NativeResult<()> {
 fn test_config_serialization() -> NativeResult<()> {
     let temp_dir = tempdir()?;
     let original_config = V2WALConfig {
+        graph_path: temp_dir.path().join("test.db"),
         wal_path: temp_dir.path().join("test.wal"),
         checkpoint_path: temp_dir.path().join("checkpoint.tracker"),
         max_wal_size: 32 * 1024 * 1024,
@@ -222,6 +227,9 @@ fn test_config_serialization() -> NativeResult<()> {
         max_group_commit_size: 16,
         enable_compression: true,
         compression_level: 3,
+        auto_checkpoint: false,
+        background_checkpoint_thread: false,
+        background_checkpoint_interval_secs: 0,
     };
 
     // Simple config test - verify fields are set correctly
@@ -246,6 +254,7 @@ fn test_wal_file_creation() -> NativeResult<()> {
 
     // Create a basic WAL configuration
     let config = V2WALConfig {
+        graph_path: temp_dir.path().join("test_creation.db"),
         wal_path: wal_path.clone(),
         checkpoint_path: temp_dir.path().join("creation_checkpoint.tracker"),
         max_wal_size: 16 * 1024 * 1024,
@@ -255,6 +264,9 @@ fn test_wal_file_creation() -> NativeResult<()> {
         max_group_commit_size: 8,
         enable_compression: false,
         compression_level: 3,
+        auto_checkpoint: false,
+        background_checkpoint_thread: false,
+        background_checkpoint_interval_secs: 0,
     };
 
     // Test configuration fields
@@ -304,6 +316,7 @@ fn test_concurrent_access_patterns() -> NativeResult<()> {
 
     let temp_dir = tempdir()?;
     let config = Arc::new(V2WALConfig {
+        graph_path: temp_dir.path().join("concurrent_test.db"),
         wal_path: temp_dir.path().join("concurrent_test.wal"),
         checkpoint_path: temp_dir.path().join("concurrent_checkpoint.tracker"),
         max_wal_size: 16 * 1024 * 1024,
@@ -313,6 +326,9 @@ fn test_concurrent_access_patterns() -> NativeResult<()> {
         max_group_commit_size: 4,
         enable_compression: false,
         compression_level: 3,
+        auto_checkpoint: false,
+        background_checkpoint_thread: false,
+        background_checkpoint_interval_secs: 0,
     });
 
     let validation_results = Arc::new(Mutex::new(Vec::new()));
@@ -362,6 +378,9 @@ fn test_memory_resource_management() -> NativeResult<()> {
 
     for (wal_size, buffer_size) in memory_configs {
         let config = V2WALConfig {
+            graph_path: temp_dir
+                .path()
+                .join(format!("memory_test_{}.db", wal_size)),
             wal_path: temp_dir
                 .path()
                 .join(format!("memory_test_{}.wal", wal_size)),
@@ -375,6 +394,9 @@ fn test_memory_resource_management() -> NativeResult<()> {
             max_group_commit_size: 8,
             enable_compression: false,
             compression_level: 3,
+            auto_checkpoint: false,
+            background_checkpoint_thread: false,
+            background_checkpoint_interval_secs: 0,
         };
 
         // Simple validation - check field values
