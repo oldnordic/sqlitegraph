@@ -838,6 +838,9 @@ impl SqliteGraph {
         // Create new HNSW index
         let hnsw = HnswIndex::new(name, config).map_err(|e| SqliteGraphError::invalid_input(e.to_string()))?;
 
+        // Save metadata to database
+        hnsw.save_metadata(&self.conn).map_err(|e| SqliteGraphError::invalid_input(format!("Failed to save HNSW index metadata: {}", e)))?;
+
         // Store the index
         let mut indexes = self.hnsw_indexes.write().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
         indexes.insert(name.to_string(), hnsw);
@@ -1075,5 +1078,63 @@ mod tests {
         assert_eq!(stats.layer_count, 3);
         assert_eq!(stats.dimension, 3);
         assert!(!stats.layer_stats.is_empty());
+    }
+
+    #[test]
+    fn test_metadata_persistence() {
+        use rusqlite::Connection;
+        use std::fs;
+
+        let test_dir = "/tmp/test_hnsw_metadata_persistence";
+        let db_path = format!("{}/test.db", test_dir);
+
+        // Clean up any existing test database
+        let _ = fs::remove_dir_all(test_dir);
+
+        // Create directory
+        fs::create_dir_all(test_dir).unwrap();
+
+        // Create graph and index
+        {
+            let graph = SqliteGraph::open(&db_path).unwrap();
+            let config = HnswConfigBuilder::new()
+                .dimension(128)
+                .distance_metric(DistanceMetric::Euclidean)
+                .build()
+                .unwrap();
+
+            let mut hnsw_indexes = graph.hnsw_index("persist_test", config).unwrap();
+            let hnsw = hnsw_indexes.get("persist_test").unwrap();
+
+            // Verify index was created
+            assert_eq!(hnsw.name(), "persist_test");
+            assert_eq!(hnsw.config.dimension, 128);
+            assert_eq!(hnsw.config.distance_metric, DistanceMetric::Euclidean);
+
+            // Save metadata explicitly
+            hnsw.save_metadata(&graph.conn).unwrap();
+        }
+
+        // Reopen and verify metadata persists
+        {
+            let graph2 = SqliteGraph::open(&db_path).unwrap();
+
+            // Check that index was loaded
+            let index_names = graph2.list_hnsw_indexes().unwrap();
+            assert_eq!(index_names, vec!["persist_test".to_string()]);
+
+            // Get the loaded index
+            let loaded_hnsw = graph2.get_hnsw_index_ref("persist_test", |hnsw| {
+                assert_eq!(hnsw.name(), "persist_test");
+                assert_eq!(hnsw.config.dimension, 128);
+                assert_eq!(hnsw.config.distance_metric, DistanceMetric::Euclidean);
+                hnsw.config.dimension
+            }).unwrap();
+
+            assert_eq!(loaded_hnsw, 128);
+        }
+
+        // Clean up
+        let _ = fs::remove_dir_all(test_dir);
     }
 }
