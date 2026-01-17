@@ -1,6 +1,6 @@
 //! Core SqliteGraph struct and construction functionality.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::collections::HashMap;
 use std::sync::RwLock;
 
@@ -290,7 +290,7 @@ impl SqliteGraph {
     }
 
     /// Get the database file path if this is a file-based database.
-    fn get_database_path(&self) -> Option<&Path> {
+    fn get_database_path(&self) -> Option<String> {
         if is_in_memory_connection(&self.conn) {
             None
         } else {
@@ -302,7 +302,6 @@ impl SqliteGraph {
                 })
                 .ok()
                 .filter(|name| !name.is_empty() && name != ":memory:")
-                .map(|name| Path::new(name.as_str()))
         }
     }
 }
