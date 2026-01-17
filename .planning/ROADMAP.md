@@ -46,16 +46,18 @@ Plans:
 - [x] 02-03: Add WAL recovery edge case tests ✅
 
 ### Phase 3: Native V2 Reads
-**Goal**: Implement betree and read path optimizations for Native V2
+**Goal**: Implement read path optimizations for Native V2 (NOT BETrees - see docs/BETREE_RESEARCH.md)
 **Depends on**: Phase 2
-**Research**: Likely (betree data structures, read optimization patterns)
-**Research topics**: B-tree vs B-epsilon-tree for graph data, read path caching strategies
-**Plans**: TBD
+**Research**: Complete (betree research concluded: inappropriate for graph DB workloads)
+**Research topics**: Read path caching, compression for cache efficiency, traversal-aware optimizations
+**Plans**: 3 plans created
 
 Plans:
-- [ ] 03-01: Design and implement betree for Native V2 reads
-- [ ] 03-02: Optimize read path performance
-- [ ] 03-03: Add read performance benchmarks
+- [ ] 03-01: Implement traversal-aware cache policy (LRU-K eviction)
+- [ ] 03-02: Compressed edge representation (delta encoding, bit-packing)
+- [ ] 03-03: Read path performance benchmarks and validation
+
+**IMPORTANT**: BETrees were evaluated and REJECTED for primary storage due to 20-50% read performance degradation. Current clustered adjacency is already optimal for graph workloads. See docs/BETREE_RESEARCH.md for full analysis.
 
 ### Phase 4: MVCC Completion
 **Goal**: Fix identified MVCC gaps and edge cases
@@ -147,7 +149,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Foundation Cleanup | 3/3 | Complete | 2026-01-17 |
 | 2. WAL Integration | 3/3 | Complete | 2026-01-17 |
-| 3. Native V2 Reads | 0/3 | Not started | - |
+| 3. Native V2 Reads | 0/3 | Planning complete | - |
 | 4. MVCC Completion | 0/3 | Not started | - |
 | 5. HNSW Persistence | 0/3 | Not started | - |
 | 6. HNSW CLI | 0/2 | Not started | - |
