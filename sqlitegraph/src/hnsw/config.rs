@@ -202,6 +202,42 @@ pub struct HnswConfig {
     pub multilayer_deterministic_seed: Option<u64>,
 }
 
+impl HnswConfig {
+    /// Create a new HnswConfig with the specified parameters
+    ///
+    /// # Arguments
+    ///
+    /// * `dimension` - Vector dimension count
+    /// * `m` - Number of connections per node (M parameter)
+    /// * `ef_construction` - Dynamic candidate list size during construction
+    /// * `distance_metric` - Distance metric for similarity calculation
+    ///
+    /// # Returns
+    ///
+    /// A new HnswConfig instance with sensible defaults for other parameters
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sqlitegraph::hnsw::{HnswConfig, DistanceMetric};
+    ///
+    /// let config = HnswConfig::new(128, 16, 200, DistanceMetric::Cosine);
+    /// ```
+    pub fn new(dimension: usize, m: usize, ef_construction: usize, distance_metric: DistanceMetric) -> Self {
+        HnswConfig {
+            dimension,
+            m,
+            ef_construction,
+            ef_search: ef_construction, // Default ef_search to ef_construction
+            ml: 16, // Reasonable default
+            distance_metric,
+            enable_multilayer: false, // Single-layer mode by default
+            multilayer_level_distribution_base: None,
+            multilayer_deterministic_seed: None,
+        }
+    }
+}
+
 impl Default for HnswConfig {
     fn default() -> Self {
         HnswConfig {

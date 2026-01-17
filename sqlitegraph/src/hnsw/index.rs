@@ -452,6 +452,18 @@ impl HnswIndex {
         &self.name
     }
 
+    /// Get the number of vectors in this index
+    pub fn vector_count(&self) -> usize {
+        self.vector_count
+    }
+
+    /// Get the HNSW configuration
+    ///
+    /// Returns a reference to the index configuration
+    pub fn config(&self) -> &HnswConfig {
+        &self.config
+    }
+
     /// Save index metadata to database
     ///
     /// # Arguments
