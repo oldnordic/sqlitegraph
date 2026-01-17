@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 ## Current Position
 
 Milestone: v1.0 Production (Phases 8-10)
-Phase: 9 of 10 (Developer Tooling)
+Phase: 10 of 10 (Testing & Documentation)
 Status: 🔄 In Progress
-Last activity: 2026-01-17 — Plan 09-02 complete (Algorithm Progress Tracking)
+Last activity: 2026-01-17 — Phase 9 complete (Developer Tooling)
 
-Progress: ██████████░ 92% (9 of 10 phases done, Phase 9: 2 of 3 plans complete)
+Progress: █████████░ 95% (9 of 10 phases complete, Phase 10: 0 of 3 plans started)
 
 **v1.0 Production Scope:**
 - Phase 8: Graph Algorithms (PageRank, betweenness centrality, community detection)
@@ -30,9 +30,9 @@ Progress: ██████████░ 92% (9 of 10 phases done, Phase 9: 2
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 35
+- Total plans completed: 38
 - Average duration: 11 min
-- Total execution time: 6 hours 34 min
+- Total execution time: 7 hours 5 min
 
 **By Phase:**
 
@@ -46,11 +46,12 @@ Progress: ██████████░ 92% (9 of 10 phases done, Phase 9: 2
 | 6 | 2 | 50 min | 25 min |
 | 7 | 3 | 30 min | 10 min |
 | 8 | 3 | 38 min | 13 min |
-| 9 | 2 | 32 min | 16 min |
+| 9 | 3 | 31 min | 10 min |
+| 10 | 0 | 0 min | N/A |
 
 **Recent Trend:**
-- Last 3 plans: 08-03 (17 min), 09-01 (15 min)
-- Trend: Consistent (~16 min/plan for feature implementations)
+- Last 3 plans: 09-01 (15 min), 09-02 (16 min), 09-03 (10 min)
+- Trend: Consistent (~14 min/plan for feature implementations)
 
 *Updated after each plan completion*
 
@@ -406,11 +407,13 @@ Planned work after v1.0 ships:
 - Comprehensive rustdoc with complexity analysis
 - Performance baselines established
 
-**Phase 9 Progress:** 🔄 IN PROGRESS
+**Phase 9 Progress:** ✅ COMPLETE
 - Plan 09-01 complete (Introspection APIs) ✅
-- Plan 09-02 complete (Algorithm Progress Tracking) ✅ NEW
+- Plan 09-02 complete (Algorithm Progress Tracking) ✅
+- Plan 09-03 complete (CLI Debug Commands) ✅ NEW
 - Summary: .planning/phases/09-developer-tooling/09-01-SUMMARY.md
-- Summary: .planning/phases/09-developer-tooling/09-02-SUMMARY.md ✅ NEW
+- Summary: .planning/phases/09-developer-tooling/09-02-SUMMARY.md
+- Summary: .planning/phases/09-developer-tooling/09-03-SUMMARY.md ✅ NEW
 - Created introspection.rs module (210 lines) ✅
   - GraphIntrospection struct with JSON-serializable fields
   - EdgeCount enum (Exact, Estimate, Unavailable)
@@ -425,21 +428,29 @@ Planned work after v1.0 ships:
   - Public module declaration and re-exports
   - Updated documentation with introspection utilities
 - Comprehensive test coverage: 5 tests passing (100%) ✅
-- Created progress.rs module (457 lines) ✅ NEW
-  - ProgressCallback trait for progress reporting ✅ NEW
-  - NoProgress: Zero-overhead no-op implementation ✅ NEW
-  - ConsoleProgress: CLI-friendly stderr output ✅ NEW
-  - ProgressState: Throttled wrapper to avoid spam ✅ NEW
-  - Full test coverage: 8 tests passing ✅ NEW
-- Added instrumented algorithm variants (394 lines) ✅ NEW
-  - pagerank_with_progress: Reports iteration progress ✅ NEW
-  - betweenness_centrality_with_progress: Reports per-source progress ✅ NEW
-  - louvain_communities_with_progress: Reports iteration passes ✅ NEW
-  - All 27 algorithm tests passing (100% pass rate) ✅ NEW
-- Exported progress API in lib.rs ✅ NEW
-  - ProgressCallback, NoProgress, ConsoleProgress, ProgressState ✅ NEW
-  - All _with_progress algorithm variants ✅ NEW
-- Commits: 8 (4 for 09-01, 3 for 09-02, 1 fixes) ✅ NEW
+- Created progress.rs module (457 lines) ✅
+  - ProgressCallback trait for progress reporting
+  - NoProgress: Zero-overhead no-op implementation
+  - ConsoleProgress: CLI-friendly stderr output
+  - ProgressState: Throttled wrapper to avoid spam
+  - Full test coverage: 8 tests passing
+- Added instrumented algorithm variants (394 lines) ✅
+  - pagerank_with_progress: Reports iteration progress
+  - betweenness_centrality_with_progress: Reports per-source progress
+  - louvain_communities_with_progress: Reports iteration passes
+  - All 27 algorithm tests passing (100% pass rate)
+- Exported progress API in lib.rs ✅
+  - ProgressCallback, NoProgress, ConsoleProgress, ProgressState
+  - All _with_progress algorithm variants
+- CLI Debug Commands Added ✅ NEW
+  - debug-stats: Show graph introspection data (JSON) ✅ NEW
+  - debug-dump: Export graph structure (JSONL/JSON) ✅ NEW
+  - debug-trace: Enable trace logging for operations ✅ NEW
+  - pagerank: PageRank with progress tracking ✅ NEW
+  - betweenness: Betweenness centrality with progress ✅ NEW
+  - louvain: Louvain communities with progress ✅ NEW
+  - Progress bars for bfs, k-hop, shortest-path ✅ NEW
+- Commits: 10 (4 for 09-01, 3 for 09-02, 3 for 09-03) ✅ NEW
 
 **09-01 Key Achievements:**
 - JSON-serializable introspection data for LLM consumption
@@ -450,7 +461,7 @@ Planned work after v1.0 ships:
 - All 5 introspection unit tests passing (100% pass rate)
 - Documentation builds successfully with introspection API visible
 
-**09-02 Key Achievements:** ✅ NEW
+**09-02 Key Achievements:**
 - Thread-safe progress callback trait with zero-overhead default
 - Progress tracking for all long-running algorithms (PageRank, Betweenness, Louvain)
 - ConsoleProgress provides CLI-friendly stderr output
@@ -459,3 +470,20 @@ Planned work after v1.0 ships:
 - All 27 algorithm tests passing with no regressions
 - Public API fully documented with comprehensive examples
 - Fixed CacheStats to support Serialize (introspection compatibility)
+
+**09-03 Key Achievements:** ✅ NEW
+- CLI debug commands: debug-stats, debug-dump, debug-trace
+- Algorithm commands: pagerank, betweenness, louvain
+- Progress bars for bfs, k-hop, shortest-path
+- JSON-first output for LLM consumption
+- JSONL streaming format for large graphs
+- All progress output on stderr (stdout reserved for data)
+- Help text updated with all new commands
+
+**Phase 9 Summary:** ✅ COMPLETE
+- 3 plans (09-01, 09-02, 09-03)
+- Introspection API for graph state inspection
+- Progress tracking for all long-running algorithms
+- CLI debug commands for developer workflows
+- 10 commits total
+- Developer tooling complete for v1.0
