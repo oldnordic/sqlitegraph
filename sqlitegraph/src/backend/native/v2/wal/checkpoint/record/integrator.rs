@@ -169,9 +169,7 @@ impl V2GraphIntegrator {
             }
 
             V2WALRecord::Checkpoint { checkpointed_lsn, timestamp } => {
-                // TODO: Implement checkpoint marker handling
-                println!("V2 Checkpoint: checkpointed_lsn {} timestamp {}", checkpointed_lsn, timestamp);
-                Ok(())
+                self.apply_checkpoint_marker(*checkpointed_lsn, *timestamp, lsn)
             }
 
             V2WALRecord::HeaderUpdate { header_offset, old_data, new_data } => {
@@ -601,6 +599,32 @@ impl V2GraphIntegrator {
             "V2 Free Space Deallocate: offset {} size {} - returned to free space pool",
             block_offset, block_size
         );
+
+        Ok(())
+    }
+
+    /// Apply checkpoint marker record
+    /// Note: Checkpoint markers are metadata records that indicate a checkpoint was completed.
+    /// The integrator logs this information but doesn't modify graph state.
+    fn apply_checkpoint_marker(&mut self, checkpointed_lsn: u64, timestamp: u64, _lsn: u64) -> CheckpointResult<()> {
+        // Update graph file header with checkpoint information if needed
+        // For now, we log the checkpoint marker for debugging purposes
+        {
+            let graph_file = self.graph_file.read().map_err(|e| {
+                CheckpointError::state(format!("Failed to lock graph file: {}", e))
+            })?;
+
+            println!(
+                "V2 Checkpoint Marker: checkpointed_lsn={} timestamp={} current_node_count={} current_edge_count={}",
+                checkpointed_lsn,
+                timestamp,
+                graph_file.header().node_count,
+                graph_file.header().edge_count
+            );
+        }
+
+        // Note: In a full implementation, this could update a checkpoint LSN field
+        // in the header or maintain checkpoint metadata separately
 
         Ok(())
     }
