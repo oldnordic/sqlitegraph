@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use ahash::AHashSet;
+use ahash::{AHashMap, AHashSet};
 
 use crate::{errors::SqliteGraphError, graph::SqliteGraph};
 
@@ -102,4 +102,101 @@ fn normalize_cycles(cycles: &mut [Vec<i64>]) {
         }
     }
     cycles.sort();
+}
+
+/// Label Propagation algorithm for community detection.
+///
+/// Each node starts with its own label, then iteratively adopts the most frequent
+/// label among its neighbors. Converges when no labels change or max_iterations reached.
+///
+/// # Arguments
+/// * `graph` - The graph to analyze
+/// * `max_iterations` - Maximum number of iterations to prevent infinite loops
+///
+/// # Returns
+/// Communities as vectors of node IDs, sorted by smallest node ID in each community
+pub fn label_propagation(
+    graph: &SqliteGraph,
+    max_iterations: usize,
+) -> Result<Vec<Vec<i64>>, SqliteGraphError> {
+    let all_ids = graph.all_entity_ids()?;
+
+    if all_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Initialize: each node gets its own label
+    let mut labels: AHashMap<i64, i64> = all_ids.iter().map(|&id| (id, id)).collect();
+
+    // For deterministic results, process nodes in sorted order
+    let mut node_order: Vec<i64> = all_ids.clone();
+    node_order.sort();
+
+    // Iterative label propagation
+    for _iteration in 0..max_iterations {
+        let mut any_changed = false;
+
+        for &node in &node_order {
+            // Count neighbor labels
+            let mut label_counts: AHashMap<i64, usize> = AHashMap::new();
+
+            // Count outgoing neighbors
+            for &neighbor in &graph.fetch_outgoing(node)? {
+                let neighbor_label = labels.get(&neighbor).unwrap_or(&neighbor);
+                *label_counts.entry(*neighbor_label).or_insert(0) += 1;
+            }
+
+            // Count incoming neighbors
+            for &neighbor in &graph.fetch_incoming(node)? {
+                let neighbor_label = labels.get(&neighbor).unwrap_or(&neighbor);
+                *label_counts.entry(*neighbor_label).or_insert(0) += 1;
+            }
+
+            // Find most frequent label (deterministic tiebreak: smallest label)
+            if let Some((&most_frequent_label, _)) = label_counts
+                .iter()
+                .max_by_key(|(_, &count)| count)
+                .map(|(label, count)| (label, *count))
+            {
+                // In case of ties, max_by_key returns arbitrary one
+                // So we need to find all with max count and take smallest label
+                let max_count = *label_counts.values().max().unwrap_or(&0);
+                let best_label = label_counts
+                    .iter()
+                    .filter(|(_, &count)| count == max_count)
+                    .map(|(&label, _)| label)
+                    .min()
+                    .unwrap_or(node);
+
+                if let Some(current_label) = labels.get(&node) {
+                    if *current_label != best_label {
+                        labels.insert(node, best_label);
+                        any_changed = true;
+                    }
+                }
+            }
+        }
+
+        if !any_changed {
+            break;
+        }
+    }
+
+    // Group nodes by final label
+    let mut communities_map: AHashMap<i64, Vec<i64>> = AHashMap::new();
+    for (node, label) in &labels {
+        communities_map
+            .entry(*label)
+            .or_insert_with(Vec::new)
+            .push(*node);
+    }
+
+    // Convert to sorted vector of communities
+    let mut communities: Vec<Vec<i64>> = communities_map.into_values().collect();
+    for community in &mut communities {
+        community.sort();
+    }
+    communities.sort_by(|a, b| a.first().cmp(&b.first()));
+
+    Ok(communities)
 }
