@@ -164,10 +164,8 @@ impl V2GraphIntegrator {
             } => self.apply_free_space_allocate(*block_offset, *block_size, lsn),
 
             // Previously missing variants - add proper handling:
-            V2WALRecord::FreeSpaceDeallocate { block_offset, block_size, block_type } => {
-                // TODO: Implement free space deallocation
-                println!("V2 Free Space Deallocate: offset {} size {} type {}", block_offset, block_size, block_type);
-                Ok(())
+            V2WALRecord::FreeSpaceDeallocate { block_offset, block_size, block_type: _ } => {
+                self.apply_free_space_deallocate(*block_offset, *block_size, lsn)
             }
 
             V2WALRecord::Checkpoint { checkpointed_lsn, timestamp } => {
@@ -586,6 +584,23 @@ impl V2GraphIntegrator {
         println!("V2 String Table Update: node {}", node_record.node_id());
 
         // Future implementation needs to use proper StringTable API
+
+        Ok(())
+    }
+
+    /// Apply free space deallocation record
+    fn apply_free_space_deallocate(&mut self, block_offset: u64, block_size: u32, _lsn: u64) -> CheckpointResult<()> {
+        let mut free_space_manager = self.free_space_manager.lock().map_err(|e| {
+            CheckpointError::state(format!("Failed to lock free space manager: {}", e))
+        })?;
+
+        // Add the deallocated block back to the free space manager
+        free_space_manager.add_free_block(block_offset, block_size);
+
+        println!(
+            "V2 Free Space Deallocate: offset {} size {} - returned to free space pool",
+            block_offset, block_size
+        );
 
         Ok(())
     }
