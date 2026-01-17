@@ -126,7 +126,10 @@ pub use errors::SqliteGraphError;
 pub use graph::{GraphEdge, GraphEntity, SqliteGraph};
 
 // Re-export graph algorithms
-pub use algo::{betweenness_centrality, label_propagation, louvain_communities, pagerank};
+pub use algo::{
+    betweenness_centrality, label_propagation, louvain_communities, pagerank,
+    betweenness_centrality_with_progress, louvain_communities_with_progress, pagerank_with_progress,
+};
 
 // Re-export progress tracking
 pub use progress::{ConsoleProgress, NoProgress, ProgressCallback, ProgressState};
