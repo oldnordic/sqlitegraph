@@ -71,10 +71,15 @@ Plans:
 **Depends on**: Phase 3
 **Research**: Likely (MVCC patterns, snapshot isolation edge cases)
 **Research topics**: Concurrent read/write patterns, snapshot lifecycle management
-**Plans**: TBD
+**Plans**: 3 plans created
+
+**Plan Details**:
+- **04-01**: Identify and document MVCC gaps (gap analysis, baseline tests, test scenarios)
+- **04-02**: Improve snapshot isolation correctness (race condition fixes, concurrent read/write tests, public API integration)
+- **04-03**: Add concurrent operation tests (WAL coordination, lifecycle edge cases, performance benchmarks)
 
 Plans:
-- [ ] 04-01: Identify and fix MVCC gaps
+- [ ] 04-01: Identify and document MVCC gaps
 - [ ] 04-02: Improve snapshot isolation correctness
 - [ ] 04-03: Add concurrent operation tests
 
