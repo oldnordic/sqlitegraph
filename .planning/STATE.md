@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Feature parity, performance, and reliability equally.
-**Current focus:** Phase 8 — Graph Algorithms
+**Current focus:** Phase 9 — Developer Tooling
 
 ## Current Position
 
 Milestone: v1.0 Production (Phases 8-10)
-Phase: 8 of 10 (Graph Algorithms)
-Status: ✅ Complete
-Last activity: 2026-01-17 — Phase 8 execution complete
+Phase: 9 of 10 (Developer Tooling)
+Status: 🔄 In Progress
+Last activity: 2026-01-17 — Plan 09-01 complete (Introspection APIs)
 
-Progress: █████████░░ 90% (9 of 10 phases done, Phase 8 complete)
+Progress: ██████████░ 91% (9 of 10 phases done, Phase 9: 1 of 3 plans complete)
 
 **v1.0 Production Scope:**
 - Phase 8: Graph Algorithms (PageRank, betweenness centrality, community detection)
@@ -30,9 +30,9 @@ Progress: █████████░░ 90% (9 of 10 phases done, Phase 8 co
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 33
+- Total plans completed: 34
 - Average duration: 11 min
-- Total execution time: 6 hours 8 min
+- Total execution time: 6 hours 23 min
 
 **By Phase:**
 
@@ -46,10 +46,11 @@ Progress: █████████░░ 90% (9 of 10 phases done, Phase 8 co
 | 6 | 2 | 50 min | 25 min |
 | 7 | 3 | 30 min | 10 min |
 | 8 | 3 | 38 min | 13 min |
+| 9 | 1 | 15 min | 15 min |
 
 **Recent Trend:**
-- Last 3 plans: 07-03 (15 min), 08-01 (21 min), 08-02 (17 min)
-- Trend: Consistent (~18 min/plan for algorithm implementations)
+- Last 3 plans: 08-03 (17 min), 09-01 (15 min)
+- Trend: Consistent (~16 min/plan for feature implementations)
 
 *Updated after each plan completion*
 
@@ -404,3 +405,31 @@ Planned work after v1.0 ships:
 - 10 commits total
 - Comprehensive rustdoc with complexity analysis
 - Performance baselines established
+
+**Phase 9 Progress:** 🔄 IN PROGRESS
+- Plan 09-01 complete (Introspection APIs) ✅
+- Summary: .planning/phases/09-developer-tooling/09-01-SUMMARY.md
+- Created introspection.rs module (210 lines) ✅ NEW
+  - GraphIntrospection struct with JSON-serializable fields ✅ NEW
+  - EdgeCount enum (Exact, Estimate, Unavailable) ✅ NEW
+  - IntrospectError for introspection-specific failures ✅ NEW
+  - Helper functions: get_file_size(), get_wal_size(), CacheStats::hit_ratio() ✅ NEW
+- Added introspection methods to SqliteGraph (170 lines) ✅ NEW
+  - introspect(): Returns comprehensive GraphIntrospection snapshot ✅ NEW
+  - cache_stats(): Returns combined cache statistics ✅ NEW
+  - count_edges(): Smart edge counting (exact <10K, sampled estimate for larger) ✅ NEW
+  - get_database_path(): Retrieves database path from SQLite ✅ NEW
+- Exported introspection API in lib.rs ✅ NEW
+  - Public module declaration and re-exports ✅ NEW
+  - Updated documentation with introspection utilities ✅ NEW
+- Comprehensive test coverage: 5 tests passing (100%) ✅ NEW
+- Commits: 4 (3 for implementation + 1 summary) ✅ NEW
+
+**09-01 Key Achievements:** ✅ NEW
+- JSON-serializable introspection data for LLM consumption
+- Smart edge counting: exact for <10K edges, sampled estimate for large graphs
+- File size and WAL size detection for file-based databases
+- Combined cache statistics from outgoing and incoming caches
+- Fixed lifetime error in get_database_path (changed &Path to String)
+- All 5 introspection unit tests passing (100% pass rate)
+- Documentation builds successfully with introspection API visible
