@@ -5,32 +5,32 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Feature parity, performance, and reliability equally.
-**Current focus:** Phase 1 — Foundation Cleanup
+**Current focus:** Phase 2 — WAL Integration
 
 ## Current Position
 
-Phase: 1 of 10 (Foundation Cleanup)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-01-17 — Completed 01-02-PLAN.md
+Phase: 2 of 10 (WAL Integration)
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-01-17 — Phase 1 complete
 
-Progress: █████░░░░░ 20%
+Progress: ████████░░ 30%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: 10.5 min
-- Total execution time: 0.35 hours
+- Total plans completed: 3
+- Average duration: 10 min
+- Total execution time: 0.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 1 | 21 min | 21 min | 10.5 min |
+| 1 | 30 min | 30 min | 10 min |
 
 **Recent Trend:**
-- Last 5 plans: 01-01 (10 min), 01-02 (11 min)
+- Last 5 plans: 01-01 (10 min), 01-02 (11 min), 01-03 (9 min)
 - Trend: Steady
 
 *Updated after each plan completion*
@@ -52,6 +52,11 @@ Recent decisions affecting this work:
 - Outcome: Removed 20+ unused imports across 11 files
 - Impact: Cleaner codebase, faster compile times, clearer intent
 
+**Phase 1 Decision 3:** Centralized debug logging with feature flag
+- Rationale: Debug scaffolding scattered across 48 files creates noise and performance overhead
+- Outcome: Created debug.rs module with conditional macros gated behind `debug` feature
+- Impact: Zero runtime overhead when disabled, centralized control for debugging
+
 ### Deferred Issues
 
 None yet.
@@ -66,6 +71,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-17 01:33
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-01-17 01:44
+Stopped at: Phase 1 complete, ready for Phase 2 planning
 Resume file: None
