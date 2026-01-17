@@ -12,9 +12,9 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 Milestone: v1.0 Production (Phases 8-10)
 Phase: 9 of 10 (Developer Tooling)
 Status: 🔄 In Progress
-Last activity: 2026-01-17 — Plan 09-01 complete (Introspection APIs)
+Last activity: 2026-01-17 — Plan 09-02 complete (Algorithm Progress Tracking)
 
-Progress: ██████████░ 91% (9 of 10 phases done, Phase 9: 1 of 3 plans complete)
+Progress: ██████████░ 92% (9 of 10 phases done, Phase 9: 2 of 3 plans complete)
 
 **v1.0 Production Scope:**
 - Phase 8: Graph Algorithms (PageRank, betweenness centrality, community detection)
@@ -30,9 +30,9 @@ Progress: ██████████░ 91% (9 of 10 phases done, Phase 9: 1
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 34
+- Total plans completed: 35
 - Average duration: 11 min
-- Total execution time: 6 hours 23 min
+- Total execution time: 6 hours 34 min
 
 **By Phase:**
 
@@ -46,7 +46,7 @@ Progress: ██████████░ 91% (9 of 10 phases done, Phase 9: 1
 | 6 | 2 | 50 min | 25 min |
 | 7 | 3 | 30 min | 10 min |
 | 8 | 3 | 38 min | 13 min |
-| 9 | 1 | 15 min | 15 min |
+| 9 | 2 | 32 min | 16 min |
 
 **Recent Trend:**
 - Last 3 plans: 08-03 (17 min), 09-01 (15 min)
@@ -408,24 +408,40 @@ Planned work after v1.0 ships:
 
 **Phase 9 Progress:** 🔄 IN PROGRESS
 - Plan 09-01 complete (Introspection APIs) ✅
+- Plan 09-02 complete (Algorithm Progress Tracking) ✅ NEW
 - Summary: .planning/phases/09-developer-tooling/09-01-SUMMARY.md
-- Created introspection.rs module (210 lines) ✅ NEW
-  - GraphIntrospection struct with JSON-serializable fields ✅ NEW
-  - EdgeCount enum (Exact, Estimate, Unavailable) ✅ NEW
-  - IntrospectError for introspection-specific failures ✅ NEW
-  - Helper functions: get_file_size(), get_wal_size(), CacheStats::hit_ratio() ✅ NEW
-- Added introspection methods to SqliteGraph (170 lines) ✅ NEW
-  - introspect(): Returns comprehensive GraphIntrospection snapshot ✅ NEW
-  - cache_stats(): Returns combined cache statistics ✅ NEW
-  - count_edges(): Smart edge counting (exact <10K, sampled estimate for larger) ✅ NEW
-  - get_database_path(): Retrieves database path from SQLite ✅ NEW
-- Exported introspection API in lib.rs ✅ NEW
-  - Public module declaration and re-exports ✅ NEW
-  - Updated documentation with introspection utilities ✅ NEW
-- Comprehensive test coverage: 5 tests passing (100%) ✅ NEW
-- Commits: 4 (3 for implementation + 1 summary) ✅ NEW
+- Summary: .planning/phases/09-developer-tooling/09-02-SUMMARY.md ✅ NEW
+- Created introspection.rs module (210 lines) ✅
+  - GraphIntrospection struct with JSON-serializable fields
+  - EdgeCount enum (Exact, Estimate, Unavailable)
+  - IntrospectError for introspection-specific failures
+  - Helper functions: get_file_size(), get_wal_size(), CacheStats::hit_ratio()
+- Added introspection methods to SqliteGraph (170 lines) ✅
+  - introspect(): Returns comprehensive GraphIntrospection snapshot
+  - cache_stats(): Returns combined cache statistics
+  - count_edges(): Smart edge counting (exact <10K, sampled estimate for larger)
+  - get_database_path(): Retrieves database path from SQLite
+- Exported introspection API in lib.rs ✅
+  - Public module declaration and re-exports
+  - Updated documentation with introspection utilities
+- Comprehensive test coverage: 5 tests passing (100%) ✅
+- Created progress.rs module (457 lines) ✅ NEW
+  - ProgressCallback trait for progress reporting ✅ NEW
+  - NoProgress: Zero-overhead no-op implementation ✅ NEW
+  - ConsoleProgress: CLI-friendly stderr output ✅ NEW
+  - ProgressState: Throttled wrapper to avoid spam ✅ NEW
+  - Full test coverage: 8 tests passing ✅ NEW
+- Added instrumented algorithm variants (394 lines) ✅ NEW
+  - pagerank_with_progress: Reports iteration progress ✅ NEW
+  - betweenness_centrality_with_progress: Reports per-source progress ✅ NEW
+  - louvain_communities_with_progress: Reports iteration passes ✅ NEW
+  - All 27 algorithm tests passing (100% pass rate) ✅ NEW
+- Exported progress API in lib.rs ✅ NEW
+  - ProgressCallback, NoProgress, ConsoleProgress, ProgressState ✅ NEW
+  - All _with_progress algorithm variants ✅ NEW
+- Commits: 8 (4 for 09-01, 3 for 09-02, 1 fixes) ✅ NEW
 
-**09-01 Key Achievements:** ✅ NEW
+**09-01 Key Achievements:**
 - JSON-serializable introspection data for LLM consumption
 - Smart edge counting: exact for <10K edges, sampled estimate for large graphs
 - File size and WAL size detection for file-based databases
@@ -433,3 +449,13 @@ Planned work after v1.0 ships:
 - Fixed lifetime error in get_database_path (changed &Path to String)
 - All 5 introspection unit tests passing (100% pass rate)
 - Documentation builds successfully with introspection API visible
+
+**09-02 Key Achievements:** ✅ NEW
+- Thread-safe progress callback trait with zero-overhead default
+- Progress tracking for all long-running algorithms (PageRank, Betweenness, Louvain)
+- ConsoleProgress provides CLI-friendly stderr output
+- ProgressState helper with configurable throttling interval
+- All 8 progress tests passing (100% pass rate)
+- All 27 algorithm tests passing with no regressions
+- Public API fully documented with comprehensive examples
+- Fixed CacheStats to support Serialize (introspection compatibility)
