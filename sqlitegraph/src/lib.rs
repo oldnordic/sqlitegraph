@@ -79,6 +79,7 @@
 // Core public modules
 pub mod backend;
 pub mod config;
+pub mod debug;
 pub mod errors;
 pub mod graph;
 
