@@ -180,12 +180,19 @@ Plans:
 **Goal**: Comprehensive test coverage and module documentation
 **Depends on**: Phase 9
 **Research**: Unlikely (testing patterns and documentation)
-**Plans**: TBD
+**Plans**: 3
 
 Plans:
-- [ ] 10-01: Add WAL recovery edge case tests
+- [ ] 10-01: Fix broken WAL tests and add edge case tests
 - [ ] 10-02: Add concurrent operation tests
-- [ ] 10-03: Add module documentation (~1,093 files missing docs)
+- [ ] 10-03: Add module documentation
+
+**Scope:**
+- Fix V2WALConfig compilation errors in wal_core_tests.rs
+- 16 WAL recovery edge case tests (corruption, transactions, checkpoints, recovery)
+- 15 concurrent operation tests (algorithms, snapshots, lifecycle)
+- Complete rustdoc for: graph, hnsw, algo, cache, introspection, progress modules
+- Invariants and guarantees documentation (not marketing copy)
 
 ## Progress
 
