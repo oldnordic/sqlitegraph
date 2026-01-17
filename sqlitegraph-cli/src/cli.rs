@@ -89,6 +89,9 @@ Commands:
   debug-stats                Show graph introspection data (JSON)
   debug-dump --output PATH   Export graph structure for debugging
   debug-trace COMMAND [...]  Enable trace logging for specific operation
+  pagerank --iterations N [--damping-factor F]   PageRank centrality algorithm
+  betweenness                Betweenness centrality algorithm
+  louvain [--max-iterations N]    Louvain community detection algorithm
 
 Traversal Options:
   --start                   Starting node ID for traversal

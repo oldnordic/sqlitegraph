@@ -2,12 +2,14 @@ use std::{env, fs, path::PathBuf, process};
 
 use serde_json::json;
 use sqlitegraph::{
+    algo::{pagerank_with_progress, betweenness_centrality_with_progress, louvain_communities_with_progress},
     backend::{BackendDirection, GraphBackend, SqliteGraphBackend},
     bfs::{bfs_neighbors, shortest_path},
     graph_opt::{bulk_insert_entities, bulk_insert_edges, GraphEntityCreate, GraphEdgeCreate},
     hnsw::{HnswConfigBuilder, DistanceMetric},
     multi_hop::k_hop,
     pattern_engine::PatternTriple,
+    progress::{ConsoleProgress, ProgressCallback},
     query::GraphQuery,
     recovery::{dump_graph_to_path, load_graph_from_path},
     GraphConfig, SqliteGraph, SqliteGraphError,
@@ -151,6 +153,9 @@ fn run_command(
         "debug-stats" => run_debug_stats(client, args),
         "debug-dump" => run_debug_dump(client, args),
         "debug-trace" => run_debug_trace(client, args),
+        "pagerank" => run_pagerank(client, args),
+        "betweenness" => run_betweenness(client, args),
+        "louvain" => run_louvain(client, args),
         // Reindex commands removed - not available in v0.2.5
         // "reindex-all" => run_reindex_all(client, args),
         // "reindex-syncore" => run_reindex_syncore(client, args),
@@ -706,7 +711,14 @@ fn run_bfs(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphErr
     let max_depth = required_flag_value(args, "--max-depth")
         .and_then(|s| s.parse::<u32>().map_err(|e| SqliteGraphError::invalid_input(format!("invalid max-depth: {e}"))))?;
 
+    // Add progress reporting
+    let progress = ConsoleProgress::new();
+    eprintln!("BFS: starting from node {}", start);
+
     let visited = bfs_neighbors(graph, start, max_depth)?;
+
+    progress.on_progress(visited.len(), Some(visited.len()), "BFS: visited nodes");
+    progress.on_complete();
 
     let payload = json!({
         "command": "bfs",
@@ -734,7 +746,14 @@ fn run_k_hop(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphE
         "outgoing" | _ => BackendDirection::Outgoing,
     };
 
+    // Add progress reporting
+    let progress = ConsoleProgress::new();
+    eprintln!("K-hop: processing depth {}", depth);
+
     let neighbors = k_hop(graph, start, depth, direction)?;
+
+    progress.on_progress(neighbors.len(), Some(neighbors.len()), "K-hop: neighbors found");
+    progress.on_complete();
 
     let payload = json!({
         "command": "k-hop",
@@ -757,7 +776,15 @@ fn run_shortest_path(client: &BackendClient, args: &[String]) -> Result<(), Sqli
     let end = required_flag_value(args, "--to")
         .and_then(|s| s.parse::<i64>().map_err(|e| SqliteGraphError::invalid_input(format!("invalid end node: {e}"))))?;
 
+    // Add progress reporting
+    let progress = ConsoleProgress::new();
+    eprintln!("Shortest path: searching from {} to {}", start, end);
+
     let path = shortest_path(graph, start, end)?;
+
+    let visited_count = path.as_ref().map(|p| p.len()).unwrap_or(0);
+    progress.on_progress(visited_count, Some(visited_count), "Shortest path: nodes visited");
+    progress.on_complete();
 
     let payload = json!({
         "command": "shortest-path",
@@ -1488,4 +1515,79 @@ fn run_debug_trace(client: &BackendClient, args: &[String]) -> Result<(), Sqlite
             Err(e)
         }
     }
+}
+
+fn run_pagerank(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {
+    let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("pagerank command requires SQLite backend"))?;
+
+    let iterations = required_flag_value(args, "--iterations")
+        .and_then(|s| s.parse::<usize>().map_err(|e| SqliteGraphError::invalid_input(format!("invalid iterations: {e}"))))?;
+
+    let damping_factor = optional_flag_value(args, "--damping-factor")
+        .map(|s| s.parse::<f64>().map_err(|e| SqliteGraphError::invalid_input(format!("invalid damping-factor: {e}"))))
+        .transpose()?
+        .unwrap_or(0.85);
+
+    // Use ConsoleProgress for progress reporting
+    let progress = ConsoleProgress::new();
+
+    let scores = pagerank_with_progress(graph, damping_factor, iterations, &progress)?;
+
+    let payload = json!({
+        "command": "pagerank",
+        "iterations": iterations,
+        "damping_factor": damping_factor,
+        "node_count": scores.len(),
+        "top_scores": scores.iter().take(10).map(|(node_id, score)| json!({
+            "node_id": node_id,
+            "score": score
+        })).collect::<Vec<_>>()
+    });
+    println!("{payload}");
+    Ok(())
+}
+
+fn run_betweenness(client: &BackendClient, _args: &[String]) -> Result<(), SqliteGraphError> {
+    let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("betweenness command requires SQLite backend"))?;
+
+    // Use ConsoleProgress for progress reporting
+    let progress = ConsoleProgress::new();
+
+    let centrality = betweenness_centrality_with_progress(graph, &progress)?;
+
+    let payload = json!({
+        "command": "betweenness",
+        "node_count": centrality.len(),
+        "top_centrality": centrality.iter().take(10).map(|(node_id, score)| json!({
+            "node_id": node_id,
+            "centrality": score
+        })).collect::<Vec<_>>()
+    });
+    println!("{payload}");
+    Ok(())
+}
+
+fn run_louvain(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {
+    let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("louvain command requires SQLite backend"))?;
+
+    let max_iterations = optional_flag_value(args, "--max-iterations")
+        .map(|s| s.parse::<usize>().map_err(|e| SqliteGraphError::invalid_input(format!("invalid max-iterations: {e}"))))
+        .transpose()?
+        .unwrap_or(100);
+
+    // Use ConsoleProgress for progress reporting
+    let progress = ConsoleProgress::new();
+
+    let communities = louvain_communities_with_progress(graph, max_iterations, &progress)?;
+
+    let payload = json!({
+        "command": "louvain",
+        "max_iterations": max_iterations,
+        "community_count": communities.len(),
+        "communities": communities.iter().take(10).map(|members| json!({
+            "members": members
+        })).collect::<Vec<_>>()
+    });
+    println!("{payload}");
+    Ok(())
 }
