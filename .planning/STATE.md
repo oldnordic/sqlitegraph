@@ -11,11 +11,11 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 
 Milestone: v1.0 Production (Phases 8-10)
 Phase: 8 of 10 (Graph Algorithms)
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-01-17 — Milestone v1.0 Production created
+Plan: 08-01 (Centrality Algorithms)
+Status: ✅ Complete
+Last activity: 2026-01-17 — Implemented PageRank and Betweenness Centrality
 
-Progress: ████████░░░ 70% (7 of 10 phases complete, 0/3 in v1.0)
+Progress: ████████░░░ 71% (7 of 10 phases complete, 1/3 in v1.0)
 
 **v1.0 Production Scope:**
 - Phase 8: Graph Algorithms (PageRank, betweenness centrality, community detection)
@@ -31,9 +31,9 @@ Progress: ████████░░░ 70% (7 of 10 phases complete, 0/3 in
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 28
+- Total plans completed: 29
 - Average duration: 11 min
-- Total execution time: 5 hours
+- Total execution time: 5 hours 11 min
 
 **By Phase:**
 
@@ -46,10 +46,11 @@ Progress: ████████░░░ 70% (7 of 10 phases complete, 0/3 in
 | 5 | 3 | 30 min | 10 min |
 | 6 | 2 | 50 min | 25 min |
 | 7 | 3 | 30 min | 10 min |
+| 8 | 1 | 21 min | 21 min |
 
 **Recent Trend:**
-- Last 3 plans: 07-01 (10 min), 07-02 (10 min), 07-03 (15 min)
-- Trend: Steady
+- Last 3 plans: 07-02 (10 min), 07-03 (15 min), 08-01 (21 min)
+- Trend: Slightly longer (more complex algorithms)
 
 *Updated after each plan completion*
 
@@ -326,3 +327,29 @@ Planned work after v1.0 ships:
 - CI script with 10% regression threshold
 - Performance baseline documentation (docs/PERFORMANCE_BASELINES.md)
 - Criterion framework with baseline comparison support
+
+**Phase 8 Progress:** 🔄 IN PROGRESS
+- Plan 08-01 complete (Centrality Algorithms) ✅ NEW
+- Summary: .planning/phases/08-graph-algorithms/08-01-SUMMARY.md ✅ NEW
+- Implemented PageRank algorithm (power iteration method) ✅ NEW
+  - Computes node importance based on link structure
+  - Handles dangling nodes with score redistribution
+  - Fixed iteration count for deterministic results
+  - Returns scores sorted descending
+- Implemented Betweenness Centrality (Brandes' algorithm) ✅ NEW
+  - Measures bridge nodes in graph topology
+  - BFS-based shortest path computation
+  - Handles disconnected components gracefully
+  - Returns centrality values sorted descending
+- Public API exports: pagerank, betweenness_centrality ✅ NEW
+- Comprehensive test coverage: 6 tests (all passing) ✅ NEW
+  - test_pagerank_cycle_graph, test_pagerank_star_graph, test_pagerank_dangling_nodes
+  - test_betweenness_line_graph, test_betweenness_star_graph, test_betweenness_disconnected
+- Commits: 3 ✅ NEW
+
+**08-01 Key Achievements:** ✅ NEW
+- PageRank: 73 lines, O(iterations * (n + m)) complexity, deterministic output
+- Betweenness Centrality: 88 lines, O(n * (n + m)) complexity for unweighted graphs
+- Both algorithms use AHashMap for efficient storage
+- Zero clippy warnings, 100% test pass rate
+- Production-ready with comprehensive documentation
