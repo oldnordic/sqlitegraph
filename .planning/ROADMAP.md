@@ -115,9 +115,18 @@ Plans:
 - **06-01**: Integrate persistent HNSW with CLI (add `hnsw_index_persistent()`, update CLI to use it, integration tests)
 - **06-02**: Add CLI commands for index management (`hnsw-list`, `hnsw-delete`, `hnsw-info`)
 
+**Status**: Complete ✅ (2026-01-17)
+**Key Results**:
+- Index metadata persists across CLI invocations
+- New commands: `hnsw-list`, `hnsw-delete`, `hnsw-info`
+- Added `--index-name` parameter for custom index names
+- Exported `is_in_memory_connection()` as public API
+
+**Known Limitation**: Vector persistence requires Connection sharing architecture (documented in 06-01-SUMMARY.md)
+
 Plans:
-- [ ] 06-01: Integrate persistent HNSW with CLI
-- [ ] 06-02: Add CLI commands for index management
+- [x] 06-01: Integrate persistent HNSW with CLI ✅
+- [x] 06-02: Add CLI commands for index management ✅
 
 ### Phase 7: Performance
 **Goal**: Optimize WAL recovery, reduce lock contention, improve benchmarks
@@ -178,7 +187,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Native V2 Reads | 3/3 | Complete | 2026-01-17 |
 | 4. MVCC Completion | 3/3 | Complete | 2026-01-17 |
 | 5. HNSW Persistence | 3/3 | Complete | 2026-01-17 |
-| 6. HNSW CLI | 0/2 | Not started | - |
+| 6. HNSW CLI | 2/2 | Complete | 2026-01-17 |
 | 7. Performance | 0/3 | Not started | - |
 | 8. Graph Algorithms | 0/3 | Not started | - |
 | 9. Developer Tooling | 0/3 | Not started | - |

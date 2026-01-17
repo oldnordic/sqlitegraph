@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Feature parity, performance, and reliability equally.
-**Current focus:** Phase 6 — HNSW CLI Integration
+**Current focus:** Phase 7 — Performance Optimization
 
 ## Current Position
 
-Phase: 6 of 10 (HNSW CLI Integration)
-Plan: 06-01 complete
-Status: In progress
-Last activity: 2026-01-17 — Plan 06-01: CLI HNSW Index Persistence
+Phase: 7 of 10 (Performance Optimization)
+Plan: Ready to begin
+Status: Planning phase
+Last activity: 2026-01-17 — Phase 6 Complete: HNSW CLI Integration
 
-Progress: ████████░░ 60% (6 of 10 phases complete)
+Progress: █████████░░ 70% (7 of 10 phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 23
-- Average duration: 10 min
-- Total execution time: 3.9 hours
+- Total plans completed: 25
+- Average duration: 11 min
+- Total execution time: 4.5 hours
 
 **By Phase:**
 
@@ -32,10 +32,10 @@ Progress: ████████░░ 60% (6 of 10 phases complete)
 | 3 | 3 | 30 min | 10 min |
 | 4 | 3 | 50 min | 17 min |
 | 5 | 3 | 30 min | 10 min |
-| 6 | 1 | 25 min | 25 min |
+| 6 | 2 | 50 min | 25 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01 (15 min), 04-02 (25 min), 04-03 (20 min), 05-01 (10 min)
+- Last 5 plans: 04-03 (20 min), 05-01 (10 min), 05-02 (10 min), 05-03 (10 min), 06-01 (25 min), 06-02 (25 min)
 - Trend: Steady
 
 *Updated after each plan completion*
@@ -197,29 +197,40 @@ Resume file: None
 - Tests document current limitations and workflow
 - All 134 HNSW tests passing (8 new persistence tests)
 
-**Phase 6 Progress:** 🔄 IN PROGRESS
-- Plan 06-01 complete (CLI HNSW Index Persistence) ✅ NEW
-- Summary: .planning/phases/06/06-01-SUMMARY.md ✅ NEW
-- Added `hnsw_index_persistent()` method to SqliteGraph ✅ NEW
+**Phase 6 Progress:** ✅ COMPLETE
+- Plan 06-01 complete (CLI HNSW Index Persistence)
+- Plan 06-02 complete (CLI Index Management Commands)
+- Summary: .planning/phases/06/06-01-SUMMARY.md
+- Summary: .planning/phases/06/06-02-SUMMARY.md
+- Added `hnsw_index_persistent()` method to SqliteGraph
   - Detects file-based vs in-memory databases
   - Saves metadata on main connection for persistence
   - Opens separate connection for SQLiteVectorStorage
   - Falls back to InMemoryVectorStorage for :memory: databases
-- Updated CLI to use persistent storage ✅ NEW
+- Updated CLI to use persistent storage
   - `hnsw-create` uses `hnsw_index_persistent()`
   - Added `--index-name` parameter for custom index names
   - Updated help text and warning comments
-- Known limitation: Vector persistence requires architectural fix ✅ NEW
-  - Index metadata persists across CLI invocations ✅
-  - Vectors do NOT persist (load_metadata creates wrong storage type) ❌
-  - Requires Connection sharing via Arc<Mutex<Connection>> (future work)
-- Commits: 3 ✅ NEW
+- Added CLI index management commands
+  - `hnsw-list`: Lists all indexes in database
+  - `hnsw-delete`: Deletes index with CASCADE
+  - `hnsw-info`: Shows detailed metadata + statistics
+- Made `SqliteGraph.conn` and `SqliteGraph.hnsw_indexes` public for CLI access
+- Commits: 5 (3 for 06-01, 2 for 06-02)
 
-**06-01 Key Achievements:** ✅ NEW
+**06-01 Key Achievements:**
 - HNSW index metadata now persists across CLI invocations
 - Index configuration (dimension, m, ef_construction, metric) survives CLI restart
 - `hnsw-stats` successfully loads persisted indexes
 - Added `--index-name` parameter to `hnsw-create` for multiple indexes
 - Exported `is_in_memory_connection()` as public API
 - Documented vector persistence limitation and fix approach
-- Manual testing confirms metadata persistence works correctly
+
+**06-02 Key Achievements:**
+- `hnsw-list` enumerates all indexes with count
+- `hnsw-delete` removes indexes from database (CASCADE) and memory
+- `hnsw-info` shows combined metadata + statistics for quick overview
+- All commands support `--index-name` parameter
+- Error handling for non-existent indexes
+- Help text updated for all commands
+- No regressions in existing commands
