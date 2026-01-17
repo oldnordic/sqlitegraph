@@ -5,7 +5,6 @@
 
 use crate::backend::native::{NativeNodeId};
 use crate::backend::native::v2::edge_cluster::Direction;
-use std::path::PathBuf;
 
 /// Configuration for V2 transaction replay operations
 #[derive(Debug, Clone)]
