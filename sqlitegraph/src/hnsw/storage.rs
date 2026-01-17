@@ -31,11 +31,12 @@
 //! # Backend Integration
 //!
 //! The storage abstraction automatically adapts to the active backend:
-//! - **SQLite Backend**: Stores vectors in dedicated `graph_vectors` table using BLOB columns
+//! - **SQLite Backend**: Stores vectors in dedicated `hnsw_vectors` table using BLOB columns
 //! - **Native Backend**: Stores vectors in binary format with clustering optimization
 //! - **HNSW Integration**: Seamless integration with similarity search capabilities
 
 use crate::hnsw::errors::{HnswError, HnswStorageError};
+use rusqlite::{Connection, OptionalExtension};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -423,6 +424,279 @@ impl VectorStorageStats {
     }
 }
 
+/// Serialize vector to byte array
+///
+/// Converts f32 slice to bytes using bytemuck for zero-copy operation.
+/// This is safe because f32 is POD (Plain Old Data) with no padding.
+fn serialize_vector(v: &[f32]) -> Vec<u8> {
+    bytemuck::cast_slice::<f32, u8>(v).to_vec()
+}
+
+/// Deserialize byte array to vector
+///
+/// Converts bytes to f32 array using bytemuck for zero-copy operation.
+/// This is safe because f32 is POD (Plain Old Data) with no padding.
+fn deserialize_vector(bytes: &[u8]) -> Result<Vec<f32>, HnswError> {
+    if bytes.len() % std::mem::size_of::<f32>() != 0 {
+        return Err(HnswError::Storage(HnswStorageError::InvalidVectorData));
+    }
+    Ok(bytemuck::cast_slice::<u8, f32>(bytes).to_vec())
+}
+
+/// SQLite-backed vector storage implementation
+///
+/// Provides persistent vector storage using SQLite database. Vectors are stored
+/// as BLOB data in the `hnsw_vectors` table with metadata support.
+pub struct SQLiteVectorStorage {
+    /// Index ID this storage is associated with
+    index_id: i64,
+    /// SQLite connection (borrowed from HnswIndex)
+    conn: Connection,
+}
+
+impl SQLiteVectorStorage {
+    /// Create new SQLite-backed storage
+    ///
+    /// # Arguments
+    ///
+    /// * `index_id` - Database ID of the HNSW index
+    /// * `conn` - SQLite connection
+    ///
+    /// # Returns
+    ///
+    /// New SQLiteVectorStorage instance
+    pub fn new(index_id: i64, conn: Connection) -> Self {
+        Self { index_id, conn }
+    }
+}
+
+impl VectorStorage for SQLiteVectorStorage {
+    fn store_vector(&mut self, vector: &[f32], metadata: Option<Value>) -> Result<u64, HnswError> {
+        let vector_bytes = serialize_vector(vector);
+        let metadata_json = metadata.map(|m| m.to_string());
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "INSERT INTO hnsw_vectors (index_id, vector_data, metadata, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                &self.index_id,
+                &vector_bytes,
+                &metadata_json,
+                now,
+                now,
+            ],
+        )
+        .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+
+        Ok(self.conn.last_insert_rowid() as u64)
+    }
+
+    fn store_vector_with_id(
+        &mut self,
+        id: u64,
+        vector: Vec<f32>,
+        metadata: Option<Value>,
+    ) -> Result<(), HnswError> {
+        let vector_bytes = serialize_vector(&vector);
+        let metadata_json = metadata.map(|m| m.to_string());
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        self.conn.execute(
+            "INSERT INTO hnsw_vectors (id, index_id, vector_data, metadata, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                &id,
+                &self.index_id,
+                &vector_bytes,
+                &metadata_json,
+                now,
+                now,
+            ],
+        )
+        .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+
+        Ok(())
+    }
+
+    fn get_vector(&self, id: u64) -> Result<Option<Vec<f32>>, HnswError> {
+        let vector_bytes: Option<Vec<u8>> = self
+            .conn
+            .query_row(
+                "SELECT vector_data FROM hnsw_vectors WHERE id = ? AND index_id = ?",
+                rusqlite::params![id, &self.index_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+
+        match vector_bytes {
+            Some(bytes) => {
+                let vector = deserialize_vector(&bytes)?;
+                Ok(Some(vector))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn get_vector_with_metadata(&self, id: u64) -> Result<Option<(Vec<f32>, Value)>, HnswError> {
+        let (vector_bytes, metadata_json): (Option<Vec<u8>>, Option<String>) = self
+            .conn
+            .query_row(
+                "SELECT vector_data, metadata FROM hnsw_vectors WHERE id = ? AND index_id = ?",
+                rusqlite::params![id, &self.index_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?
+            .unwrap_or((None, None));
+
+        match vector_bytes {
+            Some(bytes) => {
+                let vector = deserialize_vector(&bytes)?;
+                let metadata = metadata_json
+                    .map(|s| serde_json::from_str(&s))
+                    .transpose()
+                    .map_err(|e| {
+                        HnswError::Storage(HnswStorageError::IoError(format!(
+                            "Failed to parse metadata: {}",
+                            e
+                        )))
+                    })?
+                    .unwrap_or(Value::Null);
+
+                Ok(Some((vector, metadata)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn store_batch(&mut self, batch: VectorBatch) -> Result<Vec<u64>, HnswError> {
+        let mut ids = Vec::with_capacity(batch.len());
+
+        self.conn
+            .execute("BEGIN IMMEDIATE", [])
+            .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+
+        let result: Result<(), HnswError> = (|| {
+            for record in batch.vectors {
+                let vector_bytes = serialize_vector(&record.data);
+                let metadata_json = record.metadata.map(|m| m.to_string());
+
+                self.conn.execute(
+                    "INSERT INTO hnsw_vectors (index_id, vector_data, metadata, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![
+                        &self.index_id,
+                        &vector_bytes,
+                        &metadata_json,
+                        record.created_at as i64,
+                        record.updated_at as i64,
+                    ],
+                )
+                .map_err(|e| {
+                    HnswError::Storage(HnswStorageError::DatabaseError(e.to_string()))
+                })?;
+
+                ids.push(self.conn.last_insert_rowid() as u64);
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                self.conn
+                    .execute("COMMIT", [])
+                    .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+            }
+            Err(err) => {
+                let _ = self.conn.execute("ROLLBACK", []);
+                return Err(err);
+            }
+        }
+
+        Ok(ids)
+    }
+
+    fn delete_vector(&mut self, id: u64) -> Result<(), HnswError> {
+        self.conn
+            .execute(
+                "DELETE FROM hnsw_vectors WHERE id = ? AND index_id = ?",
+                rusqlite::params![id, &self.index_id],
+            )
+            .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+
+        Ok(())
+    }
+
+    fn vector_count(&self) -> Result<usize, HnswError> {
+        let count: i64 = self
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM hnsw_vectors WHERE index_id = ?",
+                [&self.index_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+
+        Ok(count as usize)
+    }
+
+    fn list_vectors(&self) -> Result<Vec<u64>, HnswError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id FROM hnsw_vectors WHERE index_id = ? ORDER BY id")
+            .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+
+        let ids = stmt
+            .query_map([&self.index_id], |row| row.get(0))
+            .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+
+        Ok(ids)
+    }
+
+    fn clear_vectors(&mut self) -> Result<(), HnswError> {
+        self.conn
+            .execute(
+                "DELETE FROM hnsw_vectors WHERE index_id = ?",
+                [&self.index_id],
+            )
+            .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+
+        Ok(())
+    }
+
+    fn get_statistics(&self) -> Result<VectorStorageStats, HnswError> {
+        let (vector_count, total_dimensions): (i64, i64) = self
+            .conn
+            .query_row(
+                "SELECT
+                    COUNT(*) as count,
+                    SUM(LENGTH(vector_data) / ?) as total_dims
+                 FROM hnsw_vectors WHERE index_id = ?",
+                rusqlite::params![std::mem::size_of::<f32>() as i64, &self.index_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|e| HnswError::Storage(HnswStorageError::DatabaseError(e.to_string())))?;
+
+        Ok(VectorStorageStats::new(
+            vector_count as usize,
+            total_dimensions as usize,
+            "SQLite".to_string(),
+        ))
+    }
+}
+
 /// In-memory vector storage implementation
 ///
 /// Provides fast vector storage using in-memory HashMap. Suitable for
@@ -765,5 +1039,202 @@ mod tests {
         let expected_min =
             std::mem::size_of::<VectorRecord>() + (1000 * std::mem::size_of::<f32>());
         assert!(usage >= expected_min);
+    }
+
+    // SQLiteVectorStorage tests
+    #[test]
+    fn test_sqlite_vector_storage() {
+        use rusqlite::Connection;
+
+        // Create in-memory database
+        let conn = Connection::open_in_memory().unwrap();
+
+        // Create schema
+        conn.execute_batch(
+            r#"
+            CREATE TABLE hnsw_indexes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                dimension INTEGER NOT NULL,
+                m INTEGER NOT NULL,
+                ef_construction INTEGER NOT NULL,
+                distance_metric TEXT NOT NULL,
+                vector_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE hnsw_vectors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                index_id INTEGER NOT NULL,
+                vector_data BLOB NOT NULL,
+                metadata TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (index_id) REFERENCES hnsw_indexes(id) ON DELETE CASCADE
+            );
+            "#,
+        )
+        .unwrap();
+
+        // Insert test index
+        conn.execute(
+            "INSERT INTO hnsw_indexes (name, dimension, m, ef_construction, distance_metric, vector_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params!["test_index", 3, 16, 200, "cosine", 0, 1000, 1000],
+        )
+        .unwrap();
+
+        let index_id = conn.last_insert_rowid();
+
+        // Test vector storage
+        let mut storage = SQLiteVectorStorage::new(index_id, conn);
+        let vector = create_test_vector(4);
+        let metadata = Some(create_test_metadata());
+
+        // Store vector
+        let id = storage.store_vector(&vector, metadata.clone()).unwrap();
+        assert_eq!(id, 1);
+
+        // Retrieve vector
+        let retrieved = storage.get_vector(id).unwrap();
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap(), vector);
+
+        // Retrieve with metadata
+        let (retrieved_vector, retrieved_metadata) =
+            storage.get_vector_with_metadata(id).unwrap().unwrap();
+        assert_eq!(retrieved_vector, vector);
+        assert_eq!(Some(retrieved_metadata), metadata);
+
+        // Vector count
+        assert_eq!(storage.vector_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_sqlite_vector_roundtrip() {
+        use rusqlite::Connection;
+
+        let conn = Connection::open_in_memory().unwrap();
+
+        // Create schema
+        conn.execute_batch(
+            r#"
+            CREATE TABLE hnsw_indexes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                dimension INTEGER NOT NULL,
+                m INTEGER NOT NULL,
+                ef_construction INTEGER NOT NULL,
+                distance_metric TEXT NOT NULL,
+                vector_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE hnsw_vectors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                index_id INTEGER NOT NULL,
+                vector_data BLOB NOT NULL,
+                metadata TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (index_id) REFERENCES hnsw_indexes(id) ON DELETE CASCADE
+            );
+            "#,
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO hnsw_indexes (name, dimension, m, ef_construction, distance_metric, vector_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params!["test_index", 128, 16, 200, "euclidean", 0, 1000, 1000],
+        )
+        .unwrap();
+
+        let index_id = conn.last_insert_rowid();
+
+        let mut storage = SQLiteVectorStorage::new(index_id, conn);
+
+        // Create test vector
+        let original: Vec<f32> = (0..128).map(|i| i as f32 / 128.0).collect();
+
+        // Store
+        let id = storage.store_vector(&original, None).unwrap();
+
+        // Retrieve
+        let retrieved = storage.get_vector(id).unwrap().unwrap();
+
+        // Verify equality
+        assert_eq!(original, retrieved);
+    }
+
+    #[test]
+    fn test_sqlite_vector_serialization() {
+        // Test serialize/deserialize functions directly
+        let original = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+
+        let bytes = serialize_vector(&original);
+        let deserialized = deserialize_vector(&bytes).unwrap();
+
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn test_sqlite_vector_batch_storage() {
+        use rusqlite::Connection;
+
+        let conn = Connection::open_in_memory().unwrap();
+
+        // Create schema
+        conn.execute_batch(
+            r#"
+            CREATE TABLE hnsw_indexes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                dimension INTEGER NOT NULL,
+                m INTEGER NOT NULL,
+                ef_construction INTEGER NOT NULL,
+                distance_metric TEXT NOT NULL,
+                vector_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
+
+            CREATE TABLE hnsw_vectors (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                index_id INTEGER NOT NULL,
+                vector_data BLOB NOT NULL,
+                metadata TEXT,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (index_id) REFERENCES hnsw_indexes(id) ON DELETE CASCADE
+            );
+            "#,
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO hnsw_indexes (name, dimension, m, ef_construction, distance_metric, vector_count, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params!["test_index", 3, 16, 200, "cosine", 0, 1000, 1000],
+        )
+        .unwrap();
+
+        let index_id = conn.last_insert_rowid();
+
+        let mut storage = SQLiteVectorStorage::new(index_id, conn);
+
+        let vectors = vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]];
+        let metadatas = vec![Some(json!({"batch": 1})), Some(json!({"batch": 2}))];
+
+        let batch = VectorBatch::new(vectors, metadatas).unwrap();
+        let ids = storage.store_batch(batch).unwrap();
+
+        assert_eq!(ids.len(), 2);
+        assert_eq!(ids, vec![1, 2]);
+
+        // Verify batch storage
+        assert_eq!(storage.vector_count().unwrap(), 2);
     }
 }
