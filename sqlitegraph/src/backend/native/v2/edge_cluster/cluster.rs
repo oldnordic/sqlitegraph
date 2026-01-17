@@ -1,5 +1,6 @@
 //! Cluster container that stores a node's adjacency in contiguous storage.
 
+use super::cache::{CacheKey, ThreadSafeCache};
 use super::cluster_serialization::{
     deserialize_cluster, serialize_cluster, verify_serialized_layout,
 };
@@ -7,6 +8,7 @@ use super::cluster_trace::Direction;
 use super::compact_record::CompactEdgeRecord;
 use crate::backend::native::v2::string_table::StringTable;
 use crate::backend::native::{EdgeRecord, FileOffset, NativeBackendError, NativeResult};
+use std::sync::Arc;
 
 /// Serialized cluster holding all edges for a node in a given direction.
 #[derive(Debug, Clone)]
@@ -204,5 +206,74 @@ impl EdgeCluster {
             serialized_size: actual_payload_bytes,
             edges: compact_edges,
         })
+    }
+
+    /// Get neighbors with cache support.
+    /// This is a cache-aware wrapper around iter_neighbors that records access patterns.
+    ///
+    /// For high-degree nodes (degree > 1000), we recommend caching only neighbor IDs
+    /// rather than the full cluster to reduce memory pressure.
+    pub fn get_neighbors_with_cache(
+        &self,
+        cache: &ThreadSafeCache,
+        node_id: i64,
+        direction: Direction,
+    ) -> Vec<i64> {
+        let key = CacheKey::new(node_id, direction);
+
+        // Try to get from cache first
+        if let Some(cached_cluster) = cache.get(key) {
+            // Cache hit - return neighbors from cached cluster
+            return cached_cluster.iter_neighbors().collect();
+        }
+
+        // Cache miss - return neighbors directly and insert into cache
+        let neighbors: Vec<i64> = self.iter_neighbors().collect();
+
+        // For high-degree nodes, we could insert just the neighbor IDs
+        // But for now, we'll cache the full cluster (can be optimized later)
+        if self.edge_count() <= 1000 {
+            cache.insert(key, Arc::new(self.clone()));
+        }
+
+        neighbors
+    }
+
+    /// Prefetch neighboring clusters into cache for traversal optimization.
+    /// This loads clusters for the next hop in a BFS/DFS traversal.
+    ///
+    /// Arguments:
+    /// - `cache`: The thread-safe cache to populate
+    /// - `neighbor_ids`: IDs of neighbors to prefetch
+    /// - `get_cluster_fn`: Function to load cluster if not in cache
+    /// - `direction`: Direction of edges to prefetch
+    pub fn prefetch_neighbors<F>(
+        &self,
+        cache: &ThreadSafeCache,
+        neighbor_ids: &[i64],
+        get_cluster_fn: F,
+        direction: Direction,
+    ) where
+        F: Fn(i64, Direction) -> Option<EdgeCluster>,
+    {
+        // Prefetch up to 10 neighbors to avoid excessive memory usage
+        for &neighbor_id in neighbor_ids.iter().take(10) {
+            let key = CacheKey::new(neighbor_id, direction);
+
+            // Only prefetch if not already in cache
+            if cache.get(key).is_none() {
+                if let Some(cluster) = get_cluster_fn(neighbor_id, direction) {
+                    // Don't cache very high-degree nodes (>1000 edges) to reduce memory pressure
+                    if cluster.edge_count() <= 1000 {
+                        cache.insert(key, Arc::new(cluster));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Check if this is a high-degree node that should get special cache treatment.
+    pub fn is_high_degree_node(&self) -> bool {
+        self.edge_count() > 100
     }
 }
