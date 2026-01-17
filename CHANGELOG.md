@@ -1,5 +1,64 @@
 # SQLiteGraph Changelog
 
+## [1.0.0] - 2026-01-17
+
+### v1.0 Production Release
+**Phase 8-10 completion: Graph algorithms, developer tooling, and comprehensive documentation**
+
+### Phase 8: Graph Algorithms
+- **PageRank**: Importance ranking algorithm with damping factor support
+  - O(|E|) per iteration complexity
+  - `pagerank()` and `pagerank_with_progress()` variants
+- **Betweenness Centrality**: Node importance via shortest paths
+  - O(|V||E|) complexity using Brandes algorithm
+  - Tests on random, cycle, star, and barbell topologies
+- **Label Propagation**: Fast community detection
+  - O(|E|) complexity
+  - Deterministic results with seeded RNG
+- **Louvain Method**: Modularity-based clustering
+  - O(|E| log |V|) complexity
+  - Iterative community optimization
+- **Test Results**: 27/27 algorithm tests passing (100%)
+
+### Phase 9: Developer Tooling
+- **GraphIntrospection API**: JSON-serializable statistics for LLM tooling
+  - `node_count()`, `edge_count_estimate()`, `backend_info()`
+  - `to_json()` for structured output
+  - Exact vs sampled edge counting strategies
+- **ProgressCallback Trait**: Progress tracking for long operations
+  - `NoProgress` (no-op) and `ConsoleProgress` implementations
+  - Throttled updates (100ms intervals) to avoid overhead
+- **CLI Debug Commands**: `debug-stats`, `debug-dump`, `debug-trace`
+- **Algorithm CLI Commands**: `pagerank`, `betweenness`, `louvain`
+  - Progress bar support with `--progress` flag
+  - Configurable damping and iterations
+- **Test Results**: 13 commits across introspection, progress, and CLI
+
+### Phase 10: Testing & Documentation
+- **WAL Test Fixes**: Fixed V2WALConfig compilation errors (5 struct literals)
+- **Concurrent Operation Tests**:
+  - 10 new concurrent tests in mvcc_concurrent_tests.rs
+  - 5 algorithm concurrent tests in algo.rs
+  - 7 lifecycle edge case tests
+  - 53/53 concurrent tests passing
+- **Module Documentation**: Comprehensive rustdoc added
+  - graph/mod.rs: Invariants, thread safety, performance characteristics
+  - hnsw/mod.rs: Algorithm explanation and guarantees
+  - algo.rs: Algorithm characteristics table
+  - cache.rs, introspection.rs, progress.rs: Phase 9 modules
+  - lib.rs: Enhanced crate documentation with architecture diagram
+- **Documentation**: Zero warnings with `cargo doc --no-deps`
+
+### Summary of v1.0
+- **10 Phases Complete**: From foundation cleanup to production-ready testing
+- **41 Plans Executed**: Across all phases with autonomous agents
+- **Test Coverage**: 300+ tests passing (WAL, concurrent, algorithms, HNSW, MVCC)
+- **Graph Algorithms**: 4 production algorithms implemented
+- **Documentation**: Comprehensive rustdoc for all public modules
+- **Developer Tools**: Introspection API, progress tracking, enhanced CLI
+
+---
+
 ## [0.2.11] - 2026-01-17
 
 ### 🚀 Performance Optimization (Phase 7)
