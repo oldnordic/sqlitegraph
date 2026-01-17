@@ -382,6 +382,17 @@ impl V2WALManager {
         // Trigger group commit if needed
         self.check_group_commit();
 
+        // Check if checkpoint is needed after commit
+        if self.requires_checkpoint() {
+            // Spawn background checkpoint to avoid blocking commit
+            let checkpoint_manager = self.checkpoint_manager.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = checkpoint_manager.force_checkpoint() {
+                    eprintln!("Background checkpoint failed: {}", e);
+                }
+            });
+        }
+
         Ok(())
     }
 

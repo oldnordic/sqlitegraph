@@ -37,13 +37,12 @@ Plans:
 ### Phase 2: WAL Integration
 **Goal**: Complete WAL recovery and checkpoint functionality
 **Depends on**: Phase 1
-**Research**: Likely (WAL architecture patterns, checkpoint strategies)
-**Research topics**: WAL checkpoint triggers, recovery edge cases, validation/replayer wiring
-**Plans**: TBD
+**Research**: Unlikely (internal code integration, architecture understood)
+**Plans**: 3 plans created
 
 Plans:
-- [ ] 02-01: Wire WAL/Checkpoint placeholder functions
-- [ ] 02-02: Implement automatic checkpointing
+- [ ] 02-01: Wire automatic checkpointing into commit path
+- [ ] 02-02: Fix checkpoint V2 integration TODOs
 - [ ] 02-03: Add WAL recovery edge case tests
 
 ### Phase 3: Native V2 Reads
