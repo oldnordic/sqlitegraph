@@ -744,4 +744,256 @@ fn test_multiple_snapshots_different_states() -> Result<(), SqliteGraphError> {
     Ok(())
 }
 
+//
+// GROUP 6: SNAPSHOT LIFECYCLE EDGE CASES
+//
+
+#[test]
+fn test_snapshot_outlives_graph() -> Result<(), SqliteGraphError> {
+    // Scenario: Snapshot outlives graph (should work with Arc)
+    // Expected: Snapshot remains valid even after graph is dropped
+    let snapshot = {
+        let graph = create_test_graph()?;
+        warm_cache(&graph)?;
+
+        // Acquire snapshot and move it out
+        let snap = graph.acquire_snapshot()?;
+        snap
+    };
+
+    // Graph is dropped here, but snapshot should still work
+    // (Snapshot holds Arc<SnapshotState>, which is independent)
+
+    let count = snapshot.node_count();
+    assert!(count > 0, "Snapshot should remain valid");
+
+    // Verify snapshot data is still accessible
+    assert!(snapshot.edge_count() >= 0);
+
+    Ok(())
+}
+
+#[test]
+fn test_snapshot_clone_independence() -> Result<(), SqliteGraphError> {
+    // Scenario: Clone snapshot and verify independence
+    // Expected: Both clones see same state, independent modifications
+    let graph = create_test_graph()?;
+    warm_cache(&graph)?;
+
+    let snapshot1 = Arc::new(graph.acquire_snapshot()?);
+    let snapshot2 = Arc::clone(&snapshot1);
+
+    // Both should see same data
+    assert_eq!(snapshot1.node_count(), snapshot2.node_count());
+    assert_eq!(snapshot1.edge_count(), snapshot2.edge_count());
+
+    // Modify graph
+    let _ = insert_entity(
+        &graph,
+        GraphEntityCreate {
+            kind: "clone_test".to_string(),
+            name: "clone_node".to_string(),
+            file_path: Some("clone.rs".to_string()),
+            data: serde_json::json!({}),
+        },
+    );
+
+    warm_cache(&graph)?;
+
+    // Both snapshots should still see original state
+    let original_count = snapshot1.node_count();
+    assert_eq!(snapshot2.node_count(), original_count);
+
+    // New snapshot should see more nodes
+    let new_snapshot = graph.acquire_snapshot()?;
+    assert!(new_snapshot.node_count() > original_count);
+
+    Ok(())
+}
+
+#[test]
+fn test_nested_snapshots() -> Result<(), SqliteGraphError> {
+    // Scenario: Create snapshot, then another snapshot (not of snapshot, but sequential)
+    // Expected: Both snapshots are independent
+    let graph = create_test_graph()?;
+    warm_cache(&graph)?;
+
+    // First snapshot
+    let snapshot1 = graph.acquire_snapshot()?;
+    let count1 = snapshot1.node_count();
+
+    // Second snapshot (not nested, but sequential)
+    let snapshot2 = graph.acquire_snapshot()?;
+    let count2 = snapshot2.node_count();
+
+    // Should be equal (no modifications between)
+    assert_eq!(count1, count2);
+    assert_eq!(snapshot1.node_count(), snapshot2.node_count());
+
+    // Modify graph
+    let _ = insert_entity(
+        &graph,
+        GraphEntityCreate {
+            kind: "nested".to_string(),
+            name: "nested_node".to_string(),
+            file_path: Some("nested.rs".to_string()),
+            data: serde_json::json!({}),
+        },
+    );
+
+    warm_cache(&graph)?;
+
+    // Third snapshot
+    let snapshot3 = graph.acquire_snapshot()?;
+
+    // First two unchanged, third sees modification
+    assert_eq!(snapshot1.node_count(), count1);
+    assert_eq!(snapshot2.node_count(), count2);
+    assert!(snapshot3.node_count() > count2);
+
+    Ok(())
+}
+
+#[test]
+fn test_snapshot_consistency_with_writes() -> Result<(), SqliteGraphError> {
+    // Scenario: Verify snapshot remains consistent despite writes
+    // Expected: Snapshot never changes after acquisition
+    let graph = create_test_graph()?;
+    warm_cache(&graph)?;
+
+    let snapshot = graph.acquire_snapshot()?;
+    let original_count = snapshot.node_count();
+    let original_edges = snapshot.edge_count();
+
+    // Perform many writes
+    for i in 0..20 {
+        let _ = insert_entity(
+            &graph,
+            GraphEntityCreate {
+                kind: "write_test".to_string(),
+                name: format!("write_node_{}", i),
+                file_path: Some(format!("write_{}.rs", i)),
+                data: serde_json::json!({}),
+            },
+        );
+    }
+
+    warm_cache(&graph)?;
+
+    // Verify snapshot unchanged
+    assert_eq!(snapshot.node_count(), original_count);
+    assert_eq!(snapshot.edge_count(), original_edges);
+
+    // Verify graph changed
+    let final_count = node_count(&graph)?;
+    assert!(final_count > original_count as i64);
+
+    Ok(())
+}
+
+//
+// GROUP 7: TRANSACTION EDGE CASES
+//
+
+#[test]
+fn test_empty_transaction() -> Result<(), SqliteGraphError> {
+    // Scenario: Transaction with no operations (SQLite auto-commits each statement)
+    // Expected: Empty state is valid, no errors
+    let graph = SqliteGraph::open_in_memory()?;
+
+    // Auto-commit each statement in SQLite
+    let ids = graph.list_entity_ids()?;
+    assert!(ids.is_empty(), "Graph should be empty");
+
+    // "Empty transaction" - no operations performed
+    // Verify state is consistent
+    let count_after = node_count(&graph)?;
+    assert_eq!(count_after, 0, "Count should still be 0");
+
+    Ok(())
+}
+
+#[test]
+fn test_transaction_with_failed_operations() -> Result<(), SqliteGraphError> {
+    // Scenario: Transaction mix of successful and failed operations
+    // Expected: Successful operations commit, failed ones error
+    let graph = SqliteGraph::open_in_memory()?;
+
+    // Successful operation
+    let id1 = insert_entity(
+        &graph,
+        GraphEntityCreate {
+            kind: "test".to_string(),
+            name: "success".to_string(),
+            file_path: Some("success.rs".to_string()),
+            data: serde_json::json!({}),
+        },
+    )?;
+
+    // Try to create edge to non-existent node (will fail)
+    let result = insert_edge(
+        &graph,
+        GraphEdgeCreate {
+            from_id: id1,
+            to_id: 99999, // Non-existent
+            edge_type: "fails".to_string(),
+            data: serde_json::json!({}),
+        },
+    );
+
+    // Edge creation should fail
+    assert!(result.is_err(), "Edge to non-existent node should fail");
+
+    // But entity should still exist (SQLite auto-commits the insert)
+    let ids = graph.list_entity_ids()?;
+    assert_eq!(ids.len(), 1, "Entity should exist");
+
+    Ok(())
+}
+
+#[test]
+fn test_partial_modification_state() -> Result<(), SqliteGraphError> {
+    // Scenario: Partial graph modification with errors
+    // Expected: Successful modifications persist, errors don't corrupt state
+    let graph = create_test_graph()?;
+
+    let initial_count = node_count(&graph)?;
+
+    // Add some entities successfully
+    for i in 0..5 {
+        let _ = insert_entity(
+            &graph,
+            GraphEntityCreate {
+                kind: "partial".to_string(),
+                name: format!("partial_{}", i),
+                file_path: Some(format!("partial_{}.rs", i)),
+                data: serde_json::json!({}),
+            },
+        );
+    }
+
+    // Try to create edges to non-existent nodes
+    let entity_ids = graph.list_entity_ids()?;
+    if !entity_ids.is_empty() {
+        let _ = insert_edge(
+            &graph,
+            GraphEdgeCreate {
+                from_id: entity_ids[0],
+                to_id: 99998,
+                edge_type: "bad_edge".to_string(),
+                data: serde_json::json!({}),
+            },
+        );
+    }
+
+    // Verify state is consistent
+    let final_count = node_count(&graph)?;
+    assert!(final_count > initial_count, "Successful inserts should persist");
+
+    // Verify graph is still functional
+    let _ = graph.acquire_snapshot()?;
+
+    Ok(())
+}
+
 use std::sync::Arc;
