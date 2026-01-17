@@ -259,8 +259,6 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
     }
 
     fn snapshot_import(&self, import_dir: &std::path::Path) -> Result<crate::backend::ImportMetadata, SqliteGraphError> {
-        use std::fs;
-
         let snapshot_file = import_dir.join("snapshot.json");
 
         if !snapshot_file.exists() {
