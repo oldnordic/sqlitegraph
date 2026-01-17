@@ -31,7 +31,7 @@ pub struct SqliteGraph {
 }
 
 // Helper function to check if connection is in-memory
-fn is_in_memory_connection(conn: &Connection) -> bool {
+pub fn is_in_memory_connection(conn: &Connection) -> bool {
     // Check database filename - in-memory databases have empty or special names
     match conn.pragma_query_value(None, "database_list", |row| {
         let name: String = row.get(1)?;

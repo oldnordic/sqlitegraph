@@ -1073,6 +1073,80 @@ impl SqliteGraph {
         Ok(indexes)
     }
 
+    /// Create or get an HNSW index with persistent storage (for file-based databases)
+    ///
+    /// This method automatically detects if the database is file-based and creates
+    /// the index with SQLiteVectorStorage for automatic vector persistence.
+    /// For in-memory databases, falls back to in-memory storage.
+    ///
+    /// # Arguments
+    /// * `name` - Name to identify this index
+    /// * `config` - HNSW configuration parameters
+    ///
+    /// # Returns
+    ///
+    /// Returns a mutable reference to the HnswIndex ready for vector operations
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use sqlitegraph::{SqliteGraph, hnsw::{HnswConfig, DistanceMetric}};
+    ///
+    /// let graph = SqliteGraph::open("mydb.db")?;
+    /// let config = HnswConfig::builder()
+    ///     .dimension(256)
+    ///     .distance_metric(DistanceMetric::Cosine)
+    ///     .build()?;
+    ///
+    /// let hnsw = graph.hnsw_index_persistent("embeddings", config)?;
+    /// // Vectors inserted into this index will persist to the database
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn hnsw_index_persistent(
+        &self,
+        name: &str,
+        config: HnswConfig,
+    ) -> Result<std::sync::RwLockWriteGuard<'_, HashMap<String, HnswIndex>>, SqliteGraphError> {
+        use std::sync::RwLock;
+
+        // Check if index already exists
+        {
+            let indexes = self.hnsw_indexes.read().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
+            if indexes.contains_key(name) {
+                return Err(SqliteGraphError::invalid_input(format!("HNSW index '{}' already exists. Use get_hnsw_index() to retrieve it.", name)));
+            }
+        }
+
+        // Check if database is file-based (not in-memory)
+        let is_file_based = !crate::graph::is_in_memory_connection(&self.conn);
+
+        // Create index with appropriate storage backend
+        let hnsw = if is_file_based {
+            // For file-based databases, use persistent storage
+            // Get database path to open a new connection
+            let db_path = self.conn.pragma_query_value(None, "database_list", |row| {
+                let name: String = row.get(1)?;
+                Ok(name)
+            }).map_err(|e| SqliteGraphError::invalid_input(format!("Failed to get database path: {}", e)))?;
+
+            let conn_for_storage = rusqlite::Connection::open(db_path)
+                .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to open connection for storage: {}", e)))?;
+
+            HnswIndex::with_persistent_storage(name, config, conn_for_storage)
+                .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to create HNSW index: {}", e)))?
+        } else {
+            // For in-memory databases, use in-memory storage
+            HnswIndex::new(name, config)
+                .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to create HNSW index: {}", e)))?
+        };
+
+        // Store the index (metadata already saved by with_persistent_storage)
+        let mut indexes = self.hnsw_indexes.write().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
+        indexes.insert(name.to_string(), hnsw);
+
+        Ok(indexes)
+    }
+
     /// Get an existing HNSW index by name
     ///
     /// # Arguments

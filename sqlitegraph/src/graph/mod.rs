@@ -3,7 +3,7 @@
 //! Provides a lightweight, deterministic graph database with entity and edge storage,
 //! pattern matching, MVCC-lite snapshots, and deterministic indexing.
 
-pub use self::core::SqliteGraph;
+pub use self::core::{SqliteGraph, is_in_memory_connection};
 
 mod adjacency;
 mod core;
