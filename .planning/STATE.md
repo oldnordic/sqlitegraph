@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-01-17)
 
 **Core value:** Feature parity, performance, and reliability equally.
-**Current focus:** Phase 5 — HNSW Persistence
+**Current focus:** Phase 6 — HNSW CLI Integration
 
 ## Current Position
 
-Phase: 5 of 10 (HNSW Persistence)
-Plan: 05-03 complete
+Phase: 6 of 10 (HNSW CLI Integration)
+Plan: 06-01 complete
 Status: In progress
-Last activity: 2026-01-17 — Plan 05-03: HNSW Persistence Tests and Edge Cases
+Last activity: 2026-01-17 — Plan 06-01: CLI HNSW Index Persistence
 
-Progress: █████████░░ 50% (5 of 10 phases complete)
+Progress: ████████░░ 60% (6 of 10 phases complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 22
+- Total plans completed: 23
 - Average duration: 10 min
-- Total execution time: 3.7 hours
+- Total execution time: 3.9 hours
 
 **By Phase:**
 
@@ -31,7 +31,8 @@ Progress: █████████░░ 50% (5 of 10 phases complete)
 | 2 | 3 | 30 min | 10 min |
 | 3 | 3 | 30 min | 10 min |
 | 4 | 3 | 50 min | 17 min |
-| 5 | 1 | 10 min | 10 min |
+| 5 | 3 | 30 min | 10 min |
+| 6 | 1 | 25 min | 25 min |
 
 **Recent Trend:**
 - Last 5 plans: 04-01 (15 min), 04-02 (25 min), 04-03 (20 min), 05-01 (10 min)
@@ -118,8 +119,8 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-17 (current session)
-Completed: Plan 05-01 (HNSW Index Metadata Persistence)
-Next: Plan 05-02 (HNSW Vector Data Persistence)
+Completed: Plan 06-01 (CLI HNSW Index Persistence)
+Next: Plan 06-02 (if needed) or continue to Phase 7
 Resume file: None
 
 **Phase 3 Summary:**
@@ -195,3 +196,30 @@ Resume file: None
   - HnswIndex::config() read-only accessor
 - Tests document current limitations and workflow
 - All 134 HNSW tests passing (8 new persistence tests)
+
+**Phase 6 Progress:** 🔄 IN PROGRESS
+- Plan 06-01 complete (CLI HNSW Index Persistence) ✅ NEW
+- Summary: .planning/phases/06/06-01-SUMMARY.md ✅ NEW
+- Added `hnsw_index_persistent()` method to SqliteGraph ✅ NEW
+  - Detects file-based vs in-memory databases
+  - Saves metadata on main connection for persistence
+  - Opens separate connection for SQLiteVectorStorage
+  - Falls back to InMemoryVectorStorage for :memory: databases
+- Updated CLI to use persistent storage ✅ NEW
+  - `hnsw-create` uses `hnsw_index_persistent()`
+  - Added `--index-name` parameter for custom index names
+  - Updated help text and warning comments
+- Known limitation: Vector persistence requires architectural fix ✅ NEW
+  - Index metadata persists across CLI invocations ✅
+  - Vectors do NOT persist (load_metadata creates wrong storage type) ❌
+  - Requires Connection sharing via Arc<Mutex<Connection>> (future work)
+- Commits: 3 ✅ NEW
+
+**06-01 Key Achievements:** ✅ NEW
+- HNSW index metadata now persists across CLI invocations
+- Index configuration (dimension, m, ef_construction, metric) survives CLI restart
+- `hnsw-stats` successfully loads persisted indexes
+- Added `--index-name` parameter to `hnsw-create` for multiple indexes
+- Exported `is_in_memory_connection()` as public API
+- Documented vector persistence limitation and fix approach
+- Manual testing confirms metadata persistence works correctly
