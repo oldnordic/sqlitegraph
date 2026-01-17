@@ -14,8 +14,7 @@ mod operations;
 mod rollback;
 
 use crate::backend::native::{
-    GraphFile, NodeStore, EdgeStore, NativeResult, NativeBackendError,
-    NodeFlags, FileOffset, EdgeRecord, NativeNodeId,
+    GraphFile, NodeStore, EdgeStore, NativeNodeId,
     graph_file::TransactionManager,
 };
 use crate::backend::native::v2::{
@@ -24,9 +23,8 @@ use crate::backend::native::v2::{
 };
 use crate::backend::native::v2::wal::V2WALRecord;
 use super::{errors::RecoveryError, core::TransactionState, constants::*};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
-use serde_json::Value;
 use std::time::Instant;
 
 macro_rules! info { ($($arg:tt)*) => { log::info!($($arg)*); }; }
