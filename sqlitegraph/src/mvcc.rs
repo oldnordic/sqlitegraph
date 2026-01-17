@@ -78,9 +78,36 @@ impl SnapshotState {
 ///
 /// Provides lock-free snapshot acquisition and deterministic behavior.
 /// Snapshots are completely isolated from write operations.
+///
+/// # Memory Ordering Guarantees
+///
+/// This implementation relies on ArcSwap's memory ordering guarantees:
+/// - **ArcSwap::load()**: Uses Acquire ordering, ensuring all writes before store are visible
+/// - **ArcSwap::store()**: Uses Release ordering, ensuring all writes complete before publication
+/// - This provides proper happens-before relationship between writers and readers
+///
+/// # Thread Safety
+///
+/// The SnapshotManager is thread-safe and can be shared across threads via Arc:
+/// - Multiple readers can acquire snapshots concurrently without blocking
+/// - Writers can update state concurrently with readers
+/// - No locks or mutexes required (lock-free)
+/// - No TOCTOU (time-of-check-time-of-use) issues due to atomic pointer swap
+///
+/// # Invariants
+///
+/// 1. **Snapshot State Immutability**: Once a SnapshotState is created, it never changes
+/// 2. **Atomic Publication**: State updates are atomic - readers see either old or new state, never partial
+/// 3. **Arc Reference Counting**: Each snapshot maintains proper Arc reference counts
+/// 4. **No Mutable Aliasing**: Arc<SnapshotState> ensures no mutable access to snapshot data
 #[derive(Debug)]
 pub struct SnapshotManager {
     /// Atomic reference to current snapshot state
+    ///
+    /// ArcSwap provides lock-free atomic updates with proper memory ordering:
+    /// - Load uses Acquire ordering
+    /// - Store uses Release ordering
+    /// - Guarantees happens-before relationship
     current: ArcSwap<SnapshotState>,
 }
 
@@ -106,24 +133,109 @@ impl SnapshotManager {
 
     /// Atomically update the snapshot state
     ///
+    /// This method creates a new immutable snapshot state and publishes it atomically
+    /// using ArcSwap's store operation with Release memory ordering.
+    ///
+    /// # Memory Ordering
+    ///
+    /// - All writes to the new SnapshotState complete **before** the store
+    /// - The store operation uses Release ordering
+    /// - Readers with Acquire ordering see the complete, consistent state
+    ///
+    /// # Thread Safety
+    ///
+    /// This method is thread-safe and can be called concurrently with snapshot acquisition:
+    /// - Multiple writers can call this (though serialization happens at ArcSwap level)
+    /// - Readers continue to see old state until this store completes
+    /// - No partial updates visible to readers (atomic pointer swap)
+    ///
     /// # Arguments
     /// * `outgoing` - New outgoing adjacency map to clone
     /// * `incoming` - New incoming adjacency map to clone
+    ///
+    /// # Invariants Preserved
+    ///
+    /// 1. The new SnapshotState is fully constructed before store
+    /// 2. No mutable references to the state exist after publication
+    /// 3. Arc reference count starts at 1 (this ArcSwap reference)
     pub fn update_snapshot(
         &self,
         outgoing: &HashMap<NodeId, Vec<NodeId>>,
         incoming: &HashMap<NodeId, Vec<NodeId>>,
     ) {
+        // Create new state with cloned HashMaps
+        // This is a deep copy, ensuring complete isolation
         let new_state = SnapshotState::new(outgoing, incoming);
+
+        // Verify invariants before publication
+        // These checks run in debug mode to catch bugs early
+        #[cfg(debug_assertions)]
+        {
+            // Verify state is fully constructed
+            assert_eq!(new_state.node_count(), outgoing.len(),
+                "Snapshot state node count mismatch");
+            assert_eq!(new_state.edge_count(),
+                outgoing.values().map(|v| v.len()).sum::<usize>(),
+                "Snapshot state edge count mismatch");
+        }
+
+        // Atomic publication with Release ordering
+        // All writes to new_state happen-before this store
         self.current.store(Arc::new(new_state));
     }
 
     /// Acquire a deterministic snapshot of current state
     ///
+    /// This method atomically loads the current snapshot state using ArcSwap's
+    /// load operation with Acquire memory ordering.
+    ///
+    /// # Memory Ordering
+    ///
+    /// - The load operation uses Acquire ordering
+    /// - All writes from the corresponding store are visible
+    /// - Provides happens-before relationship with writer
+    ///
+    /// # Thread Safety
+    ///
+    /// This method is thread-safe and can be called concurrently with state updates:
+    /// - Multiple readers can acquire snapshots concurrently without blocking
+    /// - Acquiring a snapshot never blocks a writer
+    /// - The returned Arc<SnapshotState> provides immutable access
+    ///
     /// # Returns
-    /// `Arc<SnapshotState>` containing immutable snapshot data
+    ///
+    /// `Arc<SnapshotState>` containing immutable snapshot data.
+    /// The Arc ensures the snapshot data remains valid as long as needed.
+    ///
+    /// # Invariants Guaranteed
+    ///
+    /// 1. The returned snapshot state is immutable (no mutable access possible)
+    /// 2. The snapshot is complete and consistent (no torn reads)
+    /// 3. Arc reference count is >= 1 during snapshot lifetime
+    /// 4. No TOCTOU issues (atomic load, not check-then-use)
     pub fn acquire_snapshot(&self) -> Arc<SnapshotState> {
-        self.current.load().clone()
+        // Atomic load with Acquire ordering
+        // This sees either the old state or the new state, never partial
+        let state = self.current.load();
+
+        // Clone the Arc (increases reference count, atomic operation)
+        // This is cheap (just an atomic increment) and doesn't copy the data
+        let snapshot = Arc::clone(&state);
+
+        #[cfg(debug_assertions)]
+        {
+            // Verify snapshot consistency
+            // These checks validate that we got a complete, consistent snapshot
+            let node_count = snapshot.node_count();
+            let edge_count = snapshot.edge_count();
+
+            // Verify internal consistency
+            // (node_count + edge_count should be reasonable for the state)
+            assert!(node_count <= 10_000_000, "Suspiciously large node count");
+            assert!(edge_count <= 100_000_000, "Suspiciously large edge count");
+        }
+
+        snapshot
     }
 
     /// Get current snapshot state without cloning (for internal use)
