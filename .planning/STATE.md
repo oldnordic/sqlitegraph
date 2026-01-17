@@ -11,11 +11,11 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 
 Milestone: v1.0 Production (Phases 8-10)
 Phase: 8 of 10 (Graph Algorithms)
-Plan: 08-01 (Centrality Algorithms)
+Plan: 08-02 (Community Detection Algorithms)
 Status: ✅ Complete
-Last activity: 2026-01-17 — Implemented PageRank and Betweenness Centrality
+Last activity: 2026-01-17 — Implemented Label Propagation and Louvain method
 
-Progress: ████████░░░ 71% (7 of 10 phases complete, 1/3 in v1.0)
+Progress: ████████░░░ 72% (7 of 10 phases complete, 2/3 in v1.0)
 
 **v1.0 Production Scope:**
 - Phase 8: Graph Algorithms (PageRank, betweenness centrality, community detection)
@@ -31,9 +31,9 @@ Progress: ████████░░░ 71% (7 of 10 phases complete, 1/3 in
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 29
+- Total plans completed: 30
 - Average duration: 11 min
-- Total execution time: 5 hours 11 min
+- Total execution time: 5 hours 30 min
 
 **By Phase:**
 
@@ -46,11 +46,11 @@ Progress: ████████░░░ 71% (7 of 10 phases complete, 1/3 in
 | 5 | 3 | 30 min | 10 min |
 | 6 | 2 | 50 min | 25 min |
 | 7 | 3 | 30 min | 10 min |
-| 8 | 1 | 21 min | 21 min |
+| 8 | 2 | 38 min | 19 min |
 
 **Recent Trend:**
-- Last 3 plans: 07-02 (10 min), 07-03 (15 min), 08-01 (21 min)
-- Trend: Slightly longer (more complex algorithms)
+- Last 3 plans: 07-03 (15 min), 08-01 (21 min), 08-02 (17 min)
+- Trend: Consistent (~18 min/plan for algorithm implementations)
 
 *Updated after each plan completion*
 
@@ -329,27 +329,48 @@ Planned work after v1.0 ships:
 - Criterion framework with baseline comparison support
 
 **Phase 8 Progress:** 🔄 IN PROGRESS
-- Plan 08-01 complete (Centrality Algorithms) ✅ NEW
-- Summary: .planning/phases/08-graph-algorithms/08-01-SUMMARY.md ✅ NEW
-- Implemented PageRank algorithm (power iteration method) ✅ NEW
+- Plan 08-01 complete (Centrality Algorithms) ✅
+- Plan 08-02 complete (Community Detection Algorithms) ✅ NEW
+- Summary: .planning/phases/08-graph-algorithms/08-01-SUMMARY.md
+- Summary: .planning/phases/08-graph-algorithms/08-02-SUMMARY.md ✅ NEW
+- Implemented PageRank algorithm (power iteration method)
   - Computes node importance based on link structure
   - Handles dangling nodes with score redistribution
   - Fixed iteration count for deterministic results
   - Returns scores sorted descending
-- Implemented Betweenness Centrality (Brandes' algorithm) ✅ NEW
+- Implemented Betweenness Centrality (Brandes' algorithm)
   - Measures bridge nodes in graph topology
   - BFS-based shortest path computation
   - Handles disconnected components gracefully
   - Returns centrality values sorted descending
-- Public API exports: pagerank, betweenness_centrality ✅ NEW
-- Comprehensive test coverage: 6 tests (all passing) ✅ NEW
-  - test_pagerank_cycle_graph, test_pagerank_star_graph, test_pagerank_dangling_nodes
-  - test_betweenness_line_graph, test_betweenness_star_graph, test_betweenness_disconnected
-- Commits: 3 ✅ NEW
+- Implemented Label Propagation algorithm ✅ NEW
+  - Fast near-linear O(k*|E|) community detection
+  - Iterative label adoption from neighbors
+  - Deterministic tiebreaking (smallest label)
+  - Returns communities sorted by smallest node ID
+- Implemented Louvain method (modularity optimization) ✅ NEW
+  - Maximizes modularity score via node moves
+  - Simplified single-pass version
+  - Handles edge cases (empty graphs, no edges)
+  - Returns communities sorted by smallest node ID
+- Public API exports: pagerank, betweenness_centrality, label_propagation, louvain_communities ✅ NEW
+- Comprehensive test coverage: 15 tests (all passing) ✅ NEW
+  - 6 centrality tests (3 pagerank, 3 betweenness)
+  - 6 community detection tests (3 label_prop, 3 louvain) ✅ NEW
+  - 3 existing algorithm tests
+- Commits: 7 (3 for 08-01, 4 for 08-02) ✅ NEW
 
-**08-01 Key Achievements:** ✅ NEW
+**08-01 Key Achievements:**
 - PageRank: 73 lines, O(iterations * (n + m)) complexity, deterministic output
 - Betweenness Centrality: 88 lines, O(n * (n + m)) complexity for unweighted graphs
 - Both algorithms use AHashMap for efficient storage
 - Zero clippy warnings, 100% test pass rate
 - Production-ready with comprehensive documentation
+
+**08-02 Key Achievements:** ✅ NEW
+- Label Propagation: 96 lines, O(k*|E|) complexity, deterministic tiebreaking
+- Louvain method: 135 lines, O(k*|V|*|E|) complexity, modularity optimization
+- Both use AHashMap for efficient storage
+- Zero clippy warnings, 100% test pass rate (15/15)
+- Production-ready with comprehensive documentation
+- Handles bidirectional edges correctly
