@@ -118,3 +118,127 @@ None - plan executed as specified.
 ## Next Steps
 
 This plan is complete and unblocks PLAN-01-02.
+
+---
+
+# Phase 01 - Plan 01-02 Summary
+
+**Plan Name:** Remove Unused Imports and Dead Code
+**Status:** ✅ Complete
+**Date:** 2026-01-17
+
+## Overview
+
+Successfully removed all unused imports and dead code identified by clippy throughout the WAL recovery modules and other codebase areas. This cleanup reduces code clutter and improves compilation times.
+
+## Tasks Completed
+
+### Task 01-02a: Clean impl_.rs unused imports ✅
+- **File:** `sqlitegraph/src/backend/sqlite/impl_.rs`
+- **Change:** Removed unused `use std::fs;` from `snapshot_import` function
+- **Commit:** `163a02f`
+
+### Task 01-02b: Clean memory_resource_manager/mod.rs unused imports ✅
+- **File:** `sqlitegraph/src/backend/native/graph_file/memory_resource_manager/mod.rs`
+- **Change:** Removed unused `use memmap2::MmapMut;` (cfg-gated but not actually used)
+- **Commit:** `28a9a53`
+
+### Task 01-02c: Clean memory_resource_manager/operations.rs unused imports ✅
+- **File:** `sqlitegraph/src/backend/native/graph_file/memory_resource_manager/operations.rs`
+- **Change:** Removed unused `use memmap2::MmapMut;` (cfg-gated but not actually used)
+- **Commit:** `295985a`
+
+### Task 01-02d: Clean graph_backend.rs unused imports ✅
+- **File:** `sqlitegraph/src/backend/native/graph_backend.rs`
+- **Change:** Removed unused `use std::path::Path;` from `create_wal_integrator` function
+- **Commit:** `eaf37ae`
+
+### Task 01-02e: Clean types.rs unused imports ✅
+- **File:** `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/types.rs`
+- **Change:** Removed unused `use std::path::PathBuf;`
+- **Commit:** `fed7892`
+
+### Task 01-02f: Clean operations module files unused imports ✅
+- **Files:**
+  - `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/operations/mod.rs`
+  - `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/operations/node_ops.rs`
+  - `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/operations/edge_ops.rs`
+  - `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/operations/transaction_ops.rs`
+- **Changes:**
+  - `mod.rs`: Removed unused `RecoveryError` import and `info!` macro
+  - `node_ops.rs`: Removed `GraphFile`, `NodeStore`, `StringTable`, `Arc`, `Mutex`, `RwLock`, `error!` macro
+  - `edge_ops.rs`: Removed `GraphFile`, `NodeStore`, `Arc`, `Mutex`, `RwLock`
+  - `transaction_ops.rs`: Removed `GraphFile`, `NodeStore`, `StringTable`, `Arc`, `Mutex`, `RwLock`
+- **Commit:** `8a5db0b`
+
+### Task 01-02g: Clean rollback.rs unused imports ✅
+- **File:** `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/rollback.rs`
+- **Change:** Removed unused `NativeResult` import
+- **Commit:** `19b5b94`
+
+### Task 01-02h: Clean replayer/mod.rs unused imports ✅
+- **File:** `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/mod.rs`
+- **Changes:** Removed unused imports:
+  - `NativeResult`, `NativeBackendError`, `NodeFlags`, `FileOffset`, `EdgeRecord`
+  - `Path` trait (kept `PathBuf` which is actually used)
+  - `serde_json::Value`
+- **Commit:** `2f3d63c`
+
+## Commit History
+
+| Hash | Message | Files Changed |
+|------|---------|---------------|
+| `163a02f` | refactor(01-02): clean unused import in impl_.rs | 1 |
+| `28a9a53` | refactor(01-02): clean unused import in memory_resource_manager/mod.rs | 1 |
+| `295985a` | refactor(01-02): clean unused import in memory_resource_manager/operations.rs | 1 |
+| `eaf37ae` | refactor(01-02): clean unused import in graph_backend.rs | 1 |
+| `fed7892` | refactor(01-02): clean unused import in replayer/types.rs | 1 |
+| `8a5db0b` | refactor(01-02): clean unused imports in replayer operations modules | 4 |
+| `19b5b94` | refactor(01-02): clean unused import in replayer/rollback.rs | 1 |
+| `2f3d63c` | refactor(01-02): clean unused imports in replayer/mod.rs | 1 |
+
+**Total Commits:** 8
+**Total Files Modified:** 11
+
+## Verification
+
+The cleanup addressed all `unused_import` warnings identified by clippy in the following areas:
+- SQLite backend implementation
+- Native graph backend
+- Memory resource manager modules
+- V2 WAL recovery replayer modules
+
+### Before
+```bash
+warning: unused import: `std::fs`
+warning: unused import: `memmap2::MmapMut`
+warning: unused import: `std::path::Path`
+warning: unused import: `std::path::PathBuf`
+warning: unused import: `NativeResult`
+# ... plus many more across operations module files
+```
+
+### After
+All targeted unused import warnings in the specified files have been resolved.
+
+## Deviations from Plan
+
+**Note:** The original plan mentioned cleaning up `operations.rs`, but that file was restructured in PLAN-01-01 into a modular structure:
+- `operations/mod.rs`
+- `operations/node_ops.rs`
+- `operations/edge_ops.rs`
+- `operations/transaction_ops.rs`
+
+The cleanup was adapted to address all the new modular files instead of the non-existent monolithic `operations.rs`.
+
+## Success Criteria
+
+- ✅ All `unused_import` warnings resolved in targeted files
+- ✅ All `unused_macros` warnings resolved in targeted files
+- ✅ No behavior changes (only import removal)
+- ✅ Atomic commits per file/file-group for safety
+- ✅ Proper commit message format with plan identifiers
+
+## Next Steps
+
+This cleanup (PLAN-01-02) was dependent on PLAN-01-01 (complete restructure) and is now complete. The codebase is ready for PLAN-01-03.
