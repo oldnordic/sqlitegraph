@@ -4,6 +4,29 @@ use ahash::{AHashMap, AHashSet};
 
 use crate::{errors::SqliteGraphError, graph::SqliteGraph};
 
+/// Finds all connected components in the graph using BFS.
+///
+/// A connected component is a maximal subgraph where any two nodes are connected
+/// by a path. This function uses bidirectional BFS (both incoming and outgoing edges).
+///
+/// # Arguments
+/// * `graph` - The graph to analyze
+///
+/// # Returns
+/// Vector of components, where each component is a sorted vector of node IDs.
+/// Components are sorted by their smallest node ID.
+///
+/// # Complexity
+/// Time: O(|V| + |E|) - visits each node and edge once
+/// Space: O(|V|) for visited set and BFS queue
+///
+/// # Example
+/// ```rust
+/// use sqlitegraph::{SqliteGraph, algo::connected_components};
+/// let graph = SqliteGraph::open_in_memory()?;
+/// // ... add nodes and edges ...
+/// let components = connected_components(&graph)?;
+/// ```
 pub fn connected_components(graph: &SqliteGraph) -> Result<Vec<Vec<i64>>, SqliteGraphError> {
     let mut components = Vec::new();
     let mut visited = AHashSet::new();
@@ -34,6 +57,35 @@ pub fn connected_components(graph: &SqliteGraph) -> Result<Vec<Vec<i64>>, Sqlite
     Ok(components)
 }
 
+/// Finds cycles in the graph up to a specified limit.
+///
+/// Uses depth-first search to enumerate cycles starting from each node.
+/// Cycles are normalized (rotated to start with smallest node) and deduplicated.
+///
+/// # Arguments
+/// * `graph` - The graph to analyze
+/// * `limit` - Maximum number of cycles to find (0 returns empty result)
+///
+/// # Returns
+/// Vector of cycles, where each cycle is a vector of node IDs starting and ending
+/// with the same node. Cycles are sorted for determinism.
+///
+/// # Complexity
+/// Time: O(limit * (|V| + |E|)) in practice, but worst-case exponential
+/// Space: O(|V|) for DFS stack and cycle paths
+///
+/// # Caveats
+/// - May return duplicate cycles in symmetric graphs
+/// - Does not guarantee finding all cycles (stops at limit)
+/// - Performance degrades on dense graphs with many cycles
+///
+/// # Example
+/// ```rust
+/// use sqlitegraph::{SqliteGraph, algo::find_cycles_limited};
+/// let graph = SqliteGraph::open_in_memory()?;
+/// // ... add nodes and edges ...
+/// let cycles = find_cycles_limited(&graph, 10)?;
+/// ```
 pub fn find_cycles_limited(
     graph: &SqliteGraph,
     limit: usize,
@@ -74,6 +126,29 @@ pub fn find_cycles_limited(
     Ok(cycles)
 }
 
+/// Computes node degrees (total number of incoming + outgoing edges).
+///
+/// Returns all nodes sorted by their degree, useful for finding hubs (high-degree nodes)
+/// or isolates (zero-degree nodes) in the graph.
+///
+/// # Arguments
+/// * `graph` - The graph to analyze
+/// * `descending` - If true, sort highest degree first; if false, sort lowest first
+///
+/// # Returns
+/// Vector of (node_id, degree) tuples sorted by degree. Ties are broken by node ID.
+///
+/// # Complexity
+/// Time: O(|V| + |E|) - visits each node and counts edges
+/// Space: O(|V|) for degree storage
+///
+/// # Example
+/// ```rust
+/// use sqlitegraph::{SqliteGraph, algo::nodes_by_degree};
+/// let graph = SqliteGraph::open_in_memory()?;
+/// // ... add nodes and edges ...
+/// let degrees = nodes_by_degree(&graph, true)?;
+/// ```
 pub fn nodes_by_degree(
     graph: &SqliteGraph,
     descending: bool,
@@ -104,17 +179,42 @@ fn normalize_cycles(cycles: &mut [Vec<i64>]) {
     cycles.sort();
 }
 
-/// Label Propagation algorithm for community detection.
+/// Label Propagation algorithm for fast community detection.
 ///
 /// Each node starts with its own label, then iteratively adopts the most frequent
 /// label among its neighbors. Converges when no labels change or max_iterations reached.
 ///
+/// This is a near-linear time algorithm suitable for large graphs. Uses deterministic
+/// tiebreaking (smallest label wins) for reproducible results.
+///
 /// # Arguments
 /// * `graph` - The graph to analyze
-/// * `max_iterations` - Maximum number of iterations to prevent infinite loops
+/// * `max_iterations` - Maximum number of iterations to prevent infinite loops (typically 5-10)
 ///
 /// # Returns
-/// Communities as vectors of node IDs, sorted by smallest node ID in each community
+/// Communities as vectors of node IDs, sorted by smallest node ID in each community.
+///
+/// # Complexity
+/// Time: O(k * |E|) where k = iterations (typically 5-10)
+/// Space: O(|V|) for label storage
+///
+/// # Algorithm Details
+/// - Initialize each node with unique label (node ID)
+/// - Iteratively adopt most frequent neighbor label
+/// - Bidirectional edges (both incoming and outgoing neighbors)
+/// - Deterministic tiebreaking: smallest label wins
+/// - Early stopping when converged (no labels change)
+///
+/// # References
+/// - Raghavan, U. N., Albert, R., & Kumara, S. (2007). "Near linear time algorithm to detect community structures in large-scale networks."
+///
+/// # Example
+/// ```rust
+/// use sqlitegraph::{SqliteGraph, algo::label_propagation};
+/// let graph = SqliteGraph::open_in_memory()?;
+/// // ... add nodes and edges ...
+/// let communities = label_propagation(&graph, 10)?;
+/// ```
 pub fn label_propagation(
     graph: &SqliteGraph,
     max_iterations: usize,
@@ -204,23 +304,39 @@ pub fn label_propagation(
 /// Computes PageRank scores for all nodes in the graph.
 ///
 /// PageRank measures node importance based on link structure. Nodes with many
-/// incoming links from important nodes score higher.
+/// incoming links from important nodes receive higher scores. Originally developed
+/// by Google for ranking web pages.
 ///
 /// # Arguments
 /// * `graph` - The graph to analyze
-/// * `damping` - Damping factor (typically 0.85), representing probability of continuing navigation
-/// * `iterations` - Number of power iteration iterations (fixed, not convergence-based)
+/// * `damping` - Damping factor (typically 0.85), representing probability of continuing random walk
+/// * `iterations` - Number of power iteration iterations (20-50 recommended, fixed not convergence-based)
 ///
 /// # Returns
-/// Vector of (node_id, score) tuples sorted by score descending
+/// Vector of (node_id, score) tuples sorted by score descending. Scores sum to approximately 1.0.
 ///
-/// # Algorithm
-/// Uses power iteration method:
+/// # Complexity
+/// Time: O(k * |E|) where k = iterations
+/// Space: O(|V|) for score storage
+///
+/// # Algorithm Details
+/// Uses power iteration method (fixed iteration count for determinism):
 /// 1. Initialize all nodes with equal score (1.0 / node_count)
 /// 2. For each iteration:
 ///    - new_score = (1-d)/n + d * sum(incoming_scores / outgoing_count)
-///    - Handle dangling nodes (no outgoing edges) by distributing their score equally
+///    - Handle dangling nodes (no outgoing edges) by redistributing their score equally
 /// 3. Sort results by score descending
+///
+/// # References
+/// - Page, L., Brin, S., Motwani, R., & Winograd, T. (1999). "The PageRank Citation Ranking: Bringing Order to the Web."
+///
+/// # Example
+/// ```rust
+/// use sqlitegraph::{SqliteGraph, algo::pagerank};
+/// let graph = SqliteGraph::open_in_memory()?;
+/// // ... add nodes and edges ...
+/// let scores = pagerank(&graph, 0.85, 20)?;
+/// ```
 pub fn pagerank(
     graph: &SqliteGraph,
     damping: f64,
@@ -297,15 +413,20 @@ pub fn pagerank(
 ///
 /// Betweenness centrality measures how often a node appears on shortest paths
 /// between other nodes. Bridge nodes (connecting different parts of the graph)
-/// score higher.
+/// score higher. Useful for finding bottlenecks or control points in networks.
 ///
 /// # Arguments
 /// * `graph` - The graph to analyze
 ///
 /// # Returns
-/// Vector of (node_id, centrality) tuples sorted by centrality descending
+/// Vector of (node_id, centrality) tuples sorted by centrality descending.
+/// Values are normalized by default (divide by 2 for undirected graphs).
 ///
-/// # Algorithm
+/// # Complexity
+/// Time: O(|V| * |E|) for unweighted graphs (Brandes' algorithm)
+/// Space: O(|V| + |E|) for BFS traversal and accumulation
+///
+/// # Algorithm Details
 /// Implements Brandes' algorithm for unweighted graphs:
 /// 1. For each node s, run BFS to compute shortest paths
 /// 2. Track predecessors and path counts during BFS
@@ -313,6 +434,22 @@ pub fn pagerank(
 /// 4. Sum dependencies across all source nodes
 ///
 /// Handles disconnected components gracefully (pairs with no path are ignored).
+///
+/// # Caveats
+/// - Expensive for large graphs (O(VE) time complexity)
+/// - Does not support edge weights (unweighted only)
+/// - For graphs > 10K nodes, consider sampling approximation
+///
+/// # References
+/// - Brandes, U. (2001). "A Faster Algorithm for Betweenness Centrality."
+///
+/// # Example
+/// ```rust
+/// use sqlitegraph::{SqliteGraph, algo::betweenness_centrality};
+/// let graph = SqliteGraph::open_in_memory()?;
+/// // ... add nodes and edges ...
+/// let centrality = betweenness_centrality(&graph)?;
+/// ```
 pub fn betweenness_centrality(
     graph: &SqliteGraph,
 ) -> Result<Vec<(i64, f64)>, SqliteGraphError> {
@@ -393,14 +530,45 @@ pub fn betweenness_centrality(
 /// Louvain method for community detection via modularity optimization.
 ///
 /// Iteratively moves nodes to maximize modularity (how many edges are within
-/// communities vs between communities). Simplified single-pass version.
+/// communities vs between communities). This is a simplified single-pass version.
 ///
 /// # Arguments
 /// * `graph` - The graph to analyze
-/// * `max_iterations` - Maximum number of iterations to prevent infinite loops
+/// * `max_iterations` - Maximum number of iterations to prevent infinite loops (typically 10-20)
 ///
 /// # Returns
-/// Communities as vectors of node IDs, sorted by smallest node ID in each community
+/// Communities as vectors of node IDs, sorted by smallest node ID in each community.
+///
+/// # Complexity
+/// Time: O(k * |V| * |E|) where k = iterations
+/// Space: O(|V|) for community assignments and degrees
+///
+/// # Algorithm Details
+/// Simplified single-pass modularity optimization (no multi-level aggregation):
+/// 1. Initialize each node in its own community
+/// 2. Calculate total edges (m) and node degrees
+/// 3. Iteratively move nodes to maximize modularity delta:
+///    ΔQ = (2*edges_to_community - node_degree*community_degree/m) / (2*m)
+/// 4. Stop when no moves improve modularity
+///
+/// Modularity measures edge density within communities vs random expectation.
+/// Higher values indicate better community structure (typical range: 0.3-0.7).
+///
+/// # Caveats
+/// - Simplified version (no multi-level aggregation)
+/// - May converge to local optima (not guaranteed global optimum)
+/// - Performance depends on graph structure and edge distribution
+///
+/// # References
+/// - Blondel, V. D., et al. (2008). "Fast unfolding of communities in large networks."
+///
+/// # Example
+/// ```rust
+/// use sqlitegraph::{SqliteGraph, algo::louvain_communities};
+/// let graph = SqliteGraph::open_in_memory()?;
+/// // ... add nodes and edges ...
+/// let communities = louvain_communities(&graph, 10)?;
+/// ```
 pub fn louvain_communities(
     graph: &SqliteGraph,
     max_iterations: usize,
