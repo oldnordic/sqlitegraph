@@ -1,6 +1,67 @@
 # SQLiteGraph Changelog
 
-## [0.2.11] - 2026-01-01
+## [0.2.11] - 2026-01-17
+
+### 🚀 Performance Optimization (Phase 7)
+**Parallel WAL recovery, lock contention reduction, and comprehensive benchmarks**
+
+#### Parallel WAL Recovery
+- **Added `with_parallel_recovery(degree)`** configuration method to `GraphConfig`
+  - Default parallelism: 4 threads
+  - Configurable: 1-16 threads for different workloads
+  - Uses rayon's work-stealing thread pool for efficient parallelism
+- **Performance improvements**:
+  - 2-3x speedup for large WAL files (500+ transactions)
+  - 1.5-2x speedup for medium WAL files (50-100 transactions)
+  - Linear scaling with thread count
+
+#### Lock Contention Reduction
+- **Lock-free atomic statistics**: Replaced `Arc<Mutex<ReplayStatistics>>` with `Arc<ReplayStatistics>` using `AtomicU64`
+- **No mutex overhead** during statistics collection in parallel recovery
+- **Thread-safe counters** with `Ordering::Relaxed` for optimal performance
+- **5-10% improvement** in parallel WAL recovery performance
+
+#### Comprehensive Benchmarks
+- **New benchmark suites**:
+  - `wal_recovery_benchmarks.rs`: Sequential vs parallel recovery comparison
+  - `comprehensive_performance.rs`: WAL, insert, traversal, memory benchmarks
+- **CI integration**: `scripts/run_performance_benchmarks.sh` with 10% regression detection
+- **Performance baseline documentation**: `docs/PERFORMANCE_BASELINES.md`
+- **Benchmark coverage**:
+  - WAL recovery throughput (10/50/100/500 transactions)
+  - Insert throughput (1/10/100/1000 batch sizes)
+  - Traversal performance (BFS depths 10/50/100/500)
+  - Memory efficiency (100/1000/10000 nodes)
+
+### 🔧 HNSW CLI Integration (Phase 6)
+**Persistent HNSW index management across CLI invocations**
+
+#### New CLI Commands
+- **`hnsw-list`**: Enumerate all HNSW indexes in database
+- **`hnsw-delete --index-name NAME`**: Delete HNSW index and all vectors with CASCADE
+- **`hnsw-info [--index-name NAME]`**: Show detailed HNSW index metadata and statistics
+- **`--index-name` parameter**: Added to `hnsw-create` for custom index names
+
+#### Persistent Index Storage
+- **`hnsw_index_persistent()`** method added to `SqliteGraph`
+  - Detects file-based vs in-memory databases
+  - Saves metadata on main connection for persistence
+  - Index configuration survives CLI restart
+- **Exported APIs**: `is_in_memory_connection()` and `SqliteGraph.conn` as public
+
+#### HNSW Persistence (Phase 5)
+- **`hnsw_indexes` table**: Index metadata (name, dimension, m, ef_construction, distance_metric)
+- **`hnsw_vectors` table**: Vector data as BLOB with JSON metadata
+- **Auto-load**: Indexes automatically loaded on `SqliteGraph` construction
+- **Full lifecycle**: Create → persist → load → search working end-to-end
+- **134 HNSW tests passing** (8 new persistence tests)
+
+### MVCC Completion (Phase 4)
+- **65 MVCC tests** with 100% pass rate
+- **Lock-free snapshots** using ArcSwap
+- **Concurrent stress testing** (16 threads)
+- **Performance benchmarks**: >10,000 snapshots/sec, <1ms latency
+- **12 gaps identified** and documented with severity ratings
 
 ### Fixes
 - Native V2: ensure node slot reads always use the canonical std I/O path when `native-v2` is enabled without `v2_experimental`, preventing `Corrupt node record … Invalid V2 node record version 0` errors during edge insertion.

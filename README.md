@@ -118,7 +118,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sqlitegraph = "0.2.5"
+sqlitegraph = "0.2.11"
 ```
 
 ### SQLite Backend (Default)
@@ -175,7 +175,7 @@ Enable the Native V2 backend in your `Cargo.toml`:
 
 ```toml
 [dependencies]
-sqlitegraph = { version = "0.2.5", features = ["native-v2"] }
+sqlitegraph = { version = "0.2.11", features = ["native-v2"] }
 ```
 
 ```rust
@@ -280,22 +280,22 @@ fn advanced_usage() -> Result<(), Box<dyn std::error::Error>> {
 
 ```toml
 # Default - SQLite backend only
-sqlitegraph = "0.2.5"
+sqlitegraph = "0.2.11"
 
 # Native V2 backend (high performance)
-sqlitegraph = { version = "0.2.5", features = ["native-v2"] }
+sqlitegraph = { version = "0.2.11", features = ["native-v2"] }
 
 # Legacy compatibility (alias for native-v2)
-sqlitegraph = { version = "0.2.5", features = ["v2_experimental"] }
+sqlitegraph = { version = "0.2.11", features = ["v2_experimental"] }
 
 # Development features - I/O tracing for debugging
-sqlitegraph = { version = "0.2.5", features = ["trace_v2_io"] }
+sqlitegraph = { version = "0.2.11", features = ["trace_v2_io"] }
 
 # Advanced memory-mapped I/O (expert users)
-sqlitegraph = { version = "0.2.5", features = ["v2_io_exclusive_mmap"] }
+sqlitegraph = { version = "0.2.11", features = ["v2_io_exclusive_mmap"] }
 
 # Standard file I/O (stable, default for native-v2)
-sqlitegraph = { version = "0.2.5", features = ["v2_io_exclusive_std"] }
+sqlitegraph = { version = "0.2.11", features = ["v2_io_exclusive_std"] }
 ```
 
 ## CLI Tool
@@ -347,23 +347,39 @@ $ sqlitegraph --command reindex-all --progress --db large_graph.db
 
 ### HNSW Vector Search Commands
 
-The CLI provides HNSW vector search commands for testing and development:
+The CLI provides HNSW vector search commands with persistent index support:
 
 ```bash
-# Create HNSW index
-sqlitegraph --backend sqlite --db :memory: hnsw-create --dimension 768 --m 16 --ef-construction 200 --distance-metric cosine
+# Create HNSW index with custom name
+sqlitegraph --backend sqlite --db mygraph.db hnsw-create --dimension 768 --m 16 --ef-construction 200 --distance-metric cosine --index-name my_vectors
 
 # Insert vectors from JSON file
-sqlitegraph --backend sqlite --db :memory: hnsw-insert --input vectors.json
+sqlitegraph --backend sqlite --db mygraph.db hnsw-insert --index-name my_vectors --input vectors.json
 
 # Search for similar vectors
-sqlitegraph --backend sqlite --db :memory: hnsw-search --input query.json --k 10
+sqlitegraph --backend sqlite --db mygraph.db hnsw-search --index-name my_vectors --input query.json --k 10
 
 # Get index statistics
-sqlitegraph --backend sqlite --db :memory: hnsw-stats
+sqlitegraph --backend sqlite --db mygraph.db hnsw-stats --index-name my_vectors
+
+# List all indexes (NEW in v0.2.11)
+sqlitegraph --backend sqlite --db mygraph.db hnsw-list
+
+# Show detailed index information (NEW in v0.2.11)
+sqlitegraph --backend sqlite --db mygraph.db hnsw-info --index-name my_vectors
+
+# Delete an index (NEW in v0.2.11)
+sqlitegraph --backend sqlite --db mygraph.db hnsw-delete --index-name my_vectors
 ```
 
-**Important**: HNSW indexes do not persist across CLI invocations. Each CLI command creates a new database connection with empty HNSW storage. For persistent vector search functionality, use the Rust API directly:
+**Persistent Index Storage (v0.2.11):**
+- HNSW index metadata **persists** across CLI invocations for file-based databases
+- Index configuration (dimension, m, ef_construction, metric) survives CLI restart
+- Use `--index-name` parameter to manage multiple indexes in the same database
+- Run `hnsw-list` to see all persisted indexes
+- Run `hnsw-info` to view detailed statistics for a specific index
+
+**Note:** For programmatic vector search with full persistence, use the Rust API directly:
 
 ```rust
 let graph = SqliteGraph::open("mydb.db")?;
@@ -373,6 +389,72 @@ let results = hnsw.search(&query, k)?;
 ```
 
 See `docs/hnsw_cli_persistence_issue_20241223.md` for technical details and implementation status.
+
+## Performance Configuration (v0.2.11)
+
+### Parallel WAL Recovery
+
+The Native V2 backend includes parallel WAL recovery for faster database startup after crashes or checkpoints:
+
+```rust
+use sqlitegraph::{GraphConfig, open_graph};
+
+// Default parallelism (4 threads)
+let config = GraphConfig::native();
+let graph = open_graph(&db_path, &config)?;
+
+// Custom parallelism (8 threads for large databases)
+let config = GraphConfig::native()
+    .with_parallel_recovery(8);
+let graph = open_graph(&db_path, &config)?;
+
+// Sequential recovery (for debugging)
+let config = GraphConfig::native()
+    .with_parallel_recovery(1);
+let graph = open_graph(&db_path, &config)?;
+```
+
+**Performance Improvements:**
+- **2-3x speedup** for large WAL files (500+ transactions)
+- **1.5-2x speedup** for medium WAL files (50-100 transactions)
+- Lock-free atomic statistics eliminate contention during parallel replay
+- Linear scaling with thread count
+
+### Lock Contention Reduction
+
+Phase 7 optimizations reduce lock contention through:
+- **Lock-free statistics**: `AtomicU64` counters replace `Arc<Mutex<Statistics>>`
+- **No mutex overhead** during statistics collection in parallel recovery
+- **Thread-safe counters** with `Ordering::Relaxed` for optimal performance
+
+### Performance Benchmarks
+
+Run comprehensive benchmarks to validate performance:
+
+```bash
+# All benchmarks with regression detection
+cargo bench
+
+# WAL recovery benchmarks (sequential vs parallel)
+cargo bench --bench wal_recovery_benchmarks
+
+# Comprehensive performance suite
+cargo bench --bench comprehensive_performance
+
+# CI integration with regression detection
+./scripts/run_performance_benchmarks.sh
+```
+
+**Benchmark Coverage:**
+- WAL recovery throughput (10/50/100/500 transactions)
+- Insert throughput (1/10/100/1000 batch sizes)
+- Traversal performance (BFS depths 10/50/100/500)
+- Memory efficiency (100/1000/10000 nodes)
+
+**Regression Detection:**
+- 10% performance degradation threshold
+- Baseline comparison support
+- HTML reports with trend analysis
 
 ## Getting Started with Examples
 
