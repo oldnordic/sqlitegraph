@@ -122,6 +122,9 @@ pub use errors::SqliteGraphError;
 // Re-export graph core types
 pub use graph::{GraphEdge, GraphEntity, SqliteGraph};
 
+// Re-export graph algorithms
+pub use algo::{betweenness_centrality, label_propagation, louvain_communities, pagerank};
+
 // Internal modules - not part of public API
 pub mod algo; // Public for tests
 mod api_ergonomics;
