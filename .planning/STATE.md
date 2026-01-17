@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 ## Current Position
 
 Phase: 5 of 10 (HNSW Persistence)
-Plan: 05-01 complete
+Plan: 05-03 complete
 Status: In progress
-Last activity: 2026-01-17 — Plan 05-01: HNSW Index Metadata Persistence
+Last activity: 2026-01-17 — Plan 05-03: HNSW Persistence Tests and Edge Cases
 
 Progress: █████████░░ 50% (5 of 10 phases complete)
 
@@ -141,17 +141,21 @@ Resume file: None
 
 **Phase 5 Progress:** 🔄 IN PROGRESS
 - Plan 05-01 complete (HNSW Index Metadata Persistence) ✅
-- Plan 05-02 complete (HNSW Vector Data Persistence) ✅ NEW
+- Plan 05-02 complete (HNSW Vector Data Persistence) ✅
+- Plan 05-03 complete (HNSW Persistence Tests and Edge Cases) ✅ NEW
 - Summary: .planning/phases/05/05-01-SUMMARY.md
-- Summary: .planning/phases/05/05-02-SUMMARY.md ✅ NEW
+- Summary: .planning/phases/05/05-02-SUMMARY.md
+- Summary: .planning/phases/05/05-03-SUMMARY.md ✅ NEW
 - Metadata save/load methods implemented ✅
 - SqliteGraph integration complete ✅
 - Integration test: metadata persists across reconnection ✅
-- SQLiteVectorStorage implemented ✅ NEW
-- Vector loading and HNSW rebuild implemented ✅ NEW
-- SqliteGraph loads vectors on startup ✅ NEW
-- HNSW tests: 126 passing (up from 120) ✅ NEW
-- Commits: 6 (3 for 05-01, 3 for 05-02) ✅ NEW
+- SQLiteVectorStorage implemented ✅
+- Vector loading and HNSW rebuild implemented ✅
+- SqliteGraph loads vectors on startup ✅
+- Comprehensive persistence test suite: 8 tests passing ✅ NEW
+- API enhancements: HnswConfig::new(), vector_count(), config() ✅ NEW
+- HNSW tests: 134 passing (up from 126) ✅ NEW
+- Commits: 9 (3 for 05-01, 3 for 05-02, 3 for 05-03) ✅ NEW
 
 **05-01 Key Achievements:**
 - Added `name` field to HnswIndex for persistence identification
@@ -163,7 +167,7 @@ Resume file: None
 - DistanceMetric serialization/deserialization via as_str()
 - Integration test validates full persistence lifecycle
 
-**05-02 Key Achievements:** ✅ NEW
+**05-02 Key Achievements:**
 - Implemented SQLiteVectorStorage with full VectorStorage trait
   - Vectors persisted to hnsw_vectors table as BLOB
   - Metadata stored as JSON TEXT
@@ -177,3 +181,17 @@ Resume file: None
   - Graceful failure handling with warnings
 - E2E test confirms complete persistence workflow
 - All 126 HNSW tests passing
+
+**05-03 Key Achievements:** ✅ NEW
+- Created comprehensive persistence test suite with 8 tests
+  - Metadata persistence across sessions
+  - Vector persistence and graph rebuild
+  - Full lifecycle: create → persist → load → search
+  - Edge cases: empty indexes, deletion, all distance metrics
+  - SqliteGraph auto-load functionality
+- Added API enhancements for testing
+  - HnswConfig::new() simplified constructor
+  - HnswIndex::vector_count() accessor
+  - HnswIndex::config() read-only accessor
+- Tests document current limitations and workflow
+- All 134 HNSW tests passing (8 new persistence tests)
