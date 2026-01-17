@@ -8,26 +8,25 @@ Complete and improve SQLiteGraph, an embedded graph database in Rust with dual b
 
 None — No specialized domain expertise directories available. Relying on codebase documentation and Rust embedded systems patterns.
 
+## Milestones
+
+- ✅ **v0.2 Foundation** — Phases 1-7 (shipped 2026-01-17)
+- 🚧 **v1.0 Production** — Phases 8-10 (in progress)
+
+---
+
 ## Phases
 
-- [x] **Phase 1: Foundation Cleanup** — Address tech debt, large files, unused imports, debug scaffolding ✅
-- [ ] **Phase 2: WAL Integration** — Complete WAL validator/replayer wiring, enable automatic checkpointing
-- [ ] **Phase 3: Native V2 Reads** — Implement betree and read path optimizations
-- [ ] **Phase 4: MVCC Completion** — Fix identified MVCC gaps and edge cases
-- [ ] **Phase 5: HNSW Persistence** — Enable index save/restore to disk
-- [ ] **Phase 6: HNSW CLI** — Fix indexes lost across CLI invocations
-- [ ] **Phase 7: Performance** — WAL recovery parallelization, lock contention reduction, benchmarking
-- [ ] **Phase 8: Graph Algorithms** — Centrality measures, community detection
-- [ ] **Phase 9: Developer Tooling** — Debugging, profiling, introspection utilities
-- [ ] **Phase 10: Testing & Docs** — Comprehensive test coverage, module documentation
+<details>
+<summary>✅ v0.2 Foundation (Phases 1-7) - SHIPPED 2026-01-17</summary>
 
-## Phase Details
+**Milestone Goal:** Establish production-ready foundation with Native V2 backend, HNSW vector search, MVCC, and performance optimizations.
 
 ### Phase 1: Foundation Cleanup
 **Goal**: Address technical debt to improve maintainability
 **Depends on**: Nothing (first phase)
 **Research**: Unlikely (internal code cleanup)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
 - [x] 01-01: Break down large WAL files (4,113 line operations.rs, 1,657 line rollback.rs) ✅
@@ -38,7 +37,7 @@ Plans:
 **Goal**: Complete WAL recovery and checkpoint functionality
 **Depends on**: Phase 1
 **Research**: Unlikely (internal code integration, architecture understood)
-**Plans**: 3 plans created
+**Plans**: 3 plans
 
 Plans:
 - [x] 02-01: Wire automatic checkpointing into commit path ✅
@@ -50,7 +49,7 @@ Plans:
 **Depends on**: Phase 2
 **Research**: Complete (betree research concluded: inappropriate for graph DB workloads)
 **Research topics**: Read path caching, compression for cache efficiency, traversal-aware optimizations
-**Plans**: 3 plans created
+**Plans**: 3 plans
 
 Plans:
 - [x] 03-01: Implement traversal-aware cache policy (LRU-K eviction) ✅
@@ -71,74 +70,71 @@ Plans:
 **Depends on**: Phase 3
 **Research**: Likely (MVCC patterns, snapshot isolation edge cases)
 **Research topics**: Concurrent read/write patterns, snapshot lifecycle management
-**Plans**: 3 plans created
-
-**Plan Details**:
-- **04-01**: Identify and document MVCC gaps (gap analysis, baseline tests, test scenarios)
-- **04-02**: Improve snapshot isolation correctness (race condition fixes, concurrent read/write tests, public API integration)
-- **04-03**: Add concurrent operation tests (WAL coordination, lifecycle edge cases, performance benchmarks)
+**Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: Identify and document MVCC gaps
-- [ ] 04-02: Improve snapshot isolation correctness
-- [ ] 04-03: Add concurrent operation tests
+- [x] 04-01: Identify and document MVCC gaps ✅
+- [x] 04-02: Improve snapshot isolation correctness ✅
+- [x] 04-03: Add concurrent operation tests ✅
 
 ### Phase 5: HNSW Persistence
 **Goal**: Enable HNSW index save/restore to disk
 **Depends on**: Phase 4
 **Research**: Complete (schema exists, pragmatic approach documented)
 **Research topics**: HNSW serialization format, incremental index updates, recovery from corruption
-**Plans**: 3 plans created
+**Plans**: 3 plans
 
-**Plan Details**:
-- **05-01**: Metadata persistence (save/load index config to hnsw_indexes table)
-- **05-02**: Vector persistence and index rebuild (vectors to hnsw_vectors, rebuild graph on load)
-- **05-03**: Tests, error handling, and benchmarks (comprehensive validation, corruption recovery)
-
-**Approach**: Pragmatic vector storage + index rebuild (from docs/hnsw_persistence_implementation_status_20241223.md)
+**Approach**: Pragmatic vector storage + index rebuild
 - Store vectors as BLOB in hnsw_vectors table
 - On load: read vectors, rebuild HNSW graph structure (O(N log N) rebuild cost)
 - Simpler than full graph serialization to hnsw_layers table
 
 Plans:
-- [ ] 05-01: Implement HNSW index metadata persistence
-- [ ] 05-02: Implement vector persistence and index restore
-- [ ] 05-03: Add comprehensive persistence tests and benchmarks
+- [x] 05-01: Implement HNSW index metadata persistence ✅
+- [x] 05-02: Implement vector persistence and index restore ✅
+- [x] 05-03: Add comprehensive persistence tests and benchmarks ✅
 
 ### Phase 6: HNSW CLI
 **Goal**: Fix HNSW indexes lost across CLI invocations
 **Depends on**: Phase 5
 **Research**: Unlikely (builds on Phase 5 persistence)
-**Plans**: 2 plans created
-
-**Plan Details:**
-- **06-01**: Integrate persistent HNSW with CLI (add `hnsw_index_persistent()`, update CLI to use it, integration tests)
-- **06-02**: Add CLI commands for index management (`hnsw-list`, `hnsw-delete`, `hnsw-info`)
-
-**Status**: Complete ✅ (2026-01-17)
-**Key Results**:
-- Index metadata persists across CLI invocations
-- New commands: `hnsw-list`, `hnsw-delete`, `hnsw-info`
-- Added `--index-name` parameter for custom index names
-- Exported `is_in_memory_connection()` as public API
-
-**Known Limitation**: Vector persistence requires Connection sharing architecture (documented in 06-01-SUMMARY.md)
+**Plans**: 2 plans
 
 Plans:
 - [x] 06-01: Integrate persistent HNSW with CLI ✅
 - [x] 06-02: Add CLI commands for index management ✅
+
+**Key Results**:
+- Index metadata persists across CLI invocations
+- New commands: `hnsw-list`, `hnsw-delete`, `hnsw-info`
+- Added `--index-name` parameter for custom index names
+
+**Known Limitation**: Vector persistence requires Connection sharing architecture (documented in 06-01-SUMMARY.md)
 
 ### Phase 7: Performance
 **Goal**: Optimize WAL recovery, reduce lock contention, improve benchmarks
 **Depends on**: Phase 6
 **Research**: Likely (parallel recovery patterns, lock-free data structures)
 **Research topics**: Parallel WAL replay strategies, lock-free snapshot updates, profiling tools
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
 - [x] 07-01: Implement parallel WAL recovery ✅
 - [x] 07-02: Reduce lock contention with lock-free structures ✅
 - [x] 07-03: Add comprehensive performance benchmarks ✅
+
+**Key Results**:
+- Parallel WAL recovery: 2-3x speedup for large WAL files
+- Lock-free atomic statistics: AtomicU64 counters
+- Comprehensive benchmark suite with CI integration
+
+</details>
+
+---
+
+### 🚧 v1.0 Production (In Progress)
+
+**Milestone Goal:** Complete production-ready graph database with advanced algorithms, introspection APIs for LLM tooling, and comprehensive documentation.
 
 ### Phase 8: Graph Algorithms
 **Goal**: Add centrality measures and community detection
@@ -180,15 +176,15 @@ Plans:
 **Execution Order:**
 Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Foundation Cleanup | 3/3 | Complete | 2026-01-17 |
-| 2. WAL Integration | 3/3 | Complete | 2026-01-17 |
-| 3. Native V2 Reads | 3/3 | Complete | 2026-01-17 |
-| 4. MVCC Completion | 3/3 | Complete | 2026-01-17 |
-| 5. HNSW Persistence | 3/3 | Complete | 2026-01-17 |
-| 6. HNSW CLI | 2/2 | Complete | 2026-01-17 |
-| 7. Performance | 3/3 | Complete | 2026-01-17 |
-| 8. Graph Algorithms | 0/3 | Not started | - |
-| 9. Developer Tooling | 0/3 | Not started | - |
-| 10. Testing & Docs | 0/3 | Not started | - |
+| Phase | Milestone | Plans | Status | Completed |
+|-------|-----------|-------|--------|-----------|
+| 1. Foundation Cleanup | v0.2 | 3/3 | Complete | 2026-01-17 |
+| 2. WAL Integration | v0.2 | 3/3 | Complete | 2026-01-17 |
+| 3. Native V2 Reads | v0.2 | 3/3 | Complete | 2026-01-17 |
+| 4. MVCC Completion | v0.2 | 3/3 | Complete | 2026-01-17 |
+| 5. HNSW Persistence | v0.2 | 3/3 | Complete | 2026-01-17 |
+| 6. HNSW CLI | v0.2 | 2/2 | Complete | 2026-01-17 |
+| 7. Performance | v0.2 | 3/3 | Complete | 2026-01-17 |
+| 8. Graph Algorithms | v1.0 | 0/3 | Not started | - |
+| 9. Developer Tooling | v1.0 | 0/3 | Not started | - |
+| 10. Testing & Docs | v1.0 | 0/3 | Not started | - |

@@ -9,12 +9,24 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 
 ## Current Position
 
+Milestone: v1.0 Production (Phases 8-10)
 Phase: 8 of 10 (Graph Algorithms)
-Plan: Ready to begin
-Status: Planning phase
-Last activity: 2026-01-17 — Phase 7 Complete: Performance Optimization
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-01-17 — Milestone v1.0 Production created
 
-Progress: ████████░░░ 80% (7 of 10 phases complete)
+Progress: ████████░░░ 70% (7 of 10 phases complete, 0/3 in v1.0)
+
+**v1.0 Production Scope:**
+- Phase 8: Graph Algorithms (PageRank, betweenness centrality, community detection)
+- Phase 9: Developer Tooling (introspection/debug APIs for LLM feedback)
+- Phase 10: Testing & Docs (invariants + guarantees, not marketing)
+
+**Post-v1.0 Work (CLI Convergence):**
+- Audit Magellan + Splice against V2 assumptions
+- Finalize llmdocs and browser-ingest
+- CLI convergence: One CLI for graph + vectors + SQLite + spans
+- CLI design: Explicit, composable, JSON-first, boring (no Cypher DSL)
 
 ## Performance Metrics
 
@@ -120,9 +132,40 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-01-17 (current session)
-Completed: Plan 06-01 (CLI HNSW Index Persistence)
-Next: Plan 06-02 (if needed) or continue to Phase 7
+Stopped at: Milestone v1.0 Production initialization
 Resume file: None
+
+### Roadmap Evolution
+
+- **v0.2 Foundation** (2026-01-17): Phases 1-7 complete
+  - Native V2 backend with clustered adjacency
+  - HNSW vector search with persistence
+  - MVCC-lite snapshot isolation
+  - Parallel WAL recovery with rayon
+  - Lock-free atomic statistics
+  - Comprehensive performance benchmarks
+
+- **v1.0 Production** (2026-01-17): Phases 8-10 defined
+  - Goal: Production-ready graph database
+  - Phase 8: Graph algorithms (centrality, community detection)
+  - Phase 9: Developer tooling (introspection APIs for LLM feedback)
+  - Phase 10: Documentation (invariants + guarantees)
+
+### CLI Convergence (Post-v1.0)
+
+Planned work after v1.0 ships:
+1. Audit external tools (Magellan, Splice) against V2 assumptions
+2. Finalize ingestion tools (llmdocs, browser-ingest)
+3. CLI convergence: One CLI (`sg`) for:
+   - Graph: `sg graph node get --id NODE_ID`
+   - Vectors: `sg vector search --index docs --k 10`
+   - SQLite: `sg sql query --query "SELECT ..."`
+   - Hybrid: `sg query --graph-hop 2 --vector "query" --filter ...`
+
+**CLI Philosophy:**
+- Explicit, composable, JSON-first, boring
+- No Cypher DSL, no server process, no magic state
+- UNIX-style composition over clever query language
 
 **Phase 3 Summary:**
 - All 3 plans complete (03-01, 03-02, 03-03)
