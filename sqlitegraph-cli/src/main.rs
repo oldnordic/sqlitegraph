@@ -133,6 +133,9 @@ fn run_command(
         "hnsw-insert" => run_hnsw_insert(client, args),
         "hnsw-search" => run_hnsw_search(client, args),
         "hnsw-stats" => run_hnsw_stats(client, args),
+        "hnsw-list" => run_hnsw_list(client, args),
+        "hnsw-delete" => run_hnsw_delete(client, args),
+        "hnsw-info" => run_hnsw_info(client, args),
         "bfs" => run_bfs(client, args),
         "k-hop" => run_k_hop(client, args),
         "shortest-path" => run_shortest_path(client, args),
@@ -558,6 +561,137 @@ fn run_hnsw_stats(client: &BackendClient, args: &[String]) -> Result<(), SqliteG
             Ok(())
         }
     }
+}
+
+fn run_hnsw_list(client: &BackendClient, _args: &[String]) -> Result<(), SqliteGraphError> {
+    let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("hnsw-list requires SQLite backend"))?;
+
+    // Get list of index names from in-memory registry (loaded on startup)
+    let index_names = graph.list_hnsw_indexes()?;
+
+    // Build response with index names
+    let payload = json!({
+        "command": "hnsw-list",
+        "count": index_names.len(),
+        "indexes": index_names,
+        "status": "completed"
+    });
+    println!("{payload}");
+    Ok(())
+}
+
+fn run_hnsw_delete(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {
+    let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("hnsw-delete requires SQLite backend"))?;
+
+    // Get index name from --index-name or --name parameter
+    let index_name = args.iter()
+        .position(|arg| arg == "--index-name" || arg == "--name")
+        .and_then(|idx| args.get(idx + 1))
+        .map(|s| s.as_str())
+        .ok_or_else(|| SqliteGraphError::invalid_input("--index-name is required for hnsw-delete"))?;
+
+    // Check if index exists
+    let exists = graph.list_hnsw_indexes()?.iter().any(|n| n == index_name);
+    if !exists {
+        let payload = json!({
+            "command": "hnsw-delete",
+            "index_name": index_name,
+            "error": "Index not found",
+            "status": "error"
+        });
+        println!("{payload}");
+        return Ok(());
+    }
+
+    // Delete from database (CASCADE handles vectors)
+    use sqlitegraph::hnsw::HnswIndex;
+    HnswIndex::delete_index(&graph.conn, index_name)
+        .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to delete index: {}", e)))?;
+
+    // Remove from in-memory registry
+    {
+        use std::sync::RwLock;
+        let mut indexes = graph.hnsw_indexes.write()
+            .map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
+        indexes.remove(index_name);
+    }
+
+    let payload = json!({
+        "command": "hnsw-delete",
+        "index_name": index_name,
+        "deleted": true,
+        "status": "completed"
+    });
+    println!("{payload}");
+    Ok(())
+}
+
+fn run_hnsw_info(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {
+    let graph = client.graph().ok_or_else(|| SqliteGraphError::invalid_input("hnsw-info requires SQLite backend"))?;
+
+    // Get index name (default to "default" if not specified)
+    let index_name = args.iter()
+        .position(|arg| arg == "--index-name" || arg == "--name")
+        .and_then(|idx| args.get(idx + 1))
+        .map(|s| s.as_str())
+        .unwrap_or("default");
+
+    // Check if index exists
+    let exists = graph.list_hnsw_indexes()?.iter().any(|n| n == index_name);
+    if !exists {
+        let payload = json!({
+            "command": "hnsw-info",
+            "index_name": index_name,
+            "error": "Index not found",
+            "status": "error"
+        });
+        println!("{payload}");
+        return Ok(());
+    }
+
+    // Get detailed statistics from the index
+    let stats_result = graph.get_hnsw_index_ref(index_name, |hnsw| {
+        hnsw.statistics()
+    });
+
+    let payload = match stats_result {
+        Ok(Ok(stats)) => json!({
+            "command": "hnsw-info",
+            "index_name": index_name,
+            "vector_count": stats.vector_count,
+            "layer_count": stats.layer_count,
+            "entry_point_count": stats.entry_point_count,
+            "dimension": stats.dimension,
+            "distance_metric": format!("{:?}", stats.distance_metric),
+            "storage": {
+                "backend_type": stats.storage_stats.backend_type,
+                "estimated_memory_bytes": stats.storage_stats.estimated_memory_bytes
+            },
+            "layers": stats.layer_stats.iter()
+                .map(|(layer, nodes, conn)| json!({
+                    "layer": layer,
+                    "node_count": nodes,
+                    "avg_connections": conn
+                }))
+                .collect::<Vec<_>>(),
+            "status": "completed"
+        }),
+        Ok(Err(e)) => json!({
+            "command": "hnsw-info",
+            "index_name": index_name,
+            "error": e.to_string(),
+            "status": "error"
+        }),
+        Err(e) => json!({
+            "command": "hnsw-info",
+            "index_name": index_name,
+            "error": e.to_string(),
+            "status": "error"
+        })
+    };
+
+    println!("{payload}");
+    Ok(())
 }
 
 fn run_bfs(client: &BackendClient, args: &[String]) -> Result<(), SqliteGraphError> {

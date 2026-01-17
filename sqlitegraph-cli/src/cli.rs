@@ -77,6 +77,9 @@ Commands:
   hnsw-insert --input FILE [--name NAME]  Insert vectors into HNSW index
   hnsw-search --input FILE --k N [--name NAME]  Search HNSW index
   hnsw-stats [--name NAME]                Show HNSW index statistics
+  hnsw-list                               List all HNSW indexes in database
+  hnsw-delete --index-name NAME           Delete HNSW index and all vectors
+  hnsw-info [--index-name NAME]           Show detailed HNSW index information
   wal-checkpoint            Trigger WAL checkpoint operation
   wal-metrics                Show WAL performance metrics and file sizes
   wal-config                 Show WAL configuration settings

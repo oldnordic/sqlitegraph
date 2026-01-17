@@ -19,15 +19,16 @@ use super::metrics::{GraphMetrics, StatementTracker};
 /// Provides a lightweight, deterministic graph database with entity and edge storage,
 /// pattern matching, MVCC-lite snapshots, and deterministic indexing.
 pub struct SqliteGraph {
-    pub(crate) conn: Connection,
+    /// SQLite database connection (public for CLI access)
+    pub conn: Connection,
     pub(crate) outgoing_cache: AdjacencyCache,
     pub(crate) incoming_cache: AdjacencyCache,
     pub(crate) query_cache: QueryCache,
     pub(crate) metrics: GraphMetrics,
     pub(crate) statement_tracker: StatementTracker,
     pub(crate) snapshot_manager: SnapshotManager,
-    /// HNSW vector indexes stored by name
-    pub(crate) hnsw_indexes: RwLock<HashMap<String, HnswIndex>>,
+    /// HNSW vector indexes stored by name (public for CLI access)
+    pub hnsw_indexes: RwLock<HashMap<String, HnswIndex>>,
 }
 
 // Helper function to check if connection is in-memory
