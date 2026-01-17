@@ -597,6 +597,12 @@ impl V2WALManager {
 
     /// Estimate current WAL file size
     fn estimate_wal_size(&self) -> u64 {
+        // Check actual WAL file size if available
+        if let Ok(metadata) = std::fs::metadata(&self.config.wal_path) {
+            return metadata.len();
+        }
+
+        // Fallback to writer metrics
         let metrics = self.writer.get_metrics();
         metrics.bytes_written + std::mem::size_of::<V2WALHeader>() as u64
     }
