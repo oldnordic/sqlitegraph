@@ -2,8 +2,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use ahash::AHashMap;
 use parking_lot::RwLock;
+use serde::Serialize;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 pub struct CacheStats {
     pub hits: u64,
     pub misses: u64,
