@@ -196,6 +196,9 @@ pub enum HnswStorageError {
 
     /// I/O error during storage operation
     IoError(String),
+
+    /// Database error during persistence operation
+    DatabaseError(String),
 }
 
 impl fmt::Display for HnswStorageError {
@@ -235,6 +238,9 @@ impl fmt::Display for HnswStorageError {
             }
             HnswStorageError::IoError(msg) => {
                 write!(f, "I/O error: {}", msg)
+            }
+            HnswStorageError::DatabaseError(msg) => {
+                write!(f, "Database error: {}", msg)
             }
         }
     }

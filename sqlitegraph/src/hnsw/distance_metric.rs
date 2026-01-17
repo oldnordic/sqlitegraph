@@ -81,6 +81,18 @@ impl Default for DistanceMetric {
     }
 }
 
+impl DistanceMetric {
+    /// Get the string representation of this distance metric
+    pub fn as_str(&self) -> &str {
+        match self {
+            DistanceMetric::Cosine => "cosine",
+            DistanceMetric::Euclidean => "euclidean",
+            DistanceMetric::DotProduct => "dot_product",
+            DistanceMetric::Manhattan => "manhattan",
+        }
+    }
+}
+
 impl fmt::Display for DistanceMetric {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

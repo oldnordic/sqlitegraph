@@ -48,6 +48,8 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+use rusqlite::{Connection, OptionalExtension};
+
 use crate::{
     SqliteGraph,
     errors::SqliteGraphError,
@@ -75,6 +77,9 @@ use crate::{
 /// - **Build Time**: O(N log N) with construction parameters
 /// - **Accuracy**: 95%+ recall for typical workloads
 pub struct HnswIndex {
+    /// Name of this index (for persistence and multi-index support)
+    name: String,
+
     /// HNSW configuration parameters
     config: HnswConfig,
 
@@ -98,6 +103,7 @@ impl HnswIndex {
     /// Create a new HNSW index with the specified configuration
     ///
     /// # Arguments
+    /// * `name` - Name of the index (for persistence and multi-index support)
     /// * `config` - HNSW configuration parameters
     ///
     /// # Returns
@@ -114,17 +120,18 @@ impl HnswIndex {
     ///     .distance_metric(DistanceMetric::Euclidean)
     ///     .build()?;
     ///
-    /// let hnsw = HnswIndex::new(config)?;
+    /// let hnsw = HnswIndex::new("my_index", config)?;
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
-    pub fn new(config: HnswConfig) -> Result<Self, HnswError> {
+    pub fn new(name: &str, config: HnswConfig) -> Result<Self, HnswError> {
         let storage = Box::new(InMemoryVectorStorage::new());
-        Self::with_storage(config, storage)
+        Self::with_storage(name, config, storage)
     }
 
     /// Create a new HNSW index with custom storage backend
     ///
     /// # Arguments
+    /// * `name` - Name of the index
     /// * `config` - HNSW configuration parameters
     /// * `storage` - Custom vector storage implementation
     ///
@@ -132,6 +139,7 @@ impl HnswIndex {
     ///
     /// Returns a new HnswIndex using the provided storage backend
     pub fn with_storage(
+        name: &str,
         config: HnswConfig,
         storage: Box<dyn VectorStorage>,
     ) -> Result<Self, HnswError> {
@@ -152,6 +160,7 @@ impl HnswIndex {
         let search_engine = NeighborhoodSearch::new(config.distance_metric);
 
         Ok(Self {
+            name: name.to_string(),
             config,
             layers,
             storage,
@@ -402,6 +411,99 @@ impl HnswIndex {
         })
     }
 
+    /// Get the name of this index
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Save index metadata to database
+    ///
+    /// # Arguments
+    /// * `conn` - SQLite connection
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) if successful
+    ///
+    /// # Errors
+    ///
+    /// Returns HnswError on database failure
+    pub fn save_metadata(&self, conn: &Connection) -> Result<(), HnswError> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+
+        let distance_metric_str = self.config.distance_metric.as_str();
+
+        // Check if index already exists
+        let existing_id = Self::get_index_id(conn, &self.name)?;
+
+        if let Some(index_id) = existing_id {
+            // Update existing index - use positional params with correct types
+            conn.execute(
+                "UPDATE hnsw_indexes SET dimension = ?1, m = ?2, ef_construction = ?3, \
+                 distance_metric = ?4, vector_count = ?5, updated_at = ?6 WHERE id = ?7",
+                rusqlite::params![
+                    self.config.dimension as i64,
+                    self.config.m as i64,
+                    self.config.ef_construction as i64,
+                    distance_metric_str,
+                    self.vector_count as i64,
+                    now,
+                    index_id,
+                ],
+            ).map_err(|e| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::DatabaseError(e.to_string())
+            ))?;
+        } else {
+            // Insert new index
+            conn.execute(
+                "INSERT INTO hnsw_indexes \
+                 (name, dimension, m, ef_construction, distance_metric, vector_count, created_at, updated_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    &self.name,
+                    self.config.dimension as i64,
+                    self.config.m as i64,
+                    self.config.ef_construction as i64,
+                    distance_metric_str,
+                    self.vector_count as i64,
+                    now,
+                    now,
+                ],
+            ).map_err(|e| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::DatabaseError(e.to_string())
+            ))?;
+        }
+
+        Ok(())
+    }
+
+    /// Get index ID from database by name
+    ///
+    /// # Arguments
+    /// * `conn` - SQLite connection
+    /// * `name` - Index name
+    ///
+    /// # Returns
+    ///
+    /// Some(index_id) if found, None if not found
+    fn get_index_id(conn: &Connection, name: &str) -> Result<Option<i64>, HnswError> {
+        let id = conn
+            .query_row(
+                "SELECT id FROM hnsw_indexes WHERE name = ?",
+                [name],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::DatabaseError(e.to_string())
+            ))?;
+
+        Ok(id)
+    }
+
     /// Validate the HNSW configuration
     fn validate_config(config: &HnswConfig) -> Result<(), HnswError> {
         if config.dimension == 0 {
@@ -568,7 +670,7 @@ impl SqliteGraph {
         }
 
         // Create new HNSW index
-        let hnsw = HnswIndex::new(config).map_err(|e| SqliteGraphError::invalid_input(e.to_string()))?;
+        let hnsw = HnswIndex::new(name, config).map_err(|e| SqliteGraphError::invalid_input(e.to_string()))?;
 
         // Store the index
         let mut indexes = self.hnsw_indexes.write().map_err(|e| SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
@@ -662,7 +764,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let hnsw = HnswIndex::new(config).unwrap();
+        let hnsw = HnswIndex::new("test_index", config).unwrap();
         let stats = hnsw.statistics().unwrap();
 
         assert_eq!(stats.vector_count, 0);
@@ -673,7 +775,7 @@ mod tests {
     #[test]
     fn test_vector_insertion() {
         let config = hnsw_config().dimension(3).build().unwrap();
-        let mut hnsw = HnswIndex::new(config).unwrap();
+        let mut hnsw = HnswIndex::new("test_insert", config).unwrap();
         let vector = vec![1.0, 0.0, 0.0];
         let metadata = serde_json::json!({"label": "test"});
 
@@ -688,7 +790,7 @@ mod tests {
 
     #[test]
     fn test_dimension_mismatch_error() {
-        let mut hnsw = HnswIndex::new(HnswConfig::default()).unwrap();
+        let mut hnsw = HnswIndex::new("test_dim_error", HnswConfig::default()).unwrap();
         let wrong_vector = vec![1.0, 0.0]; // Default config expects 768 dimensions
 
         let result = hnsw.insert_vector(&wrong_vector, None);
@@ -703,7 +805,7 @@ mod tests {
 
     #[test]
     fn test_empty_search() {
-        let hnsw = HnswIndex::new(HnswConfig::default()).unwrap();
+        let hnsw = HnswIndex::new("test_empty_search", HnswConfig::default()).unwrap();
         let query = vec![1.0; 768];
 
         let results = hnsw.search(&query, 5).unwrap();
@@ -713,7 +815,7 @@ mod tests {
     #[test]
     fn test_vector_retrieval() {
         let config = hnsw_config().dimension(3).build().unwrap();
-        let mut hnsw = HnswIndex::new(config).unwrap();
+        let mut hnsw = HnswIndex::new("test_retrieval", config).unwrap();
         let vector = vec![1.0, 0.0, 0.0];
         let metadata = serde_json::json!({"label": "test"});
 
@@ -747,6 +849,7 @@ mod tests {
     #[test]
     fn test_basic_search_functionality() {
         let mut hnsw = HnswIndex::new(
+            "test_search",
             HnswConfigBuilder::new()
                 .dimension(2)
                 .m_connections(4)
@@ -786,6 +889,7 @@ mod tests {
     #[test]
     fn test_index_statistics() {
         let mut hnsw = HnswIndex::new(
+            "test_stats",
             HnswConfigBuilder::new()
                 .dimension(3)
                 .max_layers(3)
