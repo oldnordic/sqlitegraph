@@ -504,6 +504,172 @@ impl HnswIndex {
         Ok(id)
     }
 
+    /// Load index metadata from database
+    ///
+    /// # Arguments
+    /// * `conn` - SQLite connection
+    /// * `name` - Index name
+    ///
+    /// # Returns
+    ///
+    /// Loaded HnswIndex with metadata (vectors not loaded yet)
+    ///
+    /// # Errors
+    ///
+    /// Returns HnswError on database failure or if index not found
+    pub fn load_metadata(conn: &Connection, name: &str) -> Result<Self, HnswError> {
+        // Query index metadata
+        let (dimension, m, ef_construction, distance_metric_str, vector_count) = conn
+            .query_row(
+                "SELECT dimension, m, ef_construction, distance_metric, vector_count
+                 FROM hnsw_indexes WHERE name = ?",
+                [name],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)? as usize,
+                        row.get::<_, i64>(1)? as usize,
+                        row.get::<_, i64>(2)? as usize,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, i64>(4)? as usize,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::DatabaseError(e.to_string())
+            ))?
+            .ok_or_else(|| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::VectorNotFound(0)
+            ))?;
+
+        // Parse distance metric
+        let distance_metric = Self::parse_distance_metric(&distance_metric_str)?;
+
+        // Build config - use single-layer mode for safety
+        let config = HnswConfig {
+            dimension,
+            m,
+            ef_construction,
+            ef_search: ef_construction, // Default to ef_construction
+            ml: 16, // Default max layers
+            distance_metric,
+            enable_multilayer: false, // Disable multilayer for loaded indexes (plan 02)
+            multilayer_level_distribution_base: None,
+            multilayer_deterministic_seed: None,
+        };
+
+        // Create index with loaded config
+        let storage = Box::new(InMemoryVectorStorage::new());
+        let mut layers = Vec::with_capacity(config.ml as usize);
+        for level in 0..config.ml {
+            let max_connections = if level == 0 {
+                config.m
+            } else {
+                (config.m / 2usize.pow(level as u32)).max(1)
+            };
+            layers.push(HnswLayer::new(level, max_connections));
+        }
+
+        let search_engine = NeighborhoodSearch::new(config.distance_metric);
+
+        Ok(Self {
+            name: name.to_string(),
+            config,
+            layers,
+            storage,
+            entry_points: Vec::new(),
+            vector_count,
+            search_engine,
+        })
+    }
+
+    /// Parse distance metric from string
+    ///
+    /// # Arguments
+    /// * `s` - String representation of distance metric
+    ///
+    /// # Returns
+    ///
+    /// Parsed DistanceMetric
+    ///
+    /// # Errors
+    ///
+    /// Returns HnswError for unknown metrics
+    fn parse_distance_metric(s: &str) -> Result<DistanceMetric, HnswError> {
+        match s {
+            "cosine" => Ok(DistanceMetric::Cosine),
+            "euclidean" => Ok(DistanceMetric::Euclidean),
+            "dot_product" => Ok(DistanceMetric::DotProduct),
+            "manhattan" => Ok(DistanceMetric::Manhattan),
+            _ => Err(HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::IoError(format!(
+                    "Unknown distance metric: {}", s
+                )),
+            )),
+        }
+    }
+
+    /// List all HNSW indexes in the database
+    ///
+    /// # Arguments
+    /// * `conn` - SQLite connection
+    ///
+    /// # Returns
+    ///
+    /// List of index names
+    ///
+    /// # Errors
+    ///
+    /// Returns HnswError on database failure
+    pub fn list_indexes(conn: &Connection) -> Result<Vec<String>, HnswError> {
+        let mut stmt = conn
+            .prepare("SELECT name FROM hnsw_indexes ORDER BY name")
+            .map_err(|e| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::DatabaseError(e.to_string())
+            ))?;
+
+        let index_names = stmt
+            .query_map([], |row| row.get(0))
+            .map_err(|e| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::DatabaseError(e.to_string())
+            ))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::DatabaseError(e.to_string())
+            ))?;
+
+        Ok(index_names)
+    }
+
+    /// Delete an index from the database
+    ///
+    /// # Arguments
+    /// * `conn` - SQLite connection
+    /// * `name` - Index name
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) if deleted or didn't exist
+    ///
+    /// # Errors
+    ///
+    /// Returns HnswError on database failure
+    ///
+    /// # Note
+    ///
+    /// CASCADE will automatically delete vectors, layers, and entry points
+    pub fn delete_index(conn: &Connection, name: &str) -> Result<(), HnswError> {
+        conn.execute(
+            "DELETE FROM hnsw_indexes WHERE name = ?",
+            [name],
+        )
+        .map_err(|e| HnswError::Storage(
+            crate::hnsw::errors::HnswStorageError::DatabaseError(e.to_string())
+        ))?;
+
+        Ok(())
+    }
+
     /// Validate the HNSW configuration
     fn validate_config(config: &HnswConfig) -> Result<(), HnswError> {
         if config.dimension == 0 {
