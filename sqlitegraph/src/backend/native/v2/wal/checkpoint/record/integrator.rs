@@ -370,13 +370,12 @@ impl V2GraphIntegrator {
             let edge_id = edge_store.allocate_edge_id();
 
             // Convert to EdgeRecord format
-            use crate::backend::native::types::{EdgeFlags, EdgeRecord};
+            use crate::backend::native::types::EdgeRecord;
             let edge_record = EdgeRecord::new(
                 edge_id,
                 source_node,
                 target_node,
                 "unknown".to_string(), // edge type - would be parsed from edge_data in full implementation
-                EdgeFlags::empty(),
                 serde_json::Value::Null, // metadata - would be parsed from edge_data in full implementation
             );
 
@@ -414,13 +413,12 @@ impl V2GraphIntegrator {
             // For now, we create a new edge record with updated data
             let edge_id = edge_store.allocate_edge_id();
 
-            use crate::backend::native::types::{EdgeFlags, EdgeRecord};
+            use crate::backend::native::types::EdgeRecord;
             let edge_record = EdgeRecord::new(
                 edge_id,
                 source_node,
                 target_node,
                 "unknown".to_string(), // edge type - would be parsed from new_data in full implementation
-                EdgeFlags::empty(),
                 serde_json::Value::Null, // metadata - would be parsed from new_data in full implementation
             );
 
@@ -448,7 +446,7 @@ impl V2GraphIntegrator {
     ) -> CheckpointResult<()> {
         // Apply edge deletion to edge store
         {
-            let mut edge_store = self.edge_store.lock().map_err(|e| {
+            let _edge_store = self.edge_store.lock().map_err(|e| {
                 CheckpointError::state(format!("Failed to lock edge store: {}", e))
             })?;
 
@@ -527,7 +525,7 @@ impl V2GraphIntegrator {
 
     /// Apply free space allocation record
     fn apply_free_space_allocate(&mut self, region_offset: u64, region_size: u32, _lsn: u64) -> CheckpointResult<()> {
-        let mut free_space_manager = self.free_space_manager.lock().map_err(|e| {
+        let _free_space_manager = self.free_space_manager.lock().map_err(|e| {
             CheckpointError::state(format!("Failed to lock free space manager: {}", e))
         })?;
 
@@ -571,13 +569,12 @@ impl V2GraphIntegrator {
             let edge_id = edge_store.allocate_edge_id();
 
             // Convert CompactEdgeRecord to EdgeRecord format
-            use crate::backend::native::types::{EdgeFlags, EdgeRecord};
+            use crate::backend::native::types::EdgeRecord;
             let legacy_edge_record = EdgeRecord::new(
                 edge_id,
                 node_id,
                 edge_record.neighbor_id,
                 "unknown".to_string(), // edge type - would be looked up from string table using edge_type_offset
-                EdgeFlags::empty(),
                 serde_json::Value::Null, // metadata - would be parsed from edge_data in full implementation
             );
 
@@ -613,13 +610,12 @@ impl V2GraphIntegrator {
             let edge_id = edge_store.allocate_edge_id();
 
             // Convert CompactEdgeRecord to EdgeRecord format
-            use crate::backend::native::types::{EdgeFlags, EdgeRecord};
+            use crate::backend::native::types::EdgeRecord;
             let legacy_edge_record = EdgeRecord::new(
                 edge_id,
                 node_id,
                 new_edge.neighbor_id,
                 "unknown".to_string(), // edge type - would be looked up from string table using edge_type_offset
-                EdgeFlags::empty(),
                 serde_json::Value::Null, // metadata - would be parsed from edge_data in full implementation
             );
 
