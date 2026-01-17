@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-17)
 ## Current Position
 
 Phase: 2 of 10 (WAL Integration)
-Plan: 02-01 (ready to execute)
-Status: Ready to execute
-Last activity: 2026-01-17 — Phase 2 planned
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-17 — Completed 02-01 (Wire Automatic Checkpointing)
 
 Progress: ████████░░ 30%
 
