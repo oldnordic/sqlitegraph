@@ -735,7 +735,8 @@ mod tests {
             .build()
             .unwrap();
 
-        let hnsw = graph.hnsw_index("test_index", config).unwrap();
+        let mut hnsw_indexes = graph.hnsw_index("test_index", config).unwrap();
+        let hnsw = hnsw_indexes.get("test_index").unwrap();
         let stats = hnsw.statistics().unwrap();
 
         assert_eq!(stats.vector_count, 0);
