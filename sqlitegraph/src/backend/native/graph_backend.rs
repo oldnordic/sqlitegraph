@@ -82,8 +82,6 @@ impl NativeGraphBackend {
     /// Create WAL integrator for the graph
     #[cfg(feature = "native-v2")]
     fn create_wal_integrator<P: AsRef<std::path::Path>>(path: P) -> Result<Arc<V2GraphWALIntegrator>, SqliteGraphError> {
-        use std::path::Path;
-
         let path_ref = path.as_ref();
 
         // Use the helper function to create WAL config with correct paths
