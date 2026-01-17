@@ -5,14 +5,14 @@
 //! items from this `mod.rs` re-export rather than submodules directly.
 
 pub mod cache;
-mod cluster;
+pub mod cluster;
 mod cluster_serialization;
-mod cluster_trace;
-mod compact_record;
+pub mod cluster_trace;
+pub mod compact_record;
 mod record_ext;
 
 pub use cache::{CacheEntry, CacheKey, ThreadSafeCache, TraversalAwareCache};
-pub use cluster::EdgeCluster;
+pub use cluster::{DecompressEdgeIterator, EdgeCluster};
 pub use cluster_trace::{Direction, StrictModeGuard, TraceContext, TraceGuard};
-pub use compact_record::CompactEdgeRecord;
+pub use compact_record::{CompactEdgeRecord, DeltaEncodedEdge, PackedEdgeHeader};
 pub use record_ext::EdgeRecordCompactExt;
