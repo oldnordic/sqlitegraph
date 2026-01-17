@@ -6,9 +6,6 @@
 
 use crate::backend::native::graph_file::buffers::{ReadBuffer, WriteBuffer};
 
-#[cfg(feature = "native-v2")]
-use memmap2::MmapMut;
-
 // Public exports
 pub use manager::MemoryResourceManager;
 pub use types::*;
