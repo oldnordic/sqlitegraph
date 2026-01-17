@@ -389,3 +389,138 @@ pub fn betweenness_centrality(
 
     Ok(result)
 }
+
+/// Louvain method for community detection via modularity optimization.
+///
+/// Iteratively moves nodes to maximize modularity (how many edges are within
+/// communities vs between communities). Simplified single-pass version.
+///
+/// # Arguments
+/// * `graph` - The graph to analyze
+/// * `max_iterations` - Maximum number of iterations to prevent infinite loops
+///
+/// # Returns
+/// Communities as vectors of node IDs, sorted by smallest node ID in each community
+pub fn louvain_communities(
+    graph: &SqliteGraph,
+    max_iterations: usize,
+) -> Result<Vec<Vec<i64>>, SqliteGraphError> {
+    let all_ids = graph.all_entity_ids()?;
+
+    if all_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Calculate total edges (m) and node degrees
+    let mut total_edges = 0usize;
+    let mut degrees: AHashMap<i64, usize> = AHashMap::new();
+
+    for &id in &all_ids {
+        let out_count = graph.fetch_outgoing(id)?.len();
+        let in_count = graph.fetch_incoming(id)?.len();
+        let degree = out_count + in_count;
+        degrees.insert(id, degree);
+        total_edges += degree;
+    }
+
+    // Total edges m (undirected: each edge counted twice, so m = sum_degrees / 2)
+    let m = total_edges as f64 / 2.0;
+
+    if m == 0.0 {
+        // No edges - each node is its own community
+        let mut communities: Vec<Vec<i64>> = all_ids.iter().map(|&id| vec![id]).collect();
+        communities.sort();
+        return Ok(communities);
+    }
+
+    // Initialize: each node in its own community
+    let mut communities: AHashMap<i64, i64> = all_ids.iter().map(|&id| (id, id)).collect();
+
+    // For deterministic results, process nodes in sorted order
+    let mut node_order: Vec<i64> = all_ids.clone();
+    node_order.sort();
+
+    // Iterative modularity optimization
+    for _iteration in 0..max_iterations {
+        let mut any_moved = false;
+
+        for &node in &node_order {
+            let current_community = *communities.get(&node).unwrap_or(&node);
+            let node_degree = *degrees.get(&node).unwrap_or(&0) as f64;
+
+            // Find neighbor communities
+            let mut community_connections: AHashMap<i64, f64> = AHashMap::new();
+
+            // Count outgoing edges
+            for &neighbor in &graph.fetch_outgoing(node)? {
+                let neighbor_community = *communities.get(&neighbor).unwrap_or(&neighbor);
+                *community_connections.entry(neighbor_community).or_insert(0.0) += 1.0;
+            }
+
+            // Count incoming edges
+            for &neighbor in &graph.fetch_incoming(node)? {
+                let neighbor_community = *communities.get(&neighbor).unwrap_or(&neighbor);
+                *community_connections.entry(neighbor_community).or_insert(0.0) += 1.0;
+            }
+
+            // Calculate modularity delta for moving to each neighbor's community
+            let mut best_community = current_community;
+            let mut best_delta = 0.0f64;
+
+            for (&target_community, &edges_to_community) in &community_connections {
+                if target_community == current_community {
+                    continue;
+                }
+
+                // Calculate sum of degrees in target community
+                let community_degree: f64 = communities
+                    .iter()
+                    .filter(|(_, &comm)| comm == target_community)
+                    .map(|(&node, _)| *degrees.get(&node).unwrap_or(&0) as f64)
+                    .sum();
+
+                // Modularity delta formula:
+                // ΔQ = (edges_in / m) - (edges_total / m)^2
+                // Simplified for single node move:
+                // ΔQ = [(2*edges_to_community - node_degree*community_degree/m) / (2*m)]
+
+                let delta = (2.0 * edges_to_community
+                    - node_degree * community_degree / m)
+                    / (2.0 * m);
+
+                if delta > best_delta {
+                    best_delta = delta;
+                    best_community = target_community;
+                }
+            }
+
+            // Move node if it improves modularity
+            if best_community != current_community {
+                communities.insert(node, best_community);
+                any_moved = true;
+            }
+        }
+
+        if !any_moved {
+            break;
+        }
+    }
+
+    // Group nodes by final community
+    let mut communities_map: AHashMap<i64, Vec<i64>> = AHashMap::new();
+    for (node, community) in &communities {
+        communities_map
+            .entry(*community)
+            .or_insert_with(Vec::new)
+            .push(*node);
+    }
+
+    // Convert to sorted vector of communities
+    let mut result: Vec<Vec<i64>> = communities_map.into_values().collect();
+    for community in &mut result {
+        community.sort();
+    }
+    result.sort_by(|a, b| a.first().cmp(&b.first()));
+
+    Ok(result)
+}
