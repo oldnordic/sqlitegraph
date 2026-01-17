@@ -128,6 +128,42 @@ impl HnswIndex {
         Self::with_storage(name, config, storage)
     }
 
+    /// Create a new HNSW index with SQLite-backed persistent storage
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the index
+    /// * `config` - HNSW configuration parameters
+    /// * `conn` - SQLite connection
+    ///
+    /// # Returns
+    ///
+    /// Returns a new HnswIndex with SQLite storage
+    ///
+    /// # Note
+    ///
+    /// This creates an index with persistent storage. The index_id will be
+    /// set after saving metadata to the database.
+    pub fn with_persistent_storage(
+        name: &str,
+        config: HnswConfig,
+        conn: Connection,
+    ) -> Result<Self, HnswError> {
+        // First save metadata to get index_id
+        let temp_index = Self::new(name, config.clone())?;
+        temp_index.save_metadata(&conn)?;
+
+        // Get the index_id
+        let index_id = Self::get_index_id(&conn, name)?
+            .ok_or_else(|| HnswError::Storage(
+                crate::hnsw::errors::HnswStorageError::VectorNotFound(0)
+            ))?;
+
+        // Create index with SQLite storage
+        let storage = Box::new(crate::hnsw::storage::SQLiteVectorStorage::new(index_id, conn));
+        Self::with_storage(name, config, storage)
+    }
+
     /// Create a new HNSW index with custom storage backend
     ///
     /// # Arguments
@@ -1381,6 +1417,83 @@ mod tests {
             let query = vec![2.0, 4.0, 6.0];
             let results = hnsw_loaded.search(&query, 3).unwrap();
             assert!(!results.is_empty());
+        }
+
+        // Clean up
+        let _ = fs::remove_dir_all(test_dir);
+    }
+
+    #[test]
+    fn test_e2e_hnsw_persistence() {
+        use rusqlite::Connection;
+        use std::fs;
+
+        let test_dir = "/tmp/test_hnsw_e2e_persistence";
+        let db_path = format!("{}/test.db", test_dir);
+
+        // Clean up any existing test database
+        let _ = fs::remove_dir_all(test_dir);
+
+        // Create directory
+        fs::create_dir_all(test_dir).unwrap();
+
+        // Create index and manually persist vectors to database
+        {
+            let conn = Connection::open(&db_path).unwrap();
+
+            // Create schema
+            crate::schema::ensure_schema(&conn).unwrap();
+
+            // Create HNSW index metadata
+            conn.execute(
+                "INSERT INTO hnsw_indexes (name, dimension, m, ef_construction, distance_metric, vector_count, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params!["e2e_test", 3, 16, 200, "euclidean", 5, 1000, 1000],
+            ).unwrap();
+
+            let index_id = conn.last_insert_rowid();
+
+            // Manually insert vectors into database (simulating what SQLiteVectorStorage would do)
+            for i in 0..5 {
+                let vector = vec![i as f32, (i * 2) as f32, (i * 3) as f32];
+                let vector_bytes = bytemuck::cast_slice::<f32, u8>(&vector).to_vec();
+                let metadata = serde_json::json!({"label": format!("vector_{}", i)}).to_string();
+
+                conn.execute(
+                    "INSERT INTO hnsw_vectors (index_id, vector_data, metadata, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![index_id, vector_bytes, metadata, 1000, 1000],
+                ).unwrap();
+            }
+        }
+
+        // Reopen database and verify index is restored with vectors via SqliteGraph
+        {
+            let graph = SqliteGraph::open(&db_path).unwrap();
+
+            // Check that index was loaded
+            let index_names = graph.list_hnsw_indexes().unwrap();
+            assert_eq!(index_names, vec!["e2e_test".to_string()]);
+
+            // Get the loaded index
+            let loaded_count = graph.get_hnsw_index_ref("e2e_test", |hnsw| {
+                // Verify all vectors were loaded
+                assert_eq!(hnsw.vector_count, 5);
+
+                // Verify we can retrieve a vector
+                let (vector, metadata) = hnsw.get_vector(1).unwrap().unwrap();
+                assert_eq!(vector, vec![0.0, 0.0, 0.0]);
+                assert_eq!(metadata, serde_json::json!({"label": "vector_0"}));
+
+                // Verify search works (graph was rebuilt)
+                let query = vec![2.0, 4.0, 6.0];
+                let results = hnsw.search(&query, 3).unwrap();
+                assert!(!results.is_empty());
+
+                hnsw.vector_count
+            }).unwrap();
+
+            assert_eq!(loaded_count, 5);
         }
 
         // Clean up

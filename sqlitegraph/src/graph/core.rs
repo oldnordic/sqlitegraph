@@ -107,7 +107,7 @@ impl SqliteGraph {
     /// Load HNSW indexes from database
     ///
     /// This is called during SqliteGraph construction to restore any
-    /// previously created HNSW indexes.
+    /// previously created HNSW indexes with full vector data.
     fn load_hnsw_indexes(conn: &Connection) -> Result<HashMap<String, HnswIndex>, SqliteGraphError> {
         let mut indexes = HashMap::new();
 
@@ -115,12 +115,17 @@ impl SqliteGraph {
         let index_names = HnswIndex::list_indexes(conn)
             .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to load HNSW indexes: {}", e)))?;
 
-        // Load metadata for each index
+        // Load each index with vectors
         for name in index_names {
-            // For now, just load metadata (vectors loaded in plan 02)
-            let hnsw = HnswIndex::load_metadata(conn, &name)
-                .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to load HNSW index '{}': {}", name, e)))?;
-            indexes.insert(name, hnsw);
+            match HnswIndex::load_with_vectors(conn, &name) {
+                Ok(hnsw) => {
+                    indexes.insert(name, hnsw);
+                }
+                Err(e) => {
+                    // Log warning but continue loading other indexes
+                    eprintln!("Warning: Failed to load HNSW index '{}': {}", name, e);
+                }
+            }
         }
 
         Ok(indexes)
