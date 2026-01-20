@@ -58,6 +58,7 @@ pub use v2_integration::{ChangeTracker, V2IntegrationConfig, V2WALIntegrator};
 pub use writer::V2WALWriter;
 
 use crate::backend::native::{NativeBackendError, NativeResult};
+use crate::backend::native::v2::storage::JsonLimits;
 use std::path::PathBuf;
 
 /// V2 WAL configuration parameters
@@ -101,6 +102,9 @@ pub struct V2WALConfig {
 
     /// Interval for background checkpoint checks in seconds (default: 60)
     pub background_checkpoint_interval_secs: u64,
+
+    /// JSON input validation limits (default: 10MB size, 128 depth)
+    pub json_limits: JsonLimits,
 }
 
 impl Default for V2WALConfig {
@@ -119,6 +123,7 @@ impl Default for V2WALConfig {
             auto_checkpoint: true,
             background_checkpoint_thread: false, // Opt-in for now
             background_checkpoint_interval_secs: 60,
+            json_limits: JsonLimits::default(),
         }
     }
 }
@@ -166,6 +171,29 @@ impl V2WALConfig {
         }
 
         Ok(())
+    }
+
+    /// Set JSON validation limits
+    pub fn with_json_limits(mut self, limits: JsonLimits) -> Self {
+        self.json_limits = limits;
+        self
+    }
+
+    /// Set maximum JSON payload size (uses default depth)
+    pub fn with_max_json_size(mut self, max_size: usize) -> Self {
+        self.json_limits.max_size = max_size;
+        self
+    }
+
+    /// Set maximum JSON nesting depth (uses default size)
+    pub fn with_max_json_depth(mut self, max_depth: usize) -> Self {
+        self.json_limits.max_depth = max_depth;
+        self
+    }
+
+    /// Get JSON validation limits
+    pub fn json_limits(&self) -> &JsonLimits {
+        &self.json_limits
     }
 }
 
