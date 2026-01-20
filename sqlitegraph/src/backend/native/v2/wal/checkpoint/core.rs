@@ -906,16 +906,118 @@ impl DirtyBlockTracker {
     pub fn mark_global_block_dirty(
         &mut self,
         block_offset: u64,
-        _timestamp: u64,
+        timestamp: u64,
     ) -> CheckpointResult<()> {
-        // Enforce capacity limits
+        // Enforce capacity limits with overflow handling
         if self.global_dirty_blocks.len() >= self.max_global_blocks {
-            return Err(CheckpointError::resource(
-                "Maximum global dirty blocks exceeded",
-            ));
+            match self.overflow_strategy {
+                DirtyBlockOverflowStrategy::Reject => {
+                    return Err(CheckpointError::resource(
+                        "Maximum global dirty blocks exceeded",
+                    ));
+                }
+                DirtyBlockOverflowStrategy::ForceCheckpoint => {
+                    return Err(CheckpointError::checkpoint_required(
+                        "Dirty block overflow - checkpoint required",
+                    ));
+                }
+                DirtyBlockOverflowStrategy::SpillToDisk => {
+                    self.spill_oldest_blocks(1000)?;
+                }
+                DirtyBlockOverflowStrategy::HierarchicalPromotion => {
+                    self.promote_to_hierarchical()?;
+                }
+            }
         }
 
         self.global_dirty_blocks.insert(block_offset);
+        self.block_timestamps.insert(block_offset, timestamp);
+        Ok(())
+    }
+
+    /// Spill oldest blocks to overflow store
+    ///
+    /// Removes the oldest N blocks from global_dirty_blocks and moves them
+    /// to the overflow store for later recovery.
+    pub fn spill_oldest_blocks(&mut self, count: usize) -> CheckpointResult<()> {
+        if self.overflow_store.is_none() {
+            // Fallback to reject if no overflow store configured
+            return Err(CheckpointError::resource(
+                "Spill-to-disk overflow requires overflow store to be enabled",
+            ));
+        }
+
+        let overflow_store = self.overflow_store.as_mut().unwrap();
+
+        // Sort blocks by timestamp to find oldest
+        let mut oldest_blocks: Vec<(u64, u64)> = self
+            .global_dirty_blocks
+            .iter()
+            .filter_map(|&block| {
+                self.block_timestamps
+                    .get(&block)
+                    .map(|&ts| (block, ts))
+            })
+            .collect();
+
+        oldest_blocks.sort_by_key(|&(_, ts)| ts);
+
+        // Spill the oldest count blocks (or all if fewer than count)
+        let to_spill = oldest_blocks.iter().take(count);
+
+        for &(block_offset, timestamp) in to_spill {
+            // Remove from in-memory tracking
+            self.global_dirty_blocks.remove(&block_offset);
+
+            // Add to overflow store
+            overflow_store.add_spilled_block(block_offset, timestamp)?;
+        }
+
+        Ok(())
+    }
+
+    /// Promote blocks to hierarchical tracking
+    ///
+    /// Selects blocks with cluster affinity and moves them from global
+    /// dirty blocks to cluster-specific tracking.
+    pub fn promote_to_hierarchical(&mut self) -> CheckpointResult<()> {
+        // Collect blocks that have cluster metadata
+        let mut blocks_to_promote: Vec<(u64, i64)> = self
+            .global_dirty_blocks
+            .iter()
+            .filter_map(|&block| {
+                self.block_metadata
+                    .get(&block)
+                    .and_then(|meta| meta.cluster_key.map(|key| (block, key)))
+            })
+            .collect();
+
+        if blocks_to_promote.is_empty() {
+            // No blocks with cluster affinity, fall back to error
+            return Err(CheckpointError::resource(
+                "No cluster-affinity blocks available for hierarchical promotion",
+            ));
+        }
+
+        // Promote up to 10% of max capacity to cluster tracking
+        let promote_count = (self.max_global_blocks / 10).min(blocks_to_promote.len());
+
+        for &(block_offset, cluster_key) in blocks_to_promote.iter().take(promote_count) {
+            // Remove from global tracking
+            self.global_dirty_blocks.remove(&block_offset);
+
+            // Add to cluster tracking
+            let cluster_blocks = self
+                .cluster_dirty_blocks
+                .entry(cluster_key)
+                .or_insert_with(HashSet::new);
+
+            // Only add if cluster has capacity
+            if cluster_blocks.len() < self.max_blocks_per_cluster {
+                cluster_blocks.insert(block_offset);
+            }
+        }
+
         Ok(())
     }
 
