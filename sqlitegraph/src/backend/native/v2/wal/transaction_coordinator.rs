@@ -306,6 +306,15 @@ impl DeadlockDetector {
             .insert(tx_holder);
     }
 
+    /// Detect if a cycle exists starting from the given transaction
+    pub fn detect_cycle(&self, start_tx: TransactionId) -> NativeResult<bool> {
+        let wait_for_graph = self.wait_for_graph.read();
+        let mut visited = HashSet::new();
+        let mut recursion_stack = HashSet::new();
+
+        Ok(self.has_cycle_util(start_tx, &mut visited, &mut recursion_stack, &wait_for_graph))
+    }
+
     /// DFS utility for cycle detection
     fn has_cycle_util(
         &self,
