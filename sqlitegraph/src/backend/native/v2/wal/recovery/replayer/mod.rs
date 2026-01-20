@@ -424,7 +424,7 @@ impl V2GraphFileReplayer {
         if summary.total_operations > 0 {
             info_log!("Rolling back {} operations ({} node, {} string)",
                   summary.total_operations,
-                  summary.data_operations_count() - summary.string_insert_count,
+                  summary.data_operations_count() - summary.string_insert_count as usize,
                   summary.string_insert_count);
         }
 
