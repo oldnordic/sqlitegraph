@@ -631,9 +631,9 @@ mod tests {
             ef_search: 50,
             ml: 16,
             distance_metric: DistanceMetric::Euclidean,
-            enable_multilayer: false,  // Use single-layer for now
-            multilayer_level_distribution_base: None,
-            multilayer_deterministic_seed: None,
+            enable_multilayer: true,   // Test multi-layer recall
+            multilayer_level_distribution_base: Some(16),
+            multilayer_deterministic_seed: Some(42),
         };
 
         let mut hnsw = HnswIndex::new("recall_test_unique", config).unwrap();
@@ -699,5 +699,122 @@ mod tests {
         println!("Exact top {}: {:?}", k, exact_ids);
         println!("Recall: {:.1}% ({}/{})", recall, overlap, k);
         assert!(recall >= 90.0, "Recall {:.1}% is below 90% threshold", recall);
+    }
+
+    #[test]
+    fn test_multilayer_search_complexity_ologn() {
+        use std::time::Instant;
+
+        // Test configurations with increasing dataset sizes
+        let sizes = vec![100, 1000, 10000];
+        let mut search_times = Vec::new();
+
+        for size in sizes {
+            let config = HnswConfig {
+                dimension: 64,
+                m: 16,
+                ef_construction: 200,
+                ef_search: 50,
+                ml: 16,
+                distance_metric: DistanceMetric::Euclidean,
+                enable_multilayer: true,
+                multilayer_level_distribution_base: Some(16),
+                multilayer_deterministic_seed: Some(42),
+            };
+
+            let mut hnsw = HnswIndex::new(&format!("complexity_test_{}", size), config).unwrap();
+
+            // Insert vectors
+            for i in 0..size {
+                let vector: Vec<f32> = (0..64)
+                    .map(|j| ((i * 64 + j) as f32 * 0.01).sin())
+                    .collect();
+                hnsw.insert_vector(&vector, None).unwrap();
+            }
+
+            // Measure search time (average of multiple searches)
+            let query: Vec<f32> = (0..64).map(|j| (j as f32 * 0.01).sin()).collect();
+            let iterations = 10;
+            let start = Instant::now();
+            for _ in 0..iterations {
+                let _ = hnsw.search(&query, 10).unwrap();
+            }
+            let elapsed = start.elapsed();
+            let avg_time_ns = elapsed.as_nanos() / iterations as u128;
+            search_times.push((size, avg_time_ns));
+
+            println!("Size {}: avg search time = {} ns", size, avg_time_ns);
+        }
+
+        // Verify logarithmic scaling: T(1000) / T(100) should be < 10
+        // Linear scaling would be 10x (1000/100), logarithmic is typically < 5x
+        let ratio_100_to_1000 = search_times[1].1 as f64 / search_times[0].1 as f64;
+        println!("Time ratio (1000/100): {:.2}x", ratio_100_to_1000);
+        assert!(ratio_100_to_1000 < 10.0,
+                "Search time ratio {:.2}x suggests worse than log scaling; expected < 10x for O(log N)",
+                ratio_100_to_1000);
+
+        // Verify logarithmic scaling: T(10000) / T(1000) should be < 10
+        // Linear scaling would be 10x (10000/1000), but log should be better
+        let ratio_1000_to_10000 = search_times[2].1 as f64 / search_times[1].1 as f64;
+        println!("Time ratio (10000/1000): {:.2}x", ratio_1000_to_10000);
+        assert!(ratio_1000_to_10000 < 10.0,
+                "Search time ratio {:.2}x suggests worse than log scaling; expected < 10x for O(log N)",
+                ratio_1000_to_10000);
+
+        // Most importantly: overall T(10000) / T(100) should be MUCH better than linear (100x)
+        let overall_ratio = search_times[2].1 as f64 / search_times[0].1 as f64;
+        println!("Overall time ratio (10000/100): {:.2}x", overall_ratio);
+        assert!(overall_ratio < 50.0,
+                "Overall search time ratio {:.2}x suggests linear scaling; expected < 50x for O(log N) (linear would be 100x)",
+                overall_ratio);
+    }
+
+    #[test]
+    fn test_multilayer_insert_layers_correct() {
+        let config = HnswConfig {
+            dimension: 64,
+            m: 16,
+            ef_construction: 200,
+            ef_search: 50,
+            ml: 16,
+            distance_metric: DistanceMetric::Euclidean,
+            enable_multilayer: true,
+            multilayer_level_distribution_base: Some(16),
+            multilayer_deterministic_seed: Some(42),
+        };
+
+        let mut hnsw = HnswIndex::new("test_layers", config).unwrap();
+
+        // Insert 100 vectors
+        for i in 0..100 {
+            let vector: Vec<f32> = (0..64)
+                .map(|j| ((i * 64 + j) as f32 * 0.01).cos())
+                .collect();
+            hnsw.insert_vector(&vector, None).unwrap();
+        }
+
+        // Verify nodes are distributed across layers
+        let stats = hnsw.statistics().unwrap();
+
+        println!("Layer stats: {:?}", stats.layer_stats);
+
+        // All 100 vectors should be in layer 0 (base layer)
+        assert_eq!(stats.layer_stats[0].0, 100, "Layer 0 should have all 100 vectors");
+
+        // Layer 1 should have some vectors (approximately 100/16 = 6-7)
+        // With seed 42 and exponential distribution, we expect ~6 vectors in layer 1
+        let layer1_count = stats.layer_stats[1].0;
+        assert!(layer1_count > 0 && layer1_count < 20,
+                "Layer 1 should have some vectors (got {}), but not all", layer1_count);
+
+        // Verify higher layers have fewer or equal nodes than lower layers
+        assert!(stats.layer_stats[0].0 >= stats.layer_stats[1].0,
+                "Layer 0 should have >= Layer 1");
+        assert!(stats.layer_stats[1].0 >= stats.layer_stats[2].0,
+                "Layer 1 should have >= Layer 2");
+
+        // Verify multi-layer mode is enabled
+        assert!(hnsw.has_level_distributor(), "LevelDistributor should be initialized");
     }
 }
