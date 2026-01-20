@@ -11,7 +11,7 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 Phase: 21 of 22 complete (4/4 plans)
 Status: Phase 21 complete (all plans verified)
-Last activity: 2026-01-20 — Completed Phase 21 Plan 01: Node Deletion Rollback Tests
+Last activity: 2026-01-20 — Completed Phase 21 Plan 02: Cluster Validation Tests
 
 Progress: [████████████████████████████████] 100% (Phase 11-21 complete)
 
@@ -195,6 +195,10 @@ Recent decisions affecting current work:
 - Full delete/rollback cycle test validates complete rollback flow (create, delete, rollback, verify) - 21-01
 - Tests added to operations/node_ops.rs instead of operations_with_problematic_tests.rs (file not in module tree) - 21-01
 - All 9 node deletion tests pass (8 node delete tests + 1 full cycle test) - 21-01
+- Cluster overlap validation bug fixed: Use distinct offsets for outgoing (1536) and incoming (5632) clusters - 21-02
+- 2/3 cluster validation tests pass (cluster_headers_survive_reopen, file_length_consistency) - 21-02
+- Fixed compilation errors: Added NativeBackendError, NativeResult, std IO imports - 21-02
+- Test 1 (multi_cluster_offsets) reveals data persistence issue between API layers (deferred for architectural fix) - 21-02
 - Comprehensive WAL checkpoint and recovery unit tests (6 tests) verify checkpoint manager API - 21-03
 - Checkpoint strategy tests verify all 4 strategies (SizeThreshold, TransactionCount, TimeInterval, Adaptive) - 21-03
 - Crash recovery tests verify recovery engine creation and state management - 21-03
@@ -211,8 +215,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 21-03 execution)
-Stopped at: Completed 21-03 - WAL checkpoint and recovery unit tests
+Last session: 2026-01-20 (plan 21-02 execution)
+Stopped at: Completed 21-02 - Cluster Validation Tests (partial: 2/3 tests passing)
 Resume file: None
 
 ### Roadmap Evolution
