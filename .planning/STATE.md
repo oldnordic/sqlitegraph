@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 20 of 22 (Data Management), Plan 1 of 3 complete
-Status: Phase 20-01 complete (Schema version u32 migration)
-Last activity: 2026-01-20 — Completed Phase 20 Plan 01: Schema Version u32 Migration (v3 format)
+Phase: 20 of 22 (Data Management), Plan 2 of 3 complete
+Status: Phase 20-02 complete (File format migration API)
+Last activity: 2026-01-20 — Completed Phase 20 Plan 02: File Format Migration API with auto-detection and atomic V2-to-V3 conversion
 
-Progress: [████████████████████████████████] 96% (Phase 11-19 complete, 20-01 complete)
+Progress: [████████████████████████████████] 97% (Phase 11-19 complete, 20-01 complete, 20-02 complete)
 
 ## Performance Metrics
 
@@ -170,9 +170,21 @@ Recent decisions affecting current work:
 - Optimal pool size validated: 5-10 connections for 8 concurrent threads - 19-03
 - Benchmarks measure: checkout latency, concurrent access, query throughput, pool size impact - 19-03
 
+**v1.1 Data Management (Phase 20):**
+- Schema version changed from u64 (8 bytes) to u32 (4 bytes) with 4-byte reserved field - 20-01
+- File format version bumped from 2 to 3 to reflect schema_version layout change - 20-01
+- Backward-compatible decode handles v2 files (8-byte schema_version) by reading lower 32 bits as schema_version, upper 32 bits as reserved - 20-01
+- Migration module with FormatVersion enum (V1/V2/V3/Unknown) for format detection - 20-02
+- detect_format_version reads file header and extracts version field at offset 8-11 - 20-02
+- migrate_file performs atomic V2-to-V3 conversion with backup creation and rollback on failure - 20-02
+- Atomic migration uses temp file + fsync + atomic rename pattern for crash safety - 20-02
+- GraphFile::open triggers auto-migration for V2 files, transparent to caller - 20-02
+- Backup file (.bak) retained after migration for safety, caller can delete - 20-02
+
 ### Pending Todos
 
 - Layer persistence (Tasks 3-4 from 15-04) requires separate planning for database schema changes
+- Backup/Restore API (Plans 20-03) requires snapshot export/import public wrapper
 
 ### Blockers/Concerns
 
@@ -181,8 +193,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 20-01 execution)
-Stopped at: Completed 20-01 - Schema version u32 migration to v3 format with backward compatibility
+Last session: 2026-01-20 (plan 20-02 execution)
+Stopped at: Completed 20-02 - File Format Migration API with auto-detection and atomic V2-to-V3 conversion
 Resume file: None
 
 ### Roadmap Evolution
@@ -193,4 +205,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 Plan 01 complete (1/3, v3 file format with 4-byte schema_version)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 Plans 01-02 complete (2/3, v3 file format with migration API)
