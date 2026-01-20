@@ -32,8 +32,11 @@ pub fn encode_persistent_header(header: &PersistentHeaderV2) -> NativeResult<Vec
     // Write edge count (big-endian)
     buffer.extend_from_slice(&header.edge_count.to_be_bytes());
 
-    // Write schema version (big-endian)
-    buffer.extend_from_slice(&header.schema_version.to_be_bytes());
+    // Write schema version (4 bytes, big-endian)
+    buffer.extend_from_slice(&header.schema_version.to_be_bytes()[0..4]);
+
+    // Write reserved field (4 bytes, big-endian)
+    buffer.extend_from_slice(&header.reserved.to_be_bytes());
 
     // Write node data offset (big-endian)
     buffer.extend_from_slice(&header.node_data_offset.to_be_bytes());
@@ -130,19 +133,47 @@ pub fn decode_persistent_header(bytes: &[u8]) -> NativeResult<PersistentHeaderV2
     ]);
     offset += 8;
 
-    // Read schema version
-    let schema_version_slice = get_slice_safe(bytes, offset, 8)?; // TODO: This should probably be 4 bytes, not 8
-    let schema_version = u64::from_be_bytes([
-        schema_version_slice[0],
-        schema_version_slice[1],
-        schema_version_slice[2],
-        schema_version_slice[3],
-        schema_version_slice[4],
-        schema_version_slice[5],
-        schema_version_slice[6],
-        schema_version_slice[7],
-    ]);
-    offset += 8;
+    // Read schema version (version-aware for v2->v3 migration)
+    // v2: 8-byte schema_version field
+    // v3+: 4-byte schema_version + 4-byte reserved
+    let (schema_version, reserved) = if version == 2 {
+        // v2 format: 8-byte schema_version field at offset 32-39
+        // In big-endian, first 4 bytes are upper 32 bits, last 4 bytes are lower 32 bits
+        // Schema version was written as u64, so we take the lower 32 bits as schema_version
+        let sv_slice = get_slice_safe(bytes, offset, 8)?;
+        let sv_full = u64::from_be_bytes([
+            sv_slice[0],
+            sv_slice[1],
+            sv_slice[2],
+            sv_slice[3],
+            sv_slice[4],
+            sv_slice[5],
+            sv_slice[6],
+            sv_slice[7],
+        ]);
+        offset += 8;
+        // Lower 32 bits = schema_version, upper 32 bits -> reserved (was likely 0 in v2)
+        (sv_full as u32, (sv_full >> 32) as u32)
+    } else {
+        // v3+ format: 4-byte schema_version + 4-byte reserved
+        let sv_slice = get_slice_safe(bytes, offset, 4)?;
+        let sv = u32::from_be_bytes([
+            sv_slice[0],
+            sv_slice[1],
+            sv_slice[2],
+            sv_slice[3],
+        ]);
+        offset += 4;
+        let res_slice = get_slice_safe(bytes, offset, 4)?;
+        let res = u32::from_be_bytes([
+            res_slice[0],
+            res_slice[1],
+            res_slice[2],
+            res_slice[3],
+        ]);
+        offset += 4;
+        (sv, res)
+    };
 
     // Read node data offset
     let node_data_offset_slice = get_slice_safe(bytes, offset, 8)?;
@@ -249,6 +280,7 @@ pub fn decode_persistent_header(bytes: &[u8]) -> NativeResult<PersistentHeaderV2
         node_count,
         edge_count,
         schema_version,
+        reserved,
         node_data_offset,
         edge_data_offset,
         outgoing_cluster_offset,
@@ -289,11 +321,12 @@ mod tests {
 
         let header = PersistentHeaderV2 {
             magic: V2_MAGIC,
-            version: 2,
+            version: 3, // v3 format with 4-byte schema_version
             flags: crate::backend::native::constants::DEFAULT_FEATURE_FLAGS,
             node_count: 100,
             edge_count: 500,
             schema_version: 1,
+            reserved: 0,
             node_data_offset: 1024,
             edge_data_offset: 8192,
             outgoing_cluster_offset: 16384,
@@ -307,6 +340,7 @@ mod tests {
         assert_eq!(header.node_count, decoded.node_count);
         assert_eq!(header.edge_count, decoded.edge_count);
         assert_eq!(header.schema_version, decoded.schema_version);
+        assert_eq!(header.reserved, decoded.reserved);
         assert_eq!(header.node_data_offset, decoded.node_data_offset);
         assert_eq!(header.edge_data_offset, decoded.edge_data_offset);
         assert_eq!(header.magic, decoded.magic);
@@ -355,5 +389,50 @@ mod tests {
     fn test_header_constants_consistency() {
         // Ensure that the constants we're using are consistent
         assert_eq!(PERSISTENT_HEADER_SIZE, HEADER_SIZE as usize);
+    }
+
+    #[test]
+    fn test_decode_v2_format_backward_compatibility() {
+        use crate::backend::native::v2::V2_MAGIC;
+
+        // Simulate a v2 file header with 8-byte schema_version
+        // In v2, schema_version was written as u64 at offset 32-39
+        let mut v2_header_bytes = [0u8; 80];
+
+        // Write magic
+        v2_header_bytes[0..8].copy_from_slice(&V2_MAGIC);
+
+        // Write version = 2
+        v2_header_bytes[8..12].copy_from_slice(&2u32.to_be_bytes());
+
+        // Write flags
+        v2_header_bytes[12..16].copy_from_slice(&crate::backend::native::constants::DEFAULT_FEATURE_FLAGS.to_be_bytes());
+
+        // Write node_count = 100
+        v2_header_bytes[16..24].copy_from_slice(&100u64.to_be_bytes());
+
+        // Write edge_count = 500
+        v2_header_bytes[24..32].copy_from_slice(&500u64.to_be_bytes());
+
+        // Write schema_version = 1 as u64 (v2 format)
+        // This is [0, 0, 0, 0, 0, 0, 0, 1] in big-endian
+        v2_header_bytes[32..40].copy_from_slice(&1u64.to_be_bytes());
+
+        // Write remaining fields
+        v2_header_bytes[40..48].copy_from_slice(&1024u64.to_be_bytes());
+        v2_header_bytes[48..56].copy_from_slice(&8192u64.to_be_bytes());
+        v2_header_bytes[56..64].copy_from_slice(&16384u64.to_be_bytes());
+        v2_header_bytes[64..72].copy_from_slice(&24576u64.to_be_bytes());
+        v2_header_bytes[72..80].copy_from_slice(&32768u64.to_be_bytes());
+
+        // Decode the v2 header
+        let decoded = decode_persistent_header(&v2_header_bytes).unwrap();
+
+        // Verify backward-compatible decoding
+        assert_eq!(decoded.version, 2);
+        assert_eq!(decoded.schema_version, 1); // Lower 32 bits of the u64
+        assert_eq!(decoded.reserved, 0); // Upper 32 bits of the u64 (was 0 in v2)
+        assert_eq!(decoded.node_count, 100);
+        assert_eq!(decoded.edge_count, 500);
     }
 }
