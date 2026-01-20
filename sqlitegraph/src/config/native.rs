@@ -68,4 +68,28 @@ impl NativeConfig {
         self.max_parallel_transactions = degree;
         self
     }
+
+    /// Set the checkpoint strategy (builder pattern)
+    pub fn with_checkpoint_strategy(mut self, strategy: CheckpointStrategy) -> Self {
+        self.checkpoint_strategy = Some(strategy);
+        self
+    }
+
+    /// Set transaction-count checkpoint threshold (builder pattern)
+    pub fn with_transaction_checkpoint(mut self, threshold: u64) -> Self {
+        self.checkpoint_strategy = Some(CheckpointStrategy::TransactionCount(threshold));
+        self
+    }
+
+    /// Set size-based checkpoint threshold (builder pattern)
+    pub fn with_size_checkpoint(mut self, threshold_bytes: u64) -> Self {
+        self.checkpoint_strategy = Some(CheckpointStrategy::SizeThreshold(threshold_bytes));
+        self
+    }
+
+    /// Set time-based checkpoint interval (builder pattern)
+    pub fn with_time_checkpoint(mut self, interval_secs: u64) -> Self {
+        self.checkpoint_strategy = Some(CheckpointStrategy::TimeInterval(Duration::from_secs(interval_secs)));
+        self
+    }
 }
