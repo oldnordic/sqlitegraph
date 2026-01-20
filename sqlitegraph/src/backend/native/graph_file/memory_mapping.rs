@@ -6,10 +6,12 @@
 #[cfg(feature = "v2_experimental")]
 use crate::backend::native::{
     graph_file::buffers::WriteBuffer,
+    types::{NativeBackendError, NativeResult},
 };
 
 #[cfg(feature = "v2_experimental")]
 use memmap2::{MmapMut, MmapOptions};
+use std::io::{Seek, SeekFrom, Write, Read};
 
 /// Memory mapping management utilities for GraphFile
 pub struct MemoryMappingManager;
@@ -254,6 +256,7 @@ impl MemoryMappingManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::tempfile;
 
     #[cfg(feature = "v2_experimental")]
     #[test]

@@ -100,7 +100,7 @@ impl<'a> EdgeStore<'a> {
         target_id: crate::backend::native::types::NativeNodeId,
     ) -> crate::backend::native::types::NativeResult<()> {
         use crate::backend::native::node_store::NodeStore;
-        
+
         // Update source node's outgoing cluster
         {
             let mut node_store = NodeStore::new(self.graph_file);
@@ -108,7 +108,8 @@ impl<'a> EdgeStore<'a> {
             source_node.outgoing_edge_count += 1;
             // Set minimal cluster metadata if not already set
             if source_node.outgoing_cluster_offset == 0 {
-                source_node.outgoing_cluster_offset = 1536; // Use known cluster offset
+                // Use offset after node region (1536) for outgoing clusters
+                source_node.outgoing_cluster_offset = 1536;
                 source_node.outgoing_cluster_size = 4096;
             }
             node_store.write_node_v2(&source_node)?;
@@ -121,8 +122,10 @@ impl<'a> EdgeStore<'a> {
             let mut target_node = node_store.read_node_v2(target_id)?;
             target_node.incoming_edge_count += 1;
             // Set minimal cluster metadata if not already set
+            // IMPORTANT: Use a different offset to avoid overlap with outgoing cluster
+            // The outgoing cluster is at [1536, 5632), so incoming starts at 5632
             if target_node.incoming_cluster_offset == 0 {
-                target_node.incoming_cluster_offset = 1536; // Use known cluster offset
+                target_node.incoming_cluster_offset = 1536 + 4096; // 5632 - after outgoing cluster
                 target_node.incoming_cluster_size = 4096;
             }
             node_store.write_node_v2(&target_node)?;

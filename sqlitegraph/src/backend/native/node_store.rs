@@ -144,9 +144,9 @@ impl<'a> NodeStore<'a> {
         // PHASE 2C.1 FORENSIC: Dual-API instrumentation to detect cache/coherence issues
         if std::env::var("V2_SLOT_DEBUG").is_ok() {
             let mut before_buffer_file = vec![0u8; 32];
-            let mut _before_buffer_mmap = vec![0u8; 32];
+            let mut before_buffer_mmap = vec![0u8; 32];
             let mut after_buffer_file = vec![0u8; 32];
-            let mut _after_buffer_mmap = vec![0u8; 32];
+            let mut after_buffer_mmap = vec![0u8; 32];
 
             let file_size_before = self.graph_file.file_size().unwrap_or(0);
 
@@ -259,7 +259,7 @@ impl<'a> NodeStore<'a> {
         // PHASE 2C.1 FORENSIC: Dual-API instrumentation for reader
         if std::env::var("V2_SLOT_DEBUG").is_ok() {
             let mut debug_buffer_file = vec![0u8; 32];
-            let mut _debug_buffer_mmap = vec![0u8; 32];
+            let mut debug_buffer_mmap = vec![0u8; 32];
             let file_size = self.graph_file.file_size().unwrap_or(0);
 
             if slot_offset + 32 <= file_size {
