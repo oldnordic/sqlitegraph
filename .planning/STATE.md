@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 12 of 22 (ACID Consistency)
-Plan: 2 of 5 in current phase
+Plan: 4 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-20 — Completed 12-02: Checkpoint state validation with enum-based state machine
+Last activity: 2026-01-20 — Completed 12-04: Post-recovery validation hook
 
-Progress: [████████████████████████████░░░░░░] 60%
+Progress: [███████████████████████████████░░░░] 68%
 
 ## Performance Metrics
 
@@ -31,7 +31,7 @@ Progress: [███████████████████████
 | 11-12 (v1.1) | 5/45 | 39min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 11-02 (7min), 11-03 (14min), 12-01 (10min), 12-02 (15min)
+- Last 5 plans: 11-02 (7min), 11-03 (14min), 12-01 (10min), 12-02 (15min), 12-03 (11min), 12-04 (5min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -66,6 +66,9 @@ Recent decisions affecting current work:
 - Only validate when both cluster offsets > 0 to prevent false positives during sequential allocation - 12-01
 - Made CheckpointManagerState public with pub fields to allow validation access - 12-02
 - State validation checks consistency between CheckpointState enum and CheckpointManagerState metadata - 12-02
+- Pre-commit validation hook validates transaction constraints before commit - 12-03
+- Post-recovery validation hook uses RecoveryValidator after WAL replay completes - 12-04
+- validate_post_recovery called between replay_transactions and finalize_recovery - 12-04
 
 ### Pending Todos
 
@@ -77,8 +80,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 12-02 execution)
-Stopped at: Completed 12-02 - Checkpoint state validation
+Last session: 2026-01-20 (plan 12-04 execution)
+Stopped at: Completed 12-04 - Post-recovery validation hook
 Resume file: None
 
 ### Roadmap Evolution
@@ -89,4 +92,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3 plans), Phase 12 in progress (2/5 plans)
+  - Progress: Phase 11 complete (3/3 plans), Phase 12 in progress (4/5 plans)
