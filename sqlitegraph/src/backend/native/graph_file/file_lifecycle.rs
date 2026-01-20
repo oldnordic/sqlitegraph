@@ -111,15 +111,17 @@ impl FileLifecycleManager {
         if (graph_file.persistent_header.flags & required_flags) != required_flags {
             return Err(NativeBackendError::UnsupportedVersion {
                 version: 1, // Any file without both V2 flags is unsupported
-                supported_version: 2,
+                supported_version: 3, // Updated to v3
             });
         }
 
-        // V2-specific validation
-        if graph_file.persistent_header.version != 2 {
+        // Accept v2 or v3 format files
+        // v2: 8-byte schema_version field
+        // v3: 4-byte schema_version + 4-byte reserved
+        if graph_file.persistent_header.version != 2 && graph_file.persistent_header.version != 3 {
             return Err(NativeBackendError::UnsupportedVersion {
                 version: graph_file.persistent_header.version,
-                supported_version: 2,
+                supported_version: 3,
             });
         }
 
@@ -300,8 +302,8 @@ mod tests {
 
         let header = PersistentHeaderV2::new_v2();
 
-        // Test that new header has correct version
-        assert_eq!(header.version, 2);
+        // Test that new header has correct version (v3 for new schema_version format)
+        assert_eq!(header.version, 3);
 
         // Test that required flags are set
         let required_flags = FLAG_V2_FRAMED_RECORDS | FLAG_V2_ATOMIC_COMMIT;
