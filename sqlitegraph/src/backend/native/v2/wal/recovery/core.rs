@@ -275,6 +275,10 @@ impl V2WALRecoveryEngine {
         let replay_warnings = self.replay_transactions(&transactions)?;
         warnings.extend(replay_warnings);
 
+        // Post-recovery validation: validate integrity after WAL replay completes
+        let post_validation_warnings = self.validate_post_recovery(&transactions)?;
+        warnings.extend(post_validation_warnings);
+
         self.set_recovery_state(RecoveryState::Finalizing)?;
         let final_warnings = self.finalize_recovery()?;
         warnings.extend(final_warnings);
