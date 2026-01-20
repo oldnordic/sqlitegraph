@@ -623,7 +623,7 @@ mod tests {
         };
 
         let validator = V2InvariantValidator::new(config);
-        let dirty_blocks = DirtyBlockTracker::default();
+        let dirty_blocks = DirtyBlockTracker::new(100, 100);
 
         let result = validator.validate_cluster_alignment_invariants(&dirty_blocks);
         assert!(result.is_ok());

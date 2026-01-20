@@ -151,6 +151,12 @@ impl Default for DirtyBlockOverflowStrategy {
     }
 }
 
+impl Default for DirtyBlockTracker {
+    fn default() -> Self {
+        Self::new(MAX_DIRTY_BLOCKS_PER_CLUSTER, MAX_GLOBAL_DIRTY_BLOCKS)
+    }
+}
+
 /// Disk overflow store for spilled dirty blocks
 ///
 /// Stores blocks that have been spilled to secondary storage when
@@ -1341,5 +1347,336 @@ mod tests {
 
         // State should have transitioned back from Collecting to Failed
         assert_eq!(manager.get_state(), CheckpointState::Failed);
+    }
+
+    // Overflow handling tests
+
+    #[test]
+    fn test_overflow_strategy_reject() {
+        let mut tracker = DirtyBlockTracker::with_overflow_strategy(
+            100,
+            100, // Small limit of 100 global blocks
+            DirtyBlockOverflowStrategy::Reject,
+        );
+
+        // Mark 100 blocks - should succeed
+        for i in 0..100 {
+            let result = tracker.mark_global_block_dirty(i * 4096, i as u64);
+            assert!(result.is_ok(), "Block {} should succeed", i);
+        }
+
+        // 101st block should fail
+        let result = tracker.mark_global_block_dirty(101 * 4096, 101);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind, CheckpointErrorKind::Resource);
+    }
+
+    #[test]
+    fn test_overflow_strategy_force_checkpoint() {
+        let mut tracker = DirtyBlockTracker::with_overflow_strategy(
+            100,
+            100,
+            DirtyBlockOverflowStrategy::ForceCheckpoint,
+        );
+
+        // Mark 100 blocks - should succeed
+        for i in 0..100 {
+            tracker.mark_global_block_dirty(i * 4096, i as u64).unwrap();
+        }
+
+        // 101st block should return checkpoint_required error
+        let result = tracker.mark_global_block_dirty(101 * 4096, 101);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("checkpoint required"));
+    }
+
+    #[test]
+    fn test_overflow_strategy_spill_to_disk() {
+        let temp_dir = tempdir().unwrap();
+        let spill_path = temp_dir.path().join("spill");
+        std::fs::create_dir_all(&spill_path).unwrap();
+
+        let mut tracker = DirtyBlockTracker::with_overflow_strategy(
+            100,
+            100,
+            DirtyBlockOverflowStrategy::SpillToDisk,
+        );
+
+        // Enable spill-to-disk
+        tracker.enable_spill_to_disk(spill_path, 10000);
+
+        // Mark 100 blocks to fill capacity
+        for i in 0..100 {
+            tracker.mark_global_block_dirty(i * 4096, i as u64).unwrap();
+        }
+
+        // Mark 50 more blocks - should trigger spill
+        for i in 100..150 {
+            let result = tracker.mark_global_block_dirty(i * 4096, i as u64);
+            assert!(result.is_ok(), "Block {} should succeed after spill", i);
+        }
+
+        // Verify memory count is reduced after spill
+        let (cluster_count, global_count) = tracker.get_statistics();
+        assert_eq!(cluster_count, 0);
+        assert!(global_count < 150, "Global count should be less than 150 after spill");
+
+        // Verify spilled blocks are tracked
+        let overflow_store = tracker.get_overflow_store();
+        assert!(overflow_store.is_some());
+        assert!(overflow_store.unwrap().len() > 0);
+    }
+
+    #[test]
+    fn test_overflow_strategy_hierarchical() {
+        let mut tracker = DirtyBlockTracker::with_overflow_strategy(
+            100,
+            100,
+            DirtyBlockOverflowStrategy::HierarchicalPromotion,
+        );
+
+        // Add blocks with cluster metadata
+        for i in 0..100 {
+            let block_offset = i * 4096;
+            tracker.mark_global_block_dirty(block_offset, i as u64).unwrap();
+
+            // Add cluster metadata for some blocks
+            if i % 2 == 0 {
+                tracker.block_metadata.insert(
+                    block_offset,
+                    BlockMetadata {
+                        size: 4096,
+                        cluster_key: Some(i as i64 / 10),
+                        block_type: V2BlockType::NodeRecord,
+                        access_pattern: AccessPattern::Sequential,
+                        priority: 1,
+                    },
+                );
+            }
+        }
+
+        // 101st block should trigger hierarchical promotion
+        let result = tracker.mark_global_block_dirty(101 * 4096, 101);
+        assert!(result.is_ok(), "Hierarchical promotion should succeed");
+
+        // Verify blocks were promoted to cluster tracking
+        let (cluster_count, global_count) = tracker.get_statistics();
+        assert!(cluster_count > 0, "Should have cluster blocks after promotion");
+        assert!(global_count < 100, "Global count should be reduced after promotion");
+    }
+
+    #[test]
+    fn test_50k_global_blocks_with_spill() {
+        let temp_dir = tempdir().unwrap();
+        let spill_path = temp_dir.path().join("spill");
+        std::fs::create_dir_all(&spill_path).unwrap();
+
+        let max_global = 50000;
+        let mut tracker = DirtyBlockTracker::with_overflow_strategy(
+            10000,
+            max_global,
+            DirtyBlockOverflowStrategy::SpillToDisk,
+        );
+
+        // Enable spill-to-disk with large capacity
+        tracker.enable_spill_to_disk(spill_path, 100000);
+
+        // Mark 60,000 blocks (exceeds the 50K limit)
+        for i in 0..60000 {
+            let block_offset = (i as u64) * 4096;
+            let result = tracker.mark_global_block_dirty(block_offset, i as u64);
+            assert!(
+                result.is_ok(),
+                "Block {} should succeed with spill-to-disk: {:?}",
+                i,
+                result.err()
+            );
+        }
+
+        // Verify tracking is still functional
+        let (cluster_count, global_count) = tracker.get_statistics();
+        assert_eq!(cluster_count, 0);
+        assert!(global_count <= max_global + 1000, "Should stay near capacity");
+
+        // Verify spilled blocks are tracked
+        let overflow_store = tracker.get_overflow_store();
+        assert!(overflow_store.is_some());
+        let spilled_count = overflow_store.unwrap().len();
+        assert!(spilled_count > 0, "Should have spilled blocks");
+    }
+
+    #[test]
+    fn test_overflow_strategy_getters_setters() {
+        let mut tracker = DirtyBlockTracker::new(100, 100);
+
+        // Default strategy should be Reject
+        assert_eq!(
+            tracker.get_overflow_strategy(),
+            DirtyBlockOverflowStrategy::Reject
+        );
+
+        // Set new strategy
+        tracker.set_overflow_strategy(DirtyBlockOverflowStrategy::ForceCheckpoint);
+        assert_eq!(
+            tracker.get_overflow_strategy(),
+            DirtyBlockOverflowStrategy::ForceCheckpoint
+        );
+
+        // Try SpillToDisk
+        tracker.set_overflow_strategy(DirtyBlockOverflowStrategy::SpillToDisk);
+        assert_eq!(
+            tracker.get_overflow_strategy(),
+            DirtyBlockOverflowStrategy::SpillToDisk
+        );
+
+        // Try HierarchicalPromotion
+        tracker.set_overflow_strategy(DirtyBlockOverflowStrategy::HierarchicalPromotion);
+        assert_eq!(
+            tracker.get_overflow_strategy(),
+            DirtyBlockOverflowStrategy::HierarchicalPromotion
+        );
+    }
+
+    #[test]
+    fn test_spill_oldest_blocks() {
+        let temp_dir = tempdir().unwrap();
+        let spill_path = temp_dir.path().join("spill");
+        std::fs::create_dir_all(&spill_path).unwrap();
+
+        let mut tracker = DirtyBlockTracker::with_overflow_strategy(
+            100,
+            100,
+            DirtyBlockOverflowStrategy::SpillToDisk,
+        );
+        tracker.enable_spill_to_disk(spill_path, 10000);
+
+        // Mark blocks with increasing timestamps
+        for i in 0..100 {
+            tracker
+                .mark_global_block_dirty(i * 4096, i as u64)
+                .unwrap();
+        }
+
+        // Manually spill 50 oldest blocks
+        let result = tracker.spill_oldest_blocks(50);
+        assert!(result.is_ok());
+
+        // Verify 50 blocks were spilled
+        let overflow_store = tracker.get_overflow_store();
+        assert_eq!(overflow_store.unwrap().len(), 50);
+
+        // Verify memory has 50 blocks remaining
+        let (_, global_count) = tracker.get_statistics();
+        assert_eq!(global_count, 50);
+    }
+
+    #[test]
+    fn test_promote_to_hierarchical_with_metadata() {
+        let mut tracker = DirtyBlockTracker::with_overflow_strategy(
+            100,
+            100,
+            DirtyBlockOverflowStrategy::HierarchicalPromotion,
+        );
+
+        // Add blocks with cluster metadata
+        for i in 0..50 {
+            let block_offset = i * 4096;
+            tracker.mark_global_block_dirty(block_offset, i as u64).unwrap();
+
+            tracker.block_metadata.insert(
+                block_offset,
+                BlockMetadata {
+                    size: 4096,
+                    cluster_key: Some(1), // All in same cluster
+                    block_type: V2BlockType::NodeRecord,
+                    access_pattern: AccessPattern::Sequential,
+                    priority: 1,
+                },
+            );
+        }
+
+        // Trigger promotion
+        let result = tracker.promote_to_hierarchical();
+        assert!(result.is_ok());
+
+        // Verify blocks moved to cluster tracking
+        let (cluster_count, global_count) = tracker.get_statistics();
+        assert!(cluster_count > 0, "Should have cluster blocks");
+        assert!(global_count < 50, "Global count should be reduced");
+    }
+
+    #[test]
+    fn test_promote_to_hierarchical_without_metadata_fails() {
+        let mut tracker = DirtyBlockTracker::with_overflow_strategy(
+            100,
+            100,
+            DirtyBlockOverflowStrategy::HierarchicalPromotion,
+        );
+
+        // Add blocks WITHOUT cluster metadata
+        for i in 0..50 {
+            tracker.mark_global_block_dirty(i * 4096, i as u64).unwrap();
+        }
+
+        // Promotion should fail without metadata
+        let result = tracker.promote_to_hierarchical();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("cluster-affinity"));
+    }
+
+    #[test]
+    fn test_spill_to_disk_without_store_fails() {
+        let mut tracker = DirtyBlockTracker::with_overflow_strategy(
+            100,
+            100,
+            DirtyBlockOverflowStrategy::SpillToDisk,
+        );
+
+        // Don't enable spill-to-disk store
+
+        // Mark to capacity
+        for i in 0..100 {
+            tracker.mark_global_block_dirty(i * 4096, i as u64).unwrap();
+        }
+
+        // Try to spill without store - should fail with fallback error
+        let result = tracker.spill_oldest_blocks(10);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().message.contains("overflow store"));
+    }
+
+    #[test]
+    fn test_checkpoint_manager_overflow_strategy() {
+        let temp_dir = tempdir().unwrap();
+        let v2_graph_path = temp_dir.path().join("test.v2");
+
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create test V2 graph file");
+
+        let config = V2WALConfig {
+            wal_path: temp_dir.path().join("test.wal"),
+            checkpoint_path: temp_dir.path().join("test.checkpoint"),
+            max_wal_size: 64 * 1024 * 1024,
+            buffer_size: 1024 * 1024,
+            checkpoint_interval: 100,
+            enable_compression: false,
+            ..Default::default()
+        };
+
+        let strategy = CheckpointStrategy::TimeInterval(Duration::from_secs(60));
+        let manager = V2WALCheckpointManager::create(config, strategy).unwrap();
+
+        // Default overflow strategy should be Reject
+        assert_eq!(
+            manager.get_overflow_strategy(),
+            DirtyBlockOverflowStrategy::Reject
+        );
+
+        // Set new strategy
+        manager.set_overflow_strategy(DirtyBlockOverflowStrategy::ForceCheckpoint);
+        assert_eq!(
+            manager.get_overflow_strategy(),
+            DirtyBlockOverflowStrategy::ForceCheckpoint
+        );
     }
 }
