@@ -297,6 +297,15 @@ impl DeadlockDetector {
         }
     }
 
+    /// Add a wait edge: tx_waiter is waiting for tx_holder to release a lock
+    pub fn add_wait_edge(&self, tx_waiter: TransactionId, tx_holder: TransactionId) {
+        let mut wait_for_graph = self.wait_for_graph.write();
+        wait_for_graph
+            .entry(tx_waiter)
+            .or_insert_with(HashSet::new)
+            .insert(tx_holder);
+    }
+
     /// DFS utility for cycle detection
     fn has_cycle_util(
         &self,
