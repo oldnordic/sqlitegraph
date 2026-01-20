@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 13 of 22 (ACID Isolation)
-Plan: 2 of 4 in current phase
-Status: Phase 12 complete, Phase 13 in progress (2/4 complete)
-Last activity: 2026-01-20 — Completed 13-02 Wait-for graph population
+Plan: 3 of 4 in current phase
+Status: Phase 12 complete, Phase 13 in progress (3/4 complete)
+Last activity: 2026-01-20 — Completed 13-03 Victim selection and transaction abort
 
-Progress: [███████████████████████████████░░░░] 73%
+Progress: [███████████████████████████████░░░░] 76%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 42
+- Total plans completed: 43
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,10 +28,10 @@ Progress: [███████████████████████
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
-| 11-13 (v1.1) | 9/45 | 87min | 10min |
+| 11-13 (v1.1) | 10/45 | 92min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 12-03 (11min), 12-04 (5min), 12-05 (7min), 13-01 (19min), 13-02 (3min)
+- Last 5 plans: 12-03 (11min), 12-04 (5min), 12-05 (7min), 13-01 (19min), 13-02 (3min), 13-03 (6min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -77,6 +77,9 @@ Recent decisions affecting current work:
 - Wait-for graph edges added synchronously when Exclusive lock acquisition fails - 13-02
 - Deadlock detection runs AFTER wait edges are added (post-check, not pre-check) - 13-02
 - All transaction exit paths (commit, rollback, cleanup) remove wait-for graph entries - 13-02
+- Victim selection uses max_by_key on (start_time, tx_id) to select youngest transaction - 13-03
+- Non-victim transactions automatically retry lock acquisition after victim abort - 13-03
+- abort_victim writes TransactionAbort WAL record with reason "deadlock_victim" - 13-03
 
 ### Pending Todos
 
@@ -88,8 +91,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 13-02 execution)
-Stopped at: Completed 13-02 - Wait-for graph population
+Last session: 2026-01-20 (plan 13-03 execution)
+Stopped at: Completed 13-03 - Victim selection and transaction abort
 Resume file: None
 
 ### Roadmap Evolution
@@ -100,4 +103,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 in progress (2/4 complete, 13-01 done, 13-02 done)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 in progress (3/4 complete, 13-01 done, 13-02 done, 13-03 done)
