@@ -217,10 +217,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 15-01: Implement determine_insertion_level with exponential distribution
-- [ ] 15-02: Add multi-layer graph structure
-- [ ] 15-03: Update insert to add nodes to all layers 0..=target_layer
-- [ ] 15-04: Update search for greedy descent and O(log N) benchmarks
+- [ ] 15-01: Wire exponential level distribution into insertion path with LevelDistributor
+- [ ] 15-02: Add multi-layer graph structure with LayerMappings integration
+- [ ] 15-03: Update search for greedy descent through higher layers
+- [ ] 15-04: Add O(log N) benchmarks and layer assignment persistence
 
 ### Phase 16: Memory Safety
 **Goal**: Eliminate unsafe transmute and add input validation
