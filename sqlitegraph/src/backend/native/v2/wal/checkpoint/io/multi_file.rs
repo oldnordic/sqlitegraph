@@ -930,6 +930,7 @@ impl MultiFileRecovery {
 ///
 /// This struct provides access to the recovered checkpoint data
 /// through an iterator that reads across all segment files.
+#[derive(Debug)]
 pub struct RecoveredCheckpoint {
     /// The checkpoint manifest
     pub manifest: CheckpointManifest,
