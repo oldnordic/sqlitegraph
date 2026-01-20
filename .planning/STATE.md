@@ -5,13 +5,13 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Feature parity, performance, and reliability equally. Native V2 must match or exceed SQLite backend capabilities while maintaining rock-solid MVCC correctness and achieving best-in-class embedded graph database performance.
-**Current focus:** Phase 21 - Test Coverage (v1.1 ACID & Reliability)
+**Current focus:** Phase 22 - Scaling & Dependencies (v1.1 ACID & Reliability)
 
 ## Current Position
 
-Phase: 21 of 22 complete (4/4 plans)
-Status: Phase 21 complete (all plans verified)
-Last activity: 2026-01-20 — Completed Phase 21 Plan 02: Cluster Validation Tests
+Phase: 21 of 22 complete, next: Phase 22 (Scaling & Dependencies)
+Status: Phase 21 complete (4/4 plans executed, 15/16 must_haves verified)
+Last activity: 2026-01-20 — Completed Phase 21: Test Coverage (WAL, cluster, checkpoint, HNSW, Miri tests)
 
 Progress: [████████████████████████████████] 100% (Phase 11-21 complete)
 

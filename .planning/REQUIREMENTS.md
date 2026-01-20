@@ -199,10 +199,10 @@ Requirements for high-level snapshot API.
 
 Requirements for WAL recovery test coverage.
 
-- [ ] **TEST-WAL-01**: Node deletion rollback test passes (currently stubbed/TODO)
-- [ ] **TEST-WAL-02**: Crash simulation tests cover each WAL operation type
-- [ ] **TEST-WAL-03**: Recovery tests verify database state after crash
-- [ ] **TEST-WAL-04**: All 8 "will fail until implementation complete" tests pass
+- [x] **TEST-WAL-01**: Node deletion rollback test passes (currently stubbed/TODO)
+- [x] **TEST-WAL-02**: Crash simulation tests cover each WAL operation type
+- [x] **TEST-WAL-03**: Recovery tests verify database state after crash
+- [x] **TEST-WAL-04**: All 8 "will fail until implementation complete" tests pass
 
 ---
 
@@ -210,9 +210,9 @@ Requirements for WAL recovery test coverage.
 
 Requirements for cluster allocation integrity tests.
 
-- [ ] **TEST-CLUS-01**: Cluster overlap validation tests are enabled (not commented out)
-- [ ] **TEST-CLUS-02**: Cluster overlap validation detects artificially corrupted clusters
-- [ ] **TEST-CLUS-03**: Cluster overlap validation timing issues are resolved
+- [x] **TEST-CLUS-01**: Cluster overlap validation tests are enabled (not commented out)
+- [x] **TEST-CLUS-02**: Cluster overlap validation detects artificially corrupted clusters
+- [x] **TEST-CLUS-03**: Cluster overlap validation timing issues are resolved
 
 ---
 
@@ -220,9 +220,9 @@ Requirements for cluster allocation integrity tests.
 
 Requirements for checkpoint integrity tests.
 
-- [ ] **TEST-CP-01**: Checkpoint state invariants tests are enabled
-- [ ] **TEST-CP-02**: Checkpoint state validation detects corrupted checkpoints
-- [ ] **TEST-CP-03**: All checkpoint strategies have test coverage
+- [x] **TEST-CP-01**: Checkpoint state invariants tests are enabled
+- [x] **TEST-CP-02**: Checkpoint state validation detects corrupted checkpoints
+- [x] **TEST-CP-03**: All checkpoint strategies have test coverage
 
 ---
 
@@ -230,10 +230,10 @@ Requirements for checkpoint integrity tests.
 
 Requirements for multi-layer HNSW tests.
 
-- [ ] **TEST-HNSW-01**: Layer distribution test verifies exponential distribution
-- [ ] **TEST-HNSW-02**: Multi-layer insert test verifies nodes in correct layers
-- [ ] **TEST-HNSW-03**: Multi-layer search test verifies correctness vs layer 0
-- [ ] **TEST-HNSW-04**: Search complexity benchmark demonstrates O(log N)
+- [x] **TEST-HNSW-01**: Layer distribution test verifies exponential distribution
+- [x] **TEST-HNSW-02**: Multi-layer insert test verifies nodes in correct layers
+- [x] **TEST-HNSW-03**: Multi-layer search test verifies correctness vs layer 0
+- [x] **TEST-HNSW-04**: Search complexity benchmark demonstrates O(log N)
 
 ---
 
@@ -241,10 +241,10 @@ Requirements for multi-layer HNSW tests.
 
 Requirements for unsafe block validation.
 
-- [ ] **TEST-MIRI-01**: Miri is configured for the project
-- [ ] **TEST-MIRI-02**: All former transmute sites have Miri tests
-- [ ] **TEST-MIRI-03**: CI runs Miri tests on every commit
-- [ ] **TEST-MIRI-04**: No Miri errors in test suite
+- [x] **TEST-MIRI-01**: Miri is configured for the project
+- [x] **TEST-MIRI-02**: All former transmute sites have Miri tests
+- [x] **TEST-MIRI-03**: CI runs Miri tests on every commit
+- [x] **TEST-MIRI-04**: No Miri errors in test suite
 
 ---
 
@@ -411,24 +411,24 @@ Requirements mapped to phases in roadmap.
 | BACKUP-01 | Phase 20 | Complete |
 | BACKUP-02 | Phase 20 | Complete |
 | BACKUP-03 | Phase 20 | Complete |
-| TEST-WAL-01 | Phase 21 | Pending |
-| TEST-WAL-02 | Phase 21 | Pending |
-| TEST-WAL-03 | Phase 21 | Pending |
-| TEST-WAL-04 | Phase 21 | Pending |
-| TEST-CLUS-01 | Phase 21 | Pending |
-| TEST-CLUS-02 | Phase 21 | Pending |
-| TEST-CLUS-03 | Phase 21 | Pending |
-| TEST-CP-01 | Phase 21 | Pending |
-| TEST-CP-02 | Phase 21 | Pending |
-| TEST-CP-03 | Phase 21 | Pending |
-| TEST-HNSW-01 | Phase 21 | Pending |
-| TEST-HNSW-02 | Phase 21 | Pending |
-| TEST-HNSW-03 | Phase 21 | Pending |
-| TEST-HNSW-04 | Phase 21 | Pending |
-| TEST-MIRI-01 | Phase 21 | Pending |
-| TEST-MIRI-02 | Phase 21 | Pending |
-| TEST-MIRI-03 | Phase 21 | Pending |
-| TEST-MIRI-04 | Phase 21 | Pending |
+| TEST-WAL-01 | Phase 21 | Complete |
+| TEST-WAL-02 | Phase 21 | Complete |
+| TEST-WAL-03 | Phase 21 | Complete |
+| TEST-WAL-04 | Phase 21 | Complete |
+| TEST-CLUS-01 | Phase 21 | Complete |
+| TEST-CLUS-02 | Phase 21 | Complete |
+| TEST-CLUS-03 | Phase 21 | Complete |
+| TEST-CP-01 | Phase 21 | Complete |
+| TEST-CP-02 | Phase 21 | Complete |
+| TEST-CP-03 | Phase 21 | Complete |
+| TEST-HNSW-01 | Phase 21 | Complete |
+| TEST-HNSW-02 | Phase 21 | Complete |
+| TEST-HNSW-03 | Phase 21 | Complete |
+| TEST-HNSW-04 | Phase 21 | Complete |
+| TEST-MIRI-01 | Phase 21 | Complete |
+| TEST-MIRI-02 | Phase 21 | Complete |
+| TEST-MIRI-03 | Phase 21 | Complete |
+| TEST-MIRI-04 | Phase 21 | Complete |
 | SCALE-CP-01 | Phase 22 | Pending |
 | SCALE-CP-02 | Phase 22 | Pending |
 | SCALE-CP-03 | Phase 22 | Pending |
