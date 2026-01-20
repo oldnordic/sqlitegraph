@@ -8,6 +8,7 @@ use crate::backend::native::{
     graph_file::file_ops::FileOperations, graph_file::header::HeaderManager,
     persistent_header::PersistentHeaderV2, transaction_state::TransactionState,
     types::NativeBackendError, types::NativeResult,
+    v2::migration::{detect_format_version, migrate_file, FormatVersion},
 };
 use std::path::Path;
 
@@ -70,6 +71,7 @@ impl FileLifecycleManager {
     ///
     /// Opens an existing graph file, validates the V2 format,
     /// reads the header, and initializes file structures.
+    /// Automatically migrates V2 format files to V3 format.
     pub fn open<P: AsRef<Path>>(
         path: P,
     ) -> NativeResult<crate::backend::native::graph_file::GraphFile> {
@@ -81,6 +83,36 @@ impl FileLifecycleManager {
 
         let path = path.as_ref();
         let file_path = path.to_path_buf();
+
+        // Check for migration before opening the file
+        // Only V2 files need migration to V3 format
+        match detect_format_version(path) {
+            Ok(FormatVersion::V2) => {
+                // Migrate V2 to V3 format
+                #[cfg(feature = "logging")]
+                eprintln!("Auto-migrating V2 format file to V3: {:?}", path);
+                migrate_file(path)?;
+            }
+            Ok(FormatVersion::V3) => {
+                // Already at current version, proceed
+            }
+            Ok(other) => {
+                return Err(NativeBackendError::UnsupportedVersion {
+                    version: match other {
+                        FormatVersion::V1 => 1,
+                        FormatVersion::Unknown(v) => v,
+                        _ => 2,
+                    },
+                    supported_version: 3,
+                });
+            }
+            Err(NativeBackendError::Io(ref e))
+                if e.kind() == std::io::ErrorKind::NotFound =>
+            {
+                // File not found - continue to normal open which will return proper error
+            }
+            Err(e) => return Err(e),
+        }
 
         let file = std::fs::OpenOptions::new()
             .read(true)
@@ -115,7 +147,8 @@ impl FileLifecycleManager {
             });
         }
 
-        // Accept v2 or v3 format files
+        // After migration, we should only have V3 format files
+        // Accept v2 or v3 format files in case migration was just completed
         // v2: 8-byte schema_version field
         // v3: 4-byte schema_version + 4-byte reserved
         if graph_file.persistent_header.version != 2 && graph_file.persistent_header.version != 3 {
@@ -308,5 +341,69 @@ mod tests {
         // Test that required flags are set
         let required_flags = FLAG_V2_FRAMED_RECORDS | FLAG_V2_ATOMIC_COMMIT;
         assert_eq!(header.flags & required_flags, required_flags);
+    }
+
+    #[test]
+    fn test_auto_migrate_v2_to_v3_on_open() {
+        use crate::backend::native::{
+            constants::DEFAULT_FEATURE_FLAGS,
+            graph_file::encoding::encode_persistent_header,
+            graph_file::validation::GraphFileValidator,
+            persistent_header::PersistentHeaderV2,
+            v2::V2_MAGIC,
+        };
+        use tempfile::NamedTempFile;
+
+        // Create a V2 format file with proper structure
+        let mut v2_file = NamedTempFile::new().unwrap();
+
+        let v2_header = PersistentHeaderV2 {
+            magic: V2_MAGIC,
+            version: 2,
+            flags: DEFAULT_FEATURE_FLAGS,
+            node_count: 0,
+            edge_count: 0,
+            schema_version: 1,
+            reserved: 0,
+            node_data_offset: 512, // Proper offset after header and initial space
+            edge_data_offset: 512,
+            outgoing_cluster_offset: 1536,
+            incoming_cluster_offset: 1536,
+            free_space_offset: 2048,
+        };
+
+        let encoded = encode_persistent_header(&v2_header).unwrap();
+        v2_file.as_file_mut().write_all(&encoded).unwrap();
+
+        // Write clean commit marker at offset 80 (right after header)
+        let clean_marker = GraphFileValidator::clean_commit_marker();
+        v2_file.as_file_mut().write_all(&clean_marker.to_be_bytes()).unwrap();
+
+        v2_file.as_file_mut().flush().unwrap();
+        v2_file.as_file_mut().sync_all().unwrap();
+
+        let file_path = v2_file.path();
+
+        // Verify it's V2 format before opening
+        use crate::backend::native::v2::migration::detect_format_version;
+        let version_before = detect_format_version(file_path).unwrap();
+        assert!(matches!(version_before, crate::backend::native::v2::migration::FormatVersion::V2));
+
+        // Open the file - should trigger auto-migration
+        let graph_file = FileLifecycleManager::open(file_path).unwrap();
+
+        // After opening, the file should be V3 format
+        let version_after = detect_format_version(file_path).unwrap();
+        assert!(matches!(version_after, crate::backend::native::v2::migration::FormatVersion::V3));
+
+        // GraphFile header should show V3
+        assert_eq!(graph_file.persistent_header().version, 3);
+
+        // Backup file should exist
+        let backup_path = file_path.with_extension("bak");
+        assert!(backup_path.exists());
+
+        // Cleanup
+        std::fs::remove_file(&backup_path).ok();
     }
 }
