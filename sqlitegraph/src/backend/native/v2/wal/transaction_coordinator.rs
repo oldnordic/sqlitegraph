@@ -742,6 +742,42 @@ impl V2TransactionCoordinator {
         Ok(())
     }
 
+    /// Abort a transaction (typically the deadlock victim)
+    ///
+    /// This method:
+    /// 1. Writes an abort record to WAL
+    /// 2. Releases all locks held by the transaction
+    /// 3. Removes the transaction from active registry
+    /// 4. Cleans up wait-for graph entries
+    pub fn abort_victim(&self, victim_id: TransactionId) -> NativeResult<()> {
+        // Write abort record to WAL for durability
+        let abort_record = V2WALRecord::TransactionAbort {
+            tx_id: victim_id,
+            abort_reason: "deadlock_victim".to_string(),
+            timestamp: SystemTime::now(),
+        };
+        self.wal_manager.write_record(abort_record)?;
+
+        // Release all locks held by victim
+        self.release_all_locks(victim_id)?;
+
+        // Remove from active transactions
+        {
+            let mut active = self.active_transactions.write();
+            if let Some(mut context) = active.remove(&victim_id) {
+                context.state = TransactionState::Aborted;
+            }
+        }
+
+        // Unregister from isolation manager
+        self.isolation_manager.unregister_transaction(victim_id);
+
+        // Clean up from deadlock detector
+        self.deadlock_detector.remove_transaction(victim_id);
+
+        Ok(())
+    }
+
     /// Create savepoint for nested transactions
     pub fn create_savepoint(
         &self,
