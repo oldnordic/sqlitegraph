@@ -155,7 +155,7 @@ impl V2LockManager {
     }
 
     /// Acquire lock for transaction
-    pub async fn acquire_lock(
+    pub fn acquire_lock(
         &self,
         tx_id: TransactionId,
         resource_id: ResourceId,
@@ -196,7 +196,7 @@ impl V2LockManager {
     }
 
     /// Release lock for transaction
-    pub async fn release_lock(
+    pub fn release_lock(
         &self,
         tx_id: TransactionId,
         resource_id: ResourceId,
@@ -212,14 +212,14 @@ impl V2LockManager {
     }
 
     /// Add lock request to wait queue
-    pub async fn add_to_wait_queue(&self, request: LockRequest) -> NativeResult<()> {
+    pub fn add_to_wait_queue(&self, request: LockRequest) -> NativeResult<()> {
         let mut wait_queue = self.wait_queue.lock();
         wait_queue.push_back(request);
         Ok(())
     }
 
     /// Process waiting queue
-    pub async fn process_wait_queue(&self) -> NativeResult<()> {
+    pub fn process_wait_queue(&self) -> NativeResult<()> {
         let mut wait_queue = self.wait_queue.lock();
         let mut to_remove = Vec::new();
 
@@ -229,8 +229,7 @@ impl V2LockManager {
                     request.transaction_id,
                     request.resource_id,
                     request.lock_type,
-                )
-                .await?
+                )?
             {
                 to_remove.push(i);
             }
@@ -268,7 +267,7 @@ impl DeadlockDetector {
     }
 
     /// Check if acquiring this lock would cause deadlock
-    pub async fn would_cause_deadlock(
+    pub fn would_cause_deadlock(
         &self,
         tx_id: TransactionId,
         _resource_id: ResourceId, // TODO: Implement resource-specific deadlock detection
@@ -287,7 +286,7 @@ impl DeadlockDetector {
     }
 
     /// Remove transaction from deadlock detector
-    pub async fn remove_transaction(&self, tx_id: TransactionId) {
+    pub fn remove_transaction(&self, tx_id: TransactionId) {
         let mut wait_for_graph = self.wait_for_graph.write();
         wait_for_graph.remove(&tx_id);
 
@@ -360,7 +359,7 @@ impl IsolationManager {
     }
 
     /// Validate access according to isolation level
-    pub async fn validate_access(
+    pub fn validate_access(
         &self,
         tx_id: TransactionId,
         resource_id: ResourceId,
@@ -445,7 +444,7 @@ impl V2TransactionCoordinator {
     }
 
     /// Begin new transaction with specified isolation level
-    pub async fn begin_transaction(
+    pub fn begin_transaction(
         &self,
         isolation_level: IsolationLevel,
     ) -> NativeResult<TransactionId> {
@@ -494,7 +493,7 @@ impl V2TransactionCoordinator {
     }
 
     /// Acquire lock on resource for transaction
-    pub async fn acquire_lock(
+    pub fn acquire_lock(
         &self,
         tx_id: TransactionId,
         resource_id: ResourceId,
@@ -503,8 +502,7 @@ impl V2TransactionCoordinator {
         // Check for deadlock before attempting lock
         if self
             .deadlock_detector
-            .would_cause_deadlock(tx_id, resource_id)
-            .await?
+            .would_cause_deadlock(tx_id, resource_id)?
         {
             return Err(NativeBackendError::DeadlockDetected {
                 tx_id,
@@ -515,8 +513,7 @@ impl V2TransactionCoordinator {
         // Attempt to acquire lock
         let acquired = self
             .lock_manager
-            .acquire_lock(tx_id, resource_id, lock_type)
-            .await?;
+            .acquire_lock(tx_id, resource_id, lock_type)?;
 
         if acquired {
             // Update transaction context
@@ -539,8 +536,7 @@ impl V2TransactionCoordinator {
 
             // Check isolation level constraints
             self.isolation_manager
-                .validate_access(tx_id, resource_id, lock_type)
-                .await?;
+                .validate_access(tx_id, resource_id, lock_type)?;
         } else {
             // Add to wait queue and potentially wait
             let request = LockRequest {
@@ -551,19 +547,19 @@ impl V2TransactionCoordinator {
                 blocking: true,
             };
 
-            self.lock_manager.add_to_wait_queue(request).await?;
+            self.lock_manager.add_to_wait_queue(request)?;
         }
 
         Ok(())
     }
 
     /// Release lock held by transaction
-    pub async fn release_lock(
+    pub fn release_lock(
         &self,
         tx_id: TransactionId,
         resource_id: ResourceId,
     ) -> NativeResult<()> {
-        self.lock_manager.release_lock(tx_id, resource_id).await?;
+        self.lock_manager.release_lock(tx_id, resource_id)?;
 
         // Update transaction context
         {
@@ -576,13 +572,13 @@ impl V2TransactionCoordinator {
         }
 
         // Process waiting queue
-        self.lock_manager.process_wait_queue().await?;
+        self.lock_manager.process_wait_queue()?;
 
         Ok(())
     }
 
     /// Commit transaction with two-phase commit protocol
-    pub async fn commit_transaction(&self, tx_id: TransactionId) -> NativeResult<()> {
+    pub fn commit_transaction(&self, tx_id: TransactionId) -> NativeResult<()> {
         // Validate transaction state
         {
             let active = self.active_transactions.read();
@@ -599,16 +595,16 @@ impl V2TransactionCoordinator {
         }
 
         // Use two-phase commit coordinator
-        self.two_phase_coordinator.commit_transaction(tx_id).await?;
+        self.two_phase_coordinator.commit_transaction(tx_id)?;
 
         // Cleanup
-        self.cleanup_transaction(tx_id).await?;
+        self.cleanup_transaction(tx_id)?;
 
         Ok(())
     }
 
     /// Rollback transaction
-    pub async fn rollback_transaction(&self, tx_id: TransactionId) -> NativeResult<()> {
+    pub fn rollback_transaction(&self, tx_id: TransactionId) -> NativeResult<()> {
         // Write rollback record to WAL
         let rollback_record = V2WALRecord::TransactionRollback {
             tx_id,
@@ -621,7 +617,7 @@ impl V2TransactionCoordinator {
         self.wal_manager.write_record(rollback_record)?;
 
         // Release all locks
-        self.release_all_locks(tx_id).await?;
+        self.release_all_locks(tx_id)?;
 
         // Remove from active transactions
         {
@@ -638,7 +634,7 @@ impl V2TransactionCoordinator {
     }
 
     /// Create savepoint for nested transactions
-    pub async fn create_savepoint(
+    pub fn create_savepoint(
         &self,
         tx_id: TransactionId,
         savepoint_name: &str,
@@ -664,7 +660,7 @@ impl V2TransactionCoordinator {
     }
 
     /// Rollback to savepoint
-    pub async fn rollback_to_savepoint(
+    pub fn rollback_to_savepoint(
         &self,
         tx_id: TransactionId,
         savepoint_id: &str,
@@ -719,7 +715,7 @@ impl V2TransactionCoordinator {
     }
 
     /// Get transaction status
-    pub async fn get_transaction_status(
+    pub fn get_transaction_status(
         &self,
         tx_id: TransactionId,
     ) -> NativeResult<TransactionState> {
@@ -732,13 +728,13 @@ impl V2TransactionCoordinator {
     }
 
     /// List all active transactions
-    pub async fn list_active_transactions(&self) -> Vec<TransactionId> {
+    pub fn list_active_transactions(&self) -> Vec<TransactionId> {
         let active = self.active_transactions.read();
         active.keys().copied().collect()
     }
 
     /// Force cleanup of abandoned transactions
-    pub async fn cleanup_abandoned_transactions(&self, timeout: Duration) -> NativeResult<usize> {
+    pub fn cleanup_abandoned_transactions(&self, timeout: Duration) -> NativeResult<usize> {
         let now = Instant::now();
         let mut abandoned = Vec::new();
 
@@ -753,16 +749,16 @@ impl V2TransactionCoordinator {
 
         let abandoned_count = abandoned.len();
         for tx_id in abandoned {
-            self.rollback_transaction(tx_id).await?;
+            self.rollback_transaction(tx_id)?;
         }
 
         Ok(abandoned_count)
     }
 
     /// Internal helper to cleanup transaction after commit/rollback
-    async fn cleanup_transaction(&self, tx_id: TransactionId) -> NativeResult<()> {
+    fn cleanup_transaction(&self, tx_id: TransactionId) -> NativeResult<()> {
         // Release all locks
-        self.release_all_locks(tx_id).await?;
+        self.release_all_locks(tx_id)?;
 
         // Remove from active transactions
         {
@@ -774,13 +770,13 @@ impl V2TransactionCoordinator {
         self.isolation_manager.unregister_transaction(tx_id);
 
         // Clean up from deadlock detector
-        self.deadlock_detector.remove_transaction(tx_id).await;
+        self.deadlock_detector.remove_transaction(tx_id);
 
         Ok(())
     }
 
     /// Release all locks held by transaction
-    async fn release_all_locks(&self, tx_id: TransactionId) -> NativeResult<()> {
+    fn release_all_locks(&self, tx_id: TransactionId) -> NativeResult<()> {
         let resources_to_release = {
             let active = self.active_transactions.read();
             if let Some(context) = active.get(&tx_id) {
@@ -791,7 +787,7 @@ impl V2TransactionCoordinator {
         };
 
         for resource_id in resources_to_release {
-            self.release_lock(tx_id, resource_id).await?;
+            self.release_lock(tx_id, resource_id)?;
         }
 
         Ok(())
@@ -814,23 +810,23 @@ impl TwoPhaseCommitCoordinator {
     }
 
     /// Commit transaction using two-phase commit
-    pub async fn commit_transaction(&self, tx_id: TransactionId) -> NativeResult<()> {
+    pub fn commit_transaction(&self, tx_id: TransactionId) -> NativeResult<()> {
         // Phase 1: Prepare
-        let prepare_result = self.prepare_transaction(tx_id).await?;
+        let prepare_result = self.prepare_transaction(tx_id)?;
 
         if prepare_result {
             // Phase 2: Commit
-            self.finalize_commit(tx_id).await?;
+            self.finalize_commit(tx_id)?;
         } else {
             // Abort transaction
-            self.abort_transaction(tx_id).await?;
+            self.abort_transaction(tx_id)?;
         }
 
         Ok(())
     }
 
     /// Prepare phase of two-phase commit
-    async fn prepare_transaction(&self, tx_id: TransactionId) -> NativeResult<bool> {
+    fn prepare_transaction(&self, tx_id: TransactionId) -> NativeResult<bool> {
         // Update transaction state to preparing
         {
             let mut active = self.transactions.write();
@@ -853,7 +849,7 @@ impl TwoPhaseCommitCoordinator {
 
         // Pre-commit validation: verify all WAL records satisfy constraints
         // This must happen before writing to WAL to prevent invalid data from being persisted
-        self.validate_pre_commit(tx_id).await?;
+        self.validate_pre_commit(tx_id)?;
 
         // Write prepare record to WAL
         let prepare_record = V2WALRecord::TransactionPrepare {
@@ -868,7 +864,7 @@ impl TwoPhaseCommitCoordinator {
         self.wal_manager.flush()?;
 
         // Validate all resources can be committed
-        self.validate_commit_resources(tx_id).await?;
+        self.validate_commit_resources(tx_id)?;
 
         // Update transaction state to prepared
         {
@@ -882,7 +878,7 @@ impl TwoPhaseCommitCoordinator {
     }
 
     /// Finalize commit phase
-    async fn finalize_commit(&self, tx_id: TransactionId) -> NativeResult<()> {
+    fn finalize_commit(&self, tx_id: TransactionId) -> NativeResult<()> {
         // Update state to committing
         {
             let mut active = self.transactions.write();
@@ -917,7 +913,7 @@ impl TwoPhaseCommitCoordinator {
     }
 
     /// Abort transaction
-    async fn abort_transaction(&self, tx_id: TransactionId) -> NativeResult<()> {
+    fn abort_transaction(&self, tx_id: TransactionId) -> NativeResult<()> {
         // Update state to aborting
         {
             let mut active = self.transactions.write();
@@ -947,7 +943,7 @@ impl TwoPhaseCommitCoordinator {
     }
 
     /// Validate that all resources can be committed
-    async fn validate_commit_resources(&self, tx_id: TransactionId) -> NativeResult<()> {
+    fn validate_commit_resources(&self, tx_id: TransactionId) -> NativeResult<()> {
         // Verify transaction exists - context data not needed in current placeholder implementation
         {
             let active = self.transactions.read();
@@ -968,7 +964,7 @@ impl TwoPhaseCommitCoordinator {
     /// This method performs lightweight constraint validation on all WAL records
     /// in a transaction before they are persisted to the WAL. This prevents
     /// invalid or corrupt data from being committed.
-    async fn validate_pre_commit(&self, tx_id: TransactionId) -> NativeResult<()> {
+    fn validate_pre_commit(&self, tx_id: TransactionId) -> NativeResult<()> {
         // Get transaction context and extract WAL records
         let wal_records = {
             let active = self.transactions.read();
