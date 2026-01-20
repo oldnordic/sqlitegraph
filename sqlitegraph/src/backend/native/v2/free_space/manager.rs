@@ -1,6 +1,7 @@
 use super::block::FreeBlock;
 use super::stats::{AllocationStats, CompactionReport, FreeSpaceAnalysis};
 use crate::backend::native::{NativeBackendError, NativeResult};
+use crate::debug::debug_log;
 
 pub const MIN_BLOCK_SIZE: u32 = 32;
 const MAX_FRAGMENTATION_RATIO: f64 = 0.3;
@@ -37,6 +38,30 @@ impl FreeSpaceManager {
         self.stats.total_deallocated_bytes += size as u64;
         self.try_merge_adjacent_blocks();
         self.update_fragmentation_ratio();
+    }
+
+    /// Remove a block from the free list (for slot reclamation during rollback)
+    ///
+    /// This is the inverse of add_free_block - it removes a block that was
+    /// previously marked as free, effectively reclaiming the slot.
+    pub fn remove_from_free_list(&mut self, offset: u64, size: u32) -> NativeResult<()> {
+        let original_len = self.free_blocks.len();
+
+        self.free_blocks.retain(|block| {
+            // Keep blocks that don't match the offset we're reclaiming
+            !(block.offset == offset && block.size >= size)
+        });
+
+        if self.free_blocks.len() < original_len {
+            debug_log!("Removed block offset={} size={} from free list ({} blocks removed)",
+                       offset, size, original_len - self.free_blocks.len());
+            self.update_fragmentation_ratio();
+            Ok(())
+        } else {
+            Err(NativeBackendError::CorruptFreeSpace {
+                reason: format!("Block at offset {} (size {}) not found in free list", offset, size),
+            })
+        }
     }
 
     pub fn allocate(&mut self, requested_size: u32) -> NativeResult<u64> {
