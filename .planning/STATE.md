@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 18 of 22 (Code Structure)
-Plan: 1 of 4 in phase
+Plan: 2 of 4 in phase
 Status: Phase 16 complete, Phase 17 redundant (completed in Phase 16)
-Last activity: 2026-01-20 — Completed 18-01: Split algo.rs into modular structure
+Last activity: 2026-01-20 — Completed 18-02: Split index.rs into focused module files
 
-Progress: [████████████████████████████████░░░░] 85% (Phase 11-16 complete, 18-01 complete)
+Progress: [████████████████████████████████░░░░] 86% (Phase 11-16 complete, 18-02 complete)
 
 ## Performance Metrics
 
@@ -143,6 +143,10 @@ Recent decisions affecting current work:
 - Used pub use re-exports in mod.rs to maintain public API surface during file splits - 18-01
 - Categorized algorithms by function: centrality (pagerank, betweenness), community (louvain, label_prop), structure (components, cycles, degrees) - 18-01
 - Module splitting pattern: mod.rs with pub use re-exports for clean API - 18-01
+- Used include! macro instead of proper submodules to avoid Rust module system complexity - 18-02
+- Module files use full crate paths for types since included in parent scope - 18-02
+- Module header comments use // instead of //! to avoid doc comment errors with include! - 18-02
+- Split index.rs from 2006 LOC into 4 focused files: index.rs (701), index_api.rs (602), index_internal.rs (300), index_persist.rs (482) - 18-02
 
 ### Pending Todos
 
@@ -155,8 +159,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 18-01 execution)
-Stopped at: Completed 18-01 - Split algo.rs into modular structure
+Last session: 2026-01-20 (plan 18-02 execution)
+Stopped at: Completed 18-02 - Split index.rs into focused module files
 Resume file: None
 
 ### Roadmap Evolution
@@ -167,4 +171,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 in progress (1/4 complete)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 in progress (2/4 complete)
