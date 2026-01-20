@@ -342,6 +342,41 @@ impl GraphBackend for NativeGraphBackend {
         })
     }
 
+    fn backup(&self, backup_dir: &std::path::Path) -> Result<crate::backend::BackupResult, SqliteGraphError> {
+        #[cfg(feature = "native-v2")]
+        {
+            use crate::backend::native::v2::backup;
+
+            // Get the graph file path from the GraphFile
+            let graph_path = self.with_graph_file(|graph_file| {
+                Ok(graph_file.path().to_path_buf())
+            })?;
+
+            // Create backup with default configuration (includes checkpoint)
+            let native_result = backup::create_backup(
+                &graph_path,
+                backup::BackupConfig::new(backup_dir),
+            ).map_err(|e| SqliteGraphError::connection(format!("Backup failed: {:?}", e)))?;
+
+            Ok(crate::backend::BackupResult {
+                snapshot_path: native_result.snapshot_path,
+                manifest_path: native_result.manifest_path,
+                size_bytes: native_result.size_bytes,
+                checksum: native_result.checksum,
+                record_count: native_result.record_count,
+                duration_secs: native_result.duration_secs,
+                timestamp: native_result.timestamp,
+                checkpoint_performed: native_result.checkpoint_performed,
+            })
+        }
+
+        #[cfg(not(feature = "native-v2"))]
+        {
+            let _ = backup_dir;
+            Err(SqliteGraphError::connection("Backup not available without native-v2 feature".to_string()))
+        }
+    }
+
     fn snapshot_import(&self, import_dir: &std::path::Path) -> Result<crate::backend::ImportMetadata, SqliteGraphError> {
         use crate::backend::native::v2::import::SnapshotImporter;
         use crate::backend::native::v2::import::snapshot::SnapshotImportConfig;

@@ -69,6 +69,19 @@ pub trait GraphBackend {
     /// For backends without WAL: returns Ok(()) as no-op
     fn checkpoint(&self) -> Result<(), SqliteGraphError>;
 
+    /// Create a backup of the database
+    ///
+    /// Creates a consistent snapshot of the database including all data pages.
+    /// For Native V2 backend, optionally checkpoints before backup to ensure
+    /// WAL is applied and snapshot is consistent.
+    ///
+    /// # Arguments
+    /// * `backup_dir` - Destination directory for backup files
+    ///
+    /// # Returns
+    /// Backup result with paths, checksum, and metadata
+    fn backup(&self, backup_dir: &std::path::Path) -> Result<BackupResult, SqliteGraphError>;
+
     /// Export database snapshot to the specified directory
     ///
     /// Creates a consistent snapshot of the current database state.
@@ -118,6 +131,34 @@ pub struct ImportMetadata {
     pub entities_imported: u64,
     /// Number of edges imported
     pub edges_imported: u64,
+}
+
+/// Result returned by backup operations
+#[derive(Debug, Clone)]
+pub struct BackupResult {
+    /// Path to backup snapshot file
+    pub snapshot_path: std::path::PathBuf,
+
+    /// Path to backup manifest file
+    pub manifest_path: std::path::PathBuf,
+
+    /// Backup size in bytes
+    pub size_bytes: u64,
+
+    /// Backup checksum
+    pub checksum: u64,
+
+    /// Number of records in backup
+    pub record_count: u64,
+
+    /// Backup duration in seconds
+    pub duration_secs: f64,
+
+    /// Backup timestamp (Unix epoch)
+    pub timestamp: u64,
+
+    /// Whether checkpoint was performed before backup
+    pub checkpoint_performed: bool,
 }
 
 /// Reference implementation for GraphBackend trait that works with references.
@@ -190,6 +231,10 @@ where
 
     fn checkpoint(&self) -> Result<(), SqliteGraphError> {
         (*self).checkpoint()
+    }
+
+    fn backup(&self, backup_dir: &std::path::Path) -> Result<BackupResult, SqliteGraphError> {
+        (*self).backup(backup_dir)
     }
 
     fn snapshot_export(&self, export_dir: &std::path::Path) -> Result<SnapshotMetadata, SqliteGraphError> {

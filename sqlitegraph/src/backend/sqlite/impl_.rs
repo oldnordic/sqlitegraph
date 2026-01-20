@@ -231,6 +231,56 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         Ok(())
     }
 
+    fn backup(&self, backup_dir: &std::path::Path) -> Result<crate::backend::BackupResult, SqliteGraphError> {
+        use std::fs;
+
+        // Ensure backup directory exists
+        fs::create_dir_all(backup_dir)
+            .map_err(|e| SqliteGraphError::connection(format!("Failed to create backup directory: {}", e)))?;
+
+        // Generate backup filename with timestamp
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let backup_path = backup_dir.join(format!("backup_{}.db", timestamp));
+        let manifest_path = backup_dir.join(format!("backup_{}.json", timestamp));
+
+        // Use SQLite's backup API via VACUUM INTO for a clean backup
+        let conn = self.graph.connection();
+        conn.execute(&format!("VACUUM INTO '{}'", backup_path.display()), [])
+            .map_err(|e| SqliteGraphError::connection(format!("SQLite backup failed: {}", e)))?;
+
+        // Get backup metadata
+        let metadata = fs::metadata(&backup_path)
+            .map_err(|e| SqliteGraphError::connection(format!("Failed to read backup metadata: {}", e)))?;
+
+        // Get entity count
+        let entity_ids = self.graph.all_entity_ids()
+            .map_err(|e| SqliteGraphError::query(format!("Failed to get entity count: {}", e)))?;
+
+        // Create a simple manifest
+        let manifest = serde_json::json!({
+            "timestamp": timestamp,
+            "backup_file": backup_path.display().to_string(),
+            "size_bytes": metadata.len(),
+            "entity_count": entity_ids.len(),
+        });
+        fs::write(&manifest_path, manifest.to_string())
+            .map_err(|e| SqliteGraphError::connection(format!("Failed to write manifest: {}", e)))?;
+
+        Ok(crate::backend::BackupResult {
+            snapshot_path: backup_path,
+            manifest_path,
+            size_bytes: metadata.len() as u64,
+            checksum: 0, // SQLite doesn't provide checksum
+            record_count: entity_ids.len() as u64,
+            duration_secs: 0.0, // Not tracked for SQLite backup
+            timestamp,
+            checkpoint_performed: false, // VACUUM INTO doesn't require explicit checkpoint
+        })
+    }
+
     fn snapshot_export(&self, export_dir: &std::path::Path) -> Result<crate::backend::SnapshotMetadata, SqliteGraphError> {
         use std::fs;
 
