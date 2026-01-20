@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 22 (Scaling & Dependencies) - Plan 3 of 4 complete
-Status: Phase 22 in progress (3/4 plans executed)
-Last activity: 2026-01-20 — Completed 22-03: Transaction ID Bounds Enforcement
+Phase: 22 (Scaling & Dependencies) - Plan 4 of 4 complete
+Status: Phase 22 complete
+Last activity: 2026-01-20 — Completed 22-04: Dependency Monitoring and Migration Documentation
 
-Progress: [████████████████████████████████] 96% (Phase 11-21 complete, 22-01, 22-02, 22-03 complete)
+Progress: [████████████████████████████████] 98% (Phase 11-21 complete, Phase 22 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 71 (33 for v0.2/v1.0, 38 for v1.1)
-- Average duration: 8min (last 5 plans: 5min, 5min, 5min, 6min, 2min)
+- Total plans completed: 75 (33 for v0.2/v1.0, 42 for v1.1)
+- Average duration: 7min (last 5 plans: 5min, 5min, 6min, 2min, 4min)
 - Total execution time: TBD
 
 **By Phase:**
@@ -233,6 +233,9 @@ Recent decisions affecting current work:
 - DeadlockDetector cleanup methods: cleanup_stale_transactions(), graph_size(), needs_cleanup() - 22-03
 - Automatic cleanup triggered in cleanup_transaction() when graph size exceeds 1000 entries - 22-03
 - All 19 transaction coordinator tests pass (5 new tests for wraparound and cleanup) - 22-03
+- Created docs/SCALING.md (276 lines) documenting all scaling limits with mitigations - 22-04
+- Created docs/MIGRATION.md (357 lines) with bincode 2.0 migration plan - 22-04
+- Created dependency_monitor module with 15 tracked dependencies - 22-04
 
 ### Pending Todos
 
@@ -245,16 +248,16 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 22-03 execution)
-Stopped at: Completed 22-03 - Transaction ID Bounds Enforcement
+Last session: 2026-01-20 (plan 22-04 execution)
+Stopped at: Completed 22-04 - Dependency Monitoring and Migration Documentation
 Resume file: None
 
 ### Roadmap Evolution
 
 - **v0.2 Foundation** (2026-01-17): Phases 1-7 complete
 - **v1.0 Production** (2026-01-17): Phases 8-10 complete
-- **v1.1 ACID & Reliability** (2026-01-20): In Progress
+- **v1.1 ACID & Reliability** (2026-01-20): Complete
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
-  - Total: 71 plans completed
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (4/4, v3 file format with migration API, backup API, and restore API), Phase 21 complete (4/4: test coverage for WAL recovery, node deletion rollback, HNSW multi-layer, Miri integration), Phase 22 in progress (3/4: multi-file checkpointing, dirty block overflow, transaction ID bounds complete)
+  - Total: 75 plans completed
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5), Phase 13 complete (4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (4/4), Phase 21 complete (4/4), Phase 22 complete (4/4: multi-file checkpointing, dirty block overflow, transaction ID bounds, dependency documentation)
