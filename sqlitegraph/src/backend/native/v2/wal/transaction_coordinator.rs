@@ -143,15 +143,19 @@ pub struct V2LockManager {
 
     /// Lock wait timeout
     lock_timeout: Duration,
+
+    /// Deadlock detector for wait-for graph management
+    deadlock_detector: Arc<DeadlockDetector>,
 }
 
 impl V2LockManager {
     /// Create new lock manager
-    pub fn new() -> Self {
+    pub fn new(deadlock_detector: Arc<DeadlockDetector>) -> Self {
         Self {
             lock_table: Arc::new(RwLock::new(HashMap::new())),
             wait_queue: Arc::new(Mutex::new(VecDeque::new())),
             lock_timeout: Duration::from_secs(30),
+            deadlock_detector,
         }
     }
 
@@ -180,6 +184,12 @@ impl V2LockManager {
                     entry.1.insert(tx_id);
                     Ok(true)
                 } else {
+                    // Lock held by others - add to wait-for graph
+                    for &holder in &entry.1 {
+                        if holder != tx_id {
+                            self.deadlock_detector.add_wait_edge(tx_id, holder);
+                        }
+                    }
                     Ok(false)
                 }
             }
@@ -452,12 +462,13 @@ impl V2TransactionCoordinator {
     /// Create new transaction coordinator
     pub fn new(wal_manager: Arc<V2WALManager>) -> Self {
         let transactions = Arc::new(RwLock::new(HashMap::new()));
+        let deadlock_detector = Arc::new(DeadlockDetector::new());
 
         Self {
             wal_manager: wal_manager.clone(),
             active_transactions: transactions.clone(),
-            lock_manager: Arc::new(V2LockManager::new()),
-            deadlock_detector: Arc::new(DeadlockDetector::new()),
+            lock_manager: Arc::new(V2LockManager::new(deadlock_detector.clone())),
+            deadlock_detector,
             two_phase_coordinator: Arc::new(TwoPhaseCommitCoordinator::new(
                 wal_manager,
                 transactions,
@@ -1249,13 +1260,13 @@ mod tests {
         // Basic smoke test to verify coordinator compiles and methods are callable
         // Full functional test requires WAL manager setup (deferred to integration tests)
 
-        // Verify lock manager compiles
-        let lock_manager = V2LockManager::new();
-        assert_eq!(lock_manager.lock_timeout.as_secs(), 30);
-
         // Verify deadlock detector compiles
         let detector = DeadlockDetector::new();
         assert_eq!(detector.detection_interval.as_millis(), 100);
+
+        // Verify lock manager compiles
+        let lock_manager = V2LockManager::new(Arc::new(detector));
+        assert_eq!(lock_manager.lock_timeout.as_secs(), 30);
 
         // Verify isolation manager compiles
         let isolation_mgr = IsolationManager::new();
