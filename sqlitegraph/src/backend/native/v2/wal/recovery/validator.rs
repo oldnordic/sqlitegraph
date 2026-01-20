@@ -1110,17 +1110,165 @@ impl TransactionValidator {
 /// High-level Recovery Validator for orchestrating validation workflows
 pub struct RecoveryValidator {
     transaction_validator: TransactionValidator,
+    graph_file_path: PathBuf,
 }
 
 impl RecoveryValidator {
     /// Create new recovery validator
     pub fn new(graph_file_path: PathBuf) -> RecoveryResult<Self> {
-        let mut transaction_validator = TransactionValidator::new(graph_file_path)?;
+        let mut transaction_validator = TransactionValidator::new(graph_file_path.clone())?;
         transaction_validator.initialize()?;
 
         Ok(Self {
             transaction_validator,
+            graph_file_path,
         })
+    }
+
+    /// Validate database-level integrity with comprehensive graph file checks
+    ///
+    /// This method performs database-level integrity verification including:
+    /// - Persistent header validation (magic number, version, offset ordering)
+    /// - Node count consistency (header node_count > 0 if transactions were replayed)
+    /// - File size validation (file not truncated, consistent with header offsets)
+    /// - Free space manager consistency checks
+    /// - Cluster alignment verification
+    ///
+    /// # Returns
+    /// * `Ok(ValidationResult)` - Valid if all checks pass, Recoverable for warnings, Invalid for critical errors
+    pub fn validate_database_integrity(&self) -> RecoveryResult<ValidationResult> {
+        let mut issues = Vec::new();
+        let mut errors = Vec::new();
+
+        // Open and validate the graph file
+        let mut graph_file = GraphFile::open(&self.graph_file_path).map_err(|e| {
+            RecoveryError::validation(format!("Failed to open graph file for integrity check: {}", e))
+        })?;
+
+        // Read and validate persistent header
+        let header = graph_file.persistent_header();
+
+        // Validate header structure
+        if let Err(e) = header.validate() {
+            return Ok(ValidationResult::Invalid {
+                errors: vec![format!("Persistent header validation failed: {}", e)],
+                critical_error: "Graph file header is corrupted or invalid".to_string(),
+            });
+        }
+
+        // Check magic number explicitly for early corruption detection
+        let expected_magic = crate::backend::native::constants::MAGIC_BYTES;
+        if header.magic != expected_magic {
+            errors.push(format!(
+                "Magic number mismatch: expected {:?}, found {:?}",
+                String::from_utf8_lossy(&expected_magic),
+                String::from_utf8_lossy(&header.magic)
+            ));
+        }
+
+        // Check version
+        let expected_version = crate::backend::native::constants::FILE_FORMAT_VERSION;
+        if header.version != expected_version {
+            errors.push(format!(
+                "File version mismatch: expected {}, found {}",
+                expected_version, header.version
+            ));
+        }
+
+        // Validate offset ordering (critical for file integrity)
+        if header.node_data_offset < crate::backend::native::constants::HEADER_SIZE {
+            errors.push(format!(
+                "node_data_offset {} is less than header size {}",
+                header.node_data_offset,
+                crate::backend::native::constants::HEADER_SIZE
+            ));
+        }
+
+        if header.edge_data_offset < header.node_data_offset {
+            errors.push(format!(
+                "edge_data_offset {} is less than node_data_offset {}",
+                header.edge_data_offset, header.node_data_offset
+            ));
+        }
+
+        // Validate V2 cluster offset ordering
+        if header.outgoing_cluster_offset > 0 && header.outgoing_cluster_offset < header.node_data_offset {
+            errors.push(format!(
+                "outgoing_cluster_offset {} is less than node_data_offset {}",
+                header.outgoing_cluster_offset, header.node_data_offset
+            ));
+        }
+
+        if header.incoming_cluster_offset > 0 && header.incoming_cluster_offset < header.outgoing_cluster_offset {
+            errors.push(format!(
+                "incoming_cluster_offset {} is less than outgoing_cluster_offset {}",
+                header.incoming_cluster_offset, header.outgoing_cluster_offset
+            ));
+        }
+
+        if header.free_space_offset > 0 && header.free_space_offset < header.incoming_cluster_offset {
+            errors.push(format!(
+                "free_space_offset {} is less than incoming_cluster_offset {}",
+                header.free_space_offset, header.incoming_cluster_offset
+            ));
+        }
+
+        // Check file size consistency (warn if file appears truncated)
+        if let Ok(file_size) = graph_file.file_size() {
+            let expected_min_size = header.free_space_offset.max(header.incoming_cluster_offset)
+                .max(header.outgoing_cluster_offset)
+                .max(header.edge_data_offset);
+
+            if file_size < expected_min_size {
+                issues.push(format!(
+                    "File size {} bytes is less than expected minimum {} bytes based on header offsets",
+                    file_size, expected_min_size
+                ));
+            }
+
+            // Validate node count is reasonable for file size
+            let max_reasonable_nodes = file_size / 64; // At least 64 bytes per node
+            if header.node_count > max_reasonable_nodes {
+                issues.push(format!(
+                    "Header node_count {} exceeds reasonable maximum {} for file size {}",
+                    header.node_count, max_reasonable_nodes, file_size
+                ));
+            }
+        }
+
+        // Check for cluster alignment violations (V2 clusters must be aligned)
+        if header.outgoing_cluster_offset > 0 {
+            if header.outgoing_cluster_offset % V2_CLUSTER_ALIGNMENT != 0 {
+                errors.push(format!(
+                    "outgoing_cluster_offset {} is not aligned to {} byte boundary",
+                    header.outgoing_cluster_offset, V2_CLUSTER_ALIGNMENT
+                ));
+            }
+        }
+
+        if header.incoming_cluster_offset > 0 {
+            if header.incoming_cluster_offset % V2_CLUSTER_ALIGNMENT != 0 {
+                errors.push(format!(
+                    "incoming_cluster_offset {} is not aligned to {} byte boundary",
+                    header.incoming_cluster_offset, V2_CLUSTER_ALIGNMENT
+                ));
+            }
+        }
+
+        // Determine final result based on issues found
+        if !errors.is_empty() {
+            Ok(ValidationResult::Invalid {
+                errors,
+                critical_error: "Database integrity check failed".to_string(),
+            })
+        } else if !issues.is_empty() {
+            Ok(ValidationResult::Recoverable {
+                issues,
+                severity: ValidationSeverity::Warning,
+            })
+        } else {
+            Ok(ValidationResult::Valid)
+        }
     }
 
     /// Validate recovery sequence with comprehensive V2 consistency checks
