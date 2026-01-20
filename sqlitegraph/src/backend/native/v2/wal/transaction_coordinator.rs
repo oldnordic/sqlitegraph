@@ -476,6 +476,12 @@ impl DeadlockDetector {
     pub fn needs_cleanup(&self, threshold: usize) -> bool {
         self.graph_size() > threshold
     }
+
+    /// Get the wait-for graph for testing purposes
+    #[cfg(test)]
+    pub fn wait_for_graph_for_test(&self) -> &Arc<RwLock<HashMap<TransactionId, HashSet<TransactionId>>>> {
+        &self.wait_for_graph
+    }
 }
 
 /// Transaction ID manager with wraparound protection
@@ -1900,5 +1906,104 @@ mod tests {
         assert!(lock_table.get(&node1).unwrap().1.contains(&tx1));
         assert!(lock_table.get(&cluster0).unwrap().1.contains(&tx2));
         assert!(lock_table.get(&string_table).unwrap().1.contains(&tx3));
+    }
+
+    #[test]
+    fn test_transaction_id_wraparound_protection() {
+        let manager = TransactionIdManager::new();
+
+        // Normal allocation works
+        assert!(manager.allocate().unwrap() > 0);
+
+        // Verify constants
+        assert!(TransactionIdManager::WRAP_WARNING_THRESHOLD < u64::MAX);
+        assert!(manager.hard_limit < u64::MAX);
+
+        // Verify remaining calculation
+        let remaining = manager.remaining_ids();
+        assert!(remaining > 0);
+
+        // Verify current_id reflects the allocation (should be 2 now)
+        assert_eq!(manager.current_id(), 2);
+
+        // Verify needs_wraparound_protection is false for new manager
+        assert!(!manager.needs_wraparound_protection());
+    }
+
+    #[test]
+    fn test_deadlock_detector_cleanup() {
+        let detector = DeadlockDetector::new();
+
+        // Create wait-for graph: 1->2, 1->3, 2->3
+        detector.add_wait_edge(1, 2);
+        detector.add_wait_edge(1, 3);
+        detector.add_wait_edge(2, 3);
+
+        assert_eq!(detector.graph_size(), 2);
+
+        // Cleanup with only transaction 3 active
+        let active = HashSet::from([3]);
+        let cleaned = detector.cleanup_stale_transactions(&active);
+
+        // Transactions 1 and 2 removed, graph should be empty
+        // (transaction 3 has no outgoing edges, so it's not in the graph)
+        assert_eq!(cleaned, 2);
+        assert_eq!(detector.graph_size(), 0);
+    }
+
+    #[test]
+    fn test_needs_cleanup_threshold() {
+        let detector = DeadlockDetector::new();
+        assert!(!detector.needs_cleanup(100));
+
+        // Add 100 wait edges (each unique transaction adds to graph size)
+        for i in 1..=100 {
+            detector.add_wait_edge(i, i + 100);
+        }
+
+        assert!(detector.needs_cleanup(50));
+        assert!(!detector.needs_cleanup(200));
+    }
+
+    #[test]
+    fn test_transaction_id_manager_remaining() {
+        let manager = TransactionIdManager::new();
+
+        // Remaining should be very close to hard_limit
+        let initial_remaining = manager.remaining_ids();
+        assert!(initial_remaining > u64::MAX - 2_000_000);
+
+        // After allocating an ID, remaining should decrease by 1
+        manager.allocate().unwrap();
+        let after_allocation = manager.remaining_ids();
+        assert_eq!(after_allocation, initial_remaining - 1);
+    }
+
+    #[test]
+    fn test_deadlock_detector_cleanup_removes_references() {
+        let detector = DeadlockDetector::new();
+
+        // Create wait-for graph: 1->2, 2->3, 3->1
+        detector.add_wait_edge(1, 2);
+        detector.add_wait_edge(2, 3);
+        detector.add_wait_edge(3, 1);
+
+        // All three transactions should be in the graph
+        assert_eq!(detector.graph_size(), 3);
+
+        // Cleanup with only transaction 1 active
+        let active = HashSet::from([1]);
+        detector.cleanup_stale_transactions(&active);
+
+        // After cleanup, only transaction 1 remains but with no references to 2 or 3
+        // Since transaction 1 was waiting for transaction 2 (which is now removed),
+        // transaction 1 should have an empty waiting set
+        assert_eq!(detector.graph_size(), 1);
+
+        // Verify that the remaining entry has no stale references
+        let graph = detector.wait_for_graph_for_test().read();
+        if let Some(waiting_for) = graph.get(&1) {
+            assert!(waiting_for.is_empty(), "Transaction 1 should have no wait references after cleanup");
+        }
     }
 }
