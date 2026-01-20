@@ -425,6 +425,17 @@ impl V2WALCheckpointManager {
         }
     }
 
+    /// Get current WAL file size for monitoring
+    ///
+    /// # Returns
+    ///
+    /// * `CheckpointResult<u64>` - Current WAL file size in bytes
+    pub fn get_wal_size(&self) -> CheckpointResult<u64> {
+        std::fs::metadata(&self.config.wal_path)
+            .map(|m| m.len())
+            .map_err(|e| CheckpointError::io(format!("Failed to get WAL size: {}", e)))
+    }
+
     /// Force checkpoint regardless of strategy (emergency/manual checkpoint)
     ///
     /// # Returns
