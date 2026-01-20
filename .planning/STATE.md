@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 13 of 22 (ACID Isolation)
-Plan: 1 of 4 in current phase
-Status: Phase 12 complete, Phase 13 not started
-Last activity: 2026-01-20 — Phase 12 verification passed (4/4 must-haves)
+Plan: 4 of 4 in current phase
+Status: Phase 12 complete, Phase 13 in progress (1/4 complete)
+Last activity: 2026-01-20 — Completed 13-04 Concurrent write design
 
-Progress: [████████████████████████████████░░░] 71%
+Progress: [███████████████████████████████░░░░] 73%
 
 ## Performance Metrics
 
@@ -72,6 +72,8 @@ Recent decisions affecting current work:
 - Store graph_file_path in RecoveryValidator for database-level validation - 12-05
 - Only run database integrity checks when perform_consistency_checks is enabled - 12-05
 - Validate node_count consistency against transactions_replayed count - 12-05
+- Global lock ordering key: Node(0-4B), Edge(4B-8B), Cluster(8B-12B), StringTable(12B-16B), FreeSpace(MAX) - 13-04
+- Min-first node locking for edge operations prevents A->B / B->A deadlocks - 13-04
 
 ### Pending Todos
 
@@ -83,8 +85,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 12-05 execution)
-Stopped at: Completed 12-05 - Database integrity checks
+Last session: 2026-01-20 (plan 13-04 execution)
+Stopped at: Completed 13-04 - Concurrent write design
 Resume file: None
 
 ### Roadmap Evolution
@@ -95,4 +97,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 pending
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 in progress (1/4 complete)
