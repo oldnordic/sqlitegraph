@@ -353,7 +353,7 @@ Phases execute in numeric order: 1 → 2 → 3 → ... → 10 → 11 → 12 → 
 | 9. Developer Tooling | v1.0 | 3/3 | Complete | 2026-01-17 |
 | 10. Testing & Docs | v1.0 | 3/3 | Complete | 2026-01-17 |
 | 11. ACID Atomicity | v1.1 | 3/3 | Complete | 2026-01-20 |
-| 12. ACID Consistency | v1.1 | 0/4 | Not started | - |
+| 12. ACID Consistency | v1.1 | 4 planned | Planned | 2026-01-20 |
 | 13. ACID Isolation | v1.1 | 0/4 | Not started | - |
 | 14. ACID Durability | v1.1 | 0/4 | Not started | - |
 | 15. HNSW Multi-Layer | v1.1 | 0/4 | Not started | - |
