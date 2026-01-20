@@ -4,7 +4,7 @@
 //! used by the V2 WAL recovery replayer system.
 
 use crate::backend::native::{NativeNodeId};
-use crate::backend::native::v2::edge_cluster::Direction;
+use crate::backend::native::v2::edge_cluster::{CompactEdgeRecord, Direction};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Configuration for V2 transaction replay operations
@@ -228,11 +228,13 @@ pub enum RollbackOperation {
         node_id: NativeNodeId,
         old_data: Vec<u8>,
     },
-    /// Rollback node deletion by reinserting the node
+    /// Rollback node deletion by reinserting the node with all edges
     NodeDelete {
         node_id: NativeNodeId,
         slot_offset: u64,
         old_data: Vec<u8>,
+        outgoing_edges: Vec<CompactEdgeRecord>,
+        incoming_edges: Vec<CompactEdgeRecord>,
     },
     /// Rollback string insertion (NEW: for string table operations)
     StringInsert {
