@@ -36,12 +36,12 @@ Requirements for data integrity and validation.
 
 Requirements for concurrent access coordination.
 
-- [ ] **ACID-13**: Transaction coordinator implements resource-level lock tracking
-- [ ] **ACID-14**: Transaction coordinator builds wait-for graph for deadlock detection
-- [ ] **ACID-15**: Transaction coordinator detects cycles in wait-for graph
-- [ ] **ACID-16**: Transaction coordinator selects victim for abort (youngest transaction)
-- [ ] **ACID-17**: Transaction isolation level API exists (ReadCommitted, RepeatableRead, Serializable)
-- [ ] **ACID-18**: Concurrent write design document defines lock acquisition ordering
+- [x] **ACID-13**: Transaction coordinator implements resource-level lock tracking
+- [x] **ACID-14**: Transaction coordinator builds wait-for graph for deadlock detection
+- [x] **ACID-15**: Transaction coordinator detects cycles in wait-for graph
+- [x] **ACID-16**: Transaction coordinator selects victim for abort (youngest transaction)
+- [x] **ACID-17**: Transaction isolation level API exists (ReadCommitted, RepeatableRead, Serializable)
+- [x] **ACID-18**: Concurrent write design document defines lock acquisition ordering
 
 ### ACID - Durability
 
@@ -344,12 +344,12 @@ Requirements mapped to phases in roadmap.
 | ACID-10 | Phase 12 | Complete |
 | ACID-11 | Phase 12 | Complete |
 | ACID-12 | Phase 12 | Complete |
-| ACID-13 | Phase 13 | Pending |
-| ACID-14 | Phase 13 | Pending |
-| ACID-15 | Phase 13 | Pending |
-| ACID-16 | Phase 13 | Pending |
-| ACID-17 | Phase 13 | Pending |
-| ACID-18 | Phase 13 | Pending |
+| ACID-13 | Phase 13 | Complete |
+| ACID-14 | Phase 13 | Complete |
+| ACID-15 | Phase 13 | Complete |
+| ACID-16 | Phase 13 | Complete |
+| ACID-17 | Phase 13 | Complete |
+| ACID-18 | Phase 13 | Complete |
 | ACID-19 | Phase 14 | Pending |
 | ACID-20 | Phase 14 | Pending |
 | ACID-21 | Phase 14 | Pending |
@@ -401,9 +401,9 @@ Requirements mapped to phases in roadmap.
 | POOL-01 | Phase 19 | Pending |
 | POOL-02 | Phase 19 | Pending |
 | POOL-03 | Phase 19 | Pending |
-| CW-01 | Phase 13 | Pending |
-| CW-02 | Phase 13 | Pending |
-| CW-03 | Phase 13 | Pending |
+| CW-01 | Phase 13 | Complete |
+| CW-02 | Phase 13 | Complete |
+| CW-03 | Phase 13 | Complete |
 | MIGRATE-01 | Phase 20 | Pending |
 | MIGRATE-02 | Phase 20 | Pending |
 | MIGRATE-03 | Phase 20 | Pending |

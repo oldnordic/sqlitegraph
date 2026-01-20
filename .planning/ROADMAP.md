@@ -183,10 +183,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 13-01: Implement transaction coordinator with resource-level lock tracking
-- [ ] 13-02: Build wait-for graph and cycle detection
-- [ ] 13-03: Add victim selection and transaction abort
-- [ ] 13-04: Design and document lock acquisition ordering
+- [x] 13-01: Implement transaction coordinator with resource-level lock tracking ✅
+- [x] 13-02: Build wait-for graph and cycle detection ✅
+- [x] 13-03: Add victim selection and transaction abort ✅
+- [x] 13-04: Design and document lock acquisition ordering ✅
 
 ### Phase 14: ACID Durability
 **Goal**: Complete all checkpoint trigger strategies
@@ -355,7 +355,7 @@ Phases execute in numeric order: 1 → 2 → 3 → ... → 10 → 11 → 12 → 
 | 10. Testing & Docs | v1.0 | 3/3 | Complete | 2026-01-17 |
 | 11. ACID Atomicity | v1.1 | 3/3 | Complete | 2026-01-20 |
 | 12. ACID Consistency | v1.1 | 5/5 | Complete | 2026-01-20 |
-| 13. ACID Isolation | v1.1 | 0/4 | Not started | - |
+| 13. ACID Isolation | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 14. ACID Durability | v1.1 | 0/4 | Not started | - |
 | 15. HNSW Multi-Layer | v1.1 | 0/4 | Not started | - |
 | 16. Memory Safety | v1.1 | 0/4 | Not started | - |
