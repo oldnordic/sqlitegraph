@@ -143,6 +143,9 @@ pub fn map_to_graph_error(err: NativeBackendError) -> SqliteGraphError {
         NativeBackendError::Recovery(message) => {
             SqliteGraphError::connection(format!("Recovery error: {}", message))
         }
+        NativeBackendError::MigrationFailed(message) => {
+            SqliteGraphError::connection(format!("Migration failed: {}", message))
+        }
     }
 }
 

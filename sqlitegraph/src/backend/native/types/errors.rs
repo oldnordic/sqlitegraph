@@ -173,6 +173,9 @@ pub enum NativeBackendError {
 
     #[error("Invalid transaction state: {state}")]
     InvalidTransactionState { tx_id: u64, state: String },
+
+    #[error("Migration failed: {0}")]
+    MigrationFailed(String),
 }
 
 // Add conversion from SystemTimeError
