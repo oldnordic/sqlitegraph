@@ -59,6 +59,7 @@ use crate::{
         errors::{HnswError, HnswIndexError},
         hnsw_config,
         layer::HnswLayer,
+        multilayer::LevelDistributor,
         neighborhood::NeighborhoodSearch,
         storage::{InMemoryVectorStorage, VectorStorage, VectorStorageStats},
     },
@@ -97,6 +98,10 @@ pub struct HnswIndex {
 
     /// Neighborhood search engine
     search_engine: NeighborhoodSearch,
+
+    /// Level distributor for exponential level assignment in multi-layer mode
+    /// Only initialized when enable_multilayer == true
+    level_distributor: Option<LevelDistributor>,
 }
 
 impl HnswIndex {
@@ -195,6 +200,15 @@ impl HnswIndex {
 
         let search_engine = NeighborhoodSearch::new(config.distance_metric);
 
+        // Initialize level distributor for multi-layer mode
+        let level_distributor = if config.enable_multilayer {
+            let seed = config.multilayer_deterministic_seed.unwrap_or(42);
+            let base_m = config.multilayer_level_distribution_base.unwrap_or(config.m) as f64;
+            Some(LevelDistributor::new(base_m, config.ml as usize).with_seed(seed))
+        } else {
+            None
+        };
+
         Ok(Self {
             name: name.to_string(),
             config,
@@ -203,6 +217,7 @@ impl HnswIndex {
             entry_points: Vec::new(),
             vector_count: 0,
             search_engine,
+            level_distributor,
         })
     }
 
@@ -620,6 +635,9 @@ impl HnswIndex {
 
         let search_engine = NeighborhoodSearch::new(config.distance_metric);
 
+        // No level distributor for loaded indexes (enable_multilayer=false)
+        let level_distributor = None;
+
         Ok(Self {
             name: name.to_string(),
             config,
@@ -628,6 +646,7 @@ impl HnswIndex {
             entry_points: Vec::new(),
             vector_count,
             search_engine,
+            level_distributor,
         })
     }
 
