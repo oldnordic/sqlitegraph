@@ -613,7 +613,9 @@ fn run_hnsw_delete(client: &BackendClient, args: &[String]) -> Result<(), Sqlite
 
     // Delete from database (CASCADE handles vectors)
     use sqlitegraph::hnsw::HnswIndex;
-    HnswIndex::delete_index(&graph.conn, index_name)
+    let conn = graph.pool.get()
+        .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to get connection: {}", e)))?;
+    HnswIndex::delete_index(&conn, index_name)
         .map_err(|e| SqliteGraphError::invalid_input(format!("Failed to delete index: {}", e)))?;
 
     // Remove from in-memory registry
