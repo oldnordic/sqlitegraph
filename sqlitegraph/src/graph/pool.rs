@@ -126,6 +126,16 @@ impl PoolManager {
         self.direct_conn.is_some()
     }
 
+    /// Get the maximum pool size for this manager.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(max_size)` - Maximum number of connections for pooled databases
+    /// * `None` - For in-memory databases (no pooling)
+    pub fn max_size(&self) -> Option<u32> {
+        self.pool.as_ref().map(|p| p.max_size())
+    }
+
     /// Apply a configuration function to the pool.
     ///
     /// This is used to configure WAL mode and other PRAGMAs on the pool.
