@@ -69,6 +69,9 @@ pub struct WALManagerMetrics {
 
     /// Compression ratio (if enabled)
     pub compression_ratio: f64,
+
+    /// Transactions committed since last checkpoint (resettable counter)
+    pub transactions_since_checkpoint: u64,
 }
 
 /// Enhanced WAL manager with full transaction coordination
@@ -657,6 +660,7 @@ impl Default for WALManagerMetrics {
             group_commit_batches: 0,
             avg_group_commit_size: 0.0,
             compression_ratio: 1.0,
+            transactions_since_checkpoint: 0,
         }
     }
 }
