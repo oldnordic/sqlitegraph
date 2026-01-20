@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 11 of 22 (ACID Atomicity)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-01-20 — Completed 11-01: Node deletion before-image capture
+Last activity: 2026-01-20 — Completed 11-02: Node deletion rollback with edge restoration
 
-Progress: [█████████████████████░░░░░░░░░] 52%
+Progress: [██████████████████████░░░░░░░░░] 53%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 34
+- Total plans completed: 35
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,10 +28,10 @@ Progress: [█████████████████████░░
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
-| 11-22 (v1.1) | 1/45 | 7min 38sec | TBD |
+| 11-22 (v1.1) | 2/45 | 7min 38sec | TBD |
 
 **Recent Trend:**
-- Last 5 plans: 11-01 (7min 38sec)
+- Last 5 plans: 11-01 (7min 38sec), 11-02 (7min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -57,6 +57,8 @@ Recent decisions affecting current work:
 - Use CompactEdgeRecord binary serialization for edge data in WAL (not JSON) - 11-01
 - Capture edges BEFORE cascade deletion to preserve data for rollback - 11-01
 - Replace serde_json with NodeRecordV2::serialize/deserialize for consistency - 11-01
+- EdgeCluster::create_from_compact_edges for cluster restoration during rollback - 11-02
+- FreeSpaceManager::remove_from_free_list for slot reclamation during rollback - 11-02
 
 ### Pending Todos
 
@@ -68,8 +70,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 11-01 execution)
-Stopped at: Completed 11-01 - Node deletion before-image capture with edge vectors
+Last session: 2026-01-20 (plan 11-02 execution)
+Stopped at: Completed 11-02 - Node deletion rollback with edge restoration and slot reclamation
 Resume file: None
 
 ### Roadmap Evolution
