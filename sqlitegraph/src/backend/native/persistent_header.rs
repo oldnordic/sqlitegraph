@@ -80,7 +80,7 @@ impl PersistentHeaderV2 {
             flags: crate::backend::native::constants::DEFAULT_FEATURE_FLAGS,
             node_count: 0,
             edge_count: 0,
-            schema_version: crate::backend::native::constants::DEFAULT_SCHEMA_VERSION as u32,
+            schema_version: crate::backend::native::constants::DEFAULT_SCHEMA_VERSION,
             reserved: 0,
             node_data_offset: crate::backend::native::constants::HEADER_SIZE,
             edge_data_offset: crate::backend::native::constants::HEADER_SIZE,

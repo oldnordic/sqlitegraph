@@ -18,8 +18,10 @@ pub struct FileHeader {
     pub node_count: u64,
     /// Total number of edges in the file
     pub edge_count: u64,
-    /// Schema version
-    pub schema_version: u64,
+    /// Schema version (u32 in v3 format)
+    pub schema_version: u32,
+    /// Reserved field (4 bytes for future use in v3 format)
+    pub reserved: u32,
     /// Offset to node data section
     pub node_data_offset: u64,
     /// Offset to edge data section or outgoing clusters begin
@@ -47,11 +49,12 @@ impl FileHeader {
     pub fn new() -> Self {
         Self {
             magic: V2_MAGIC,            // V2 format by default
-            version: V2_FORMAT_VERSION, // V2 format by default
+            version: V2_FORMAT_VERSION, // V3 format (updated from 2 to 3)
             flags: constants::DEFAULT_FEATURE_FLAGS,
             node_count: 0,
             edge_count: 0,
             schema_version: constants::DEFAULT_SCHEMA_VERSION,
+            reserved: 0,
             node_data_offset: constants::HEADER_SIZE,
             edge_data_offset: constants::HEADER_SIZE,
             outgoing_cluster_offset: 0,
@@ -76,7 +79,7 @@ impl FileHeader {
         }
 
         // Check version
-        if self.version != constants::FILE_FORMAT_VERSION && self.version != 2 {
+        if self.version != constants::FILE_FORMAT_VERSION && self.version != 2 && self.version != 3 {
             return Err(NativeBackendError::UnsupportedVersion {
                 version: self.version,
                 supported_version: constants::FILE_FORMAT_VERSION,
@@ -214,7 +217,8 @@ impl FileHeader {
         checksum ^= self.flags as u64;
         checksum ^= self.node_count;
         checksum ^= self.edge_count;
-        checksum ^= self.schema_version;
+        checksum ^= self.schema_version as u64;
+        checksum ^= self.reserved as u64;
         checksum ^= self.node_data_offset;
         checksum ^= self.edge_data_offset;
         checksum ^= self.outgoing_cluster_offset;

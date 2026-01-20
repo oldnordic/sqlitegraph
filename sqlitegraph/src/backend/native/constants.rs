@@ -9,8 +9,8 @@ pub const MAGIC_BYTES: [u8; 8] = [b'S', b'Q', b'L', b'T', b'G', b'F', 0, 0];
 /// Header size in bytes for V2 files (includes cluster/free-space offsets).
 pub const HEADER_SIZE: u64 = 80;
 
-/// Current file format version (V2)
-pub const FILE_FORMAT_VERSION: u32 = 2;
+/// Current file format version (V3 - schema_version is u32 instead of u64)
+pub const FILE_FORMAT_VERSION: u32 = 3;
 
 /// Header field offsets
 pub mod header_offset {
@@ -32,7 +32,7 @@ pub mod header_size {
     pub const FLAGS: usize = 4;
     pub const NODE_COUNT: usize = 8;
     pub const EDGE_COUNT: usize = 8;
-    pub const SCHEMA_VERSION: usize = 8;
+    pub const SCHEMA_VERSION: usize = 4; // u32 (4 bytes) in v3 format
     pub const NODE_DATA_OFFSET: usize = 8;
     pub const EDGE_DATA_OFFSET: usize = 8;
     pub const CHECKSUM: usize = 8;
@@ -103,8 +103,8 @@ pub const TX_STATE_IN_PROGRESS: u32 = 0x0000_0010; // Transaction is being writt
 /// Default feature flags (enable V2 framed cluster records for all new files)
 pub const DEFAULT_FEATURE_FLAGS: u32 = FLAG_V2_FRAMED_RECORDS | FLAG_V2_ATOMIC_COMMIT;
 
-/// Default schema version
-pub const DEFAULT_SCHEMA_VERSION: u64 = 1;
+/// Default schema version (u32 in v3 format)
+pub const DEFAULT_SCHEMA_VERSION: u32 = 1;
 
 /// Checksum calculation parameters
 pub mod checksum {

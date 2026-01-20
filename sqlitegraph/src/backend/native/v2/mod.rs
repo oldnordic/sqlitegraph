@@ -38,7 +38,8 @@ use crate::backend::native::{NativeBackendError, NativeResult};
 
 /// V2 magic bytes for file format identification (SAME AS V1 - magic never changes!)
 pub const V2_MAGIC: [u8; 8] = [b'S', b'Q', b'L', b'T', b'G', b'F', 0, 0];
-pub const V2_FORMAT_VERSION: u32 = 2;
+// V3 format: schema_version is u32 (4 bytes) + reserved (4 bytes)
+pub const V2_FORMAT_VERSION: u32 = 3;
 
 /// Expected performance targets for V2 format
 pub mod performance_targets {
