@@ -598,8 +598,10 @@ mod tests {
 
         let validator = V2InvariantValidator::new(config);
         let state = CheckpointState::default();
+        let manager_state = CheckpointManagerState::default();
 
-        let result = validator.validate_checkpoint_state_invariants(&state);
+        let result = validator
+            .validate_checkpoint_state_invariants(&state, &manager_state);
         assert!(result.is_ok());
         let invariant_result = result.unwrap();
         assert!(invariant_result.invariants_held);
