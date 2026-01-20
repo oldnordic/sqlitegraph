@@ -267,7 +267,11 @@ pub use recovery::{dump_graph_to_path, load_graph_from_path, load_graph_from_rea
 
 // Re-export backend implementations
 pub use backend::{BackendDirection, ChainStep, GraphBackend};
-pub use backend::{EdgeSpec, NativeGraphBackend, NeighborQuery, NodeSpec, SqliteGraphBackend};
+pub use backend::{BackupResult, EdgeSpec, NativeGraphBackend, NeighborQuery, NodeSpec, SqliteGraphBackend};
+
+// Re-export backup API for convenience
+#[cfg(feature = "native-v2")]
+pub use backend::native::v2::backup::{BackupConfig, create_backup as database_backup};
 
 // Re-export WAL functionality for native backend
 #[cfg(feature = "native-v2")]
@@ -338,3 +342,32 @@ pub mod pattern; // Public for binary // HNSW vector search capabilities
 
 // Re-export cache statistics for benchmarking
 pub use cache::CacheStats;
+
+/// Create a backup of a SQLiteGraph Native V2 database
+///
+/// This is a convenience function for creating database backups.
+/// For more control over backup options, use `database_backup` with `BackupConfig`.
+///
+/// # Arguments
+/// * `db_path` - Path to the database file
+/// * `backup_dir` - Directory where backup will be stored
+///
+/// # Example
+/// ```no_run
+/// use sqlitegraph;
+/// use std::path::Path;
+///
+/// let result = sqlitegraph::create_backup(
+///     Path::new("mydb.v2"),
+///     Path::new("backups")
+/// );
+/// # Ok::<(), sqlitegraph::SqliteGraphError>(())
+/// ```
+#[cfg(feature = "native-v2")]
+pub fn create_backup(
+    db_path: &std::path::Path,
+    backup_dir: &std::path::Path,
+) -> Result<BackupResult, SqliteGraphError> {
+    database_backup(db_path, crate::backend::native::v2::backup::BackupConfig::new(backup_dir))
+        .map_err(|e| SqliteGraphError::Backend(e.to_string()))
+}
