@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 15 of 22 (HNSW Multi-Layer)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In progress
-Last activity: 2026-01-20 — Completed 15-01 exponential level distribution
+Last activity: 2026-01-20 — Completed 15-02 multi-layer graph structure
 
-Progress: [██████████████████████████████████ ] 86%
+Progress: [██████████████████████████████████ ] 87%
 
 ## Performance Metrics
 
@@ -29,10 +29,10 @@ Progress: [███████████████████████
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
 | 11-14 (v1.1) | 17/17 | 122min | 7min |
-| 15 (HNSW Multi-Layer) | 1/3 | 8min | 8min |
+| 15 (HNSW Multi-Layer) | 2/3 | 11min | 6min |
 
 **Recent Trend:**
-- Last 5 plans: 14-01 (2min), 14-02 (2min), 14-03 (4min), 14-04 (6min), 15-01 (8min)
+- Last 5 plans: 14-01 (2min), 14-02 (2min), 14-03 (4min), 14-04 (6min), 15-01 (8min), 15-02 (3min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -104,6 +104,10 @@ Recent decisions affecting current work:
 - Deterministic seeding with default seed of 42 for reproducible behavior, configurable via multilayer_deterministic_seed - 15-01
 - Base M parameter uses multilayer_level_distribution_base if set, otherwise falls back to config.m - 15-01
 - determine_insertion_level signature changed from &self to &mut self for mutable RNG access - 15-01
+- MultiLayerNodeManager field added to HnswIndex for tracking layer assignments and ID translation - 15-02
+- insert_into_layer() uses LayerMappings.get_local_id() for ID translation in multi-layer mode, falls back to direct conversion in single-layer mode - 15-02
+- insert_vector() registers with MultiLayerNodeManager before inserting into layers to ensure mappings exist - 15-02
+- Multi-layer insertion flow: determine_insertion_level() -> manager.insert_vector() -> insert_into_layer() for each layer - 15-02
 
 ### Pending Todos
 
@@ -115,8 +119,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 15-01 execution)
-Stopped at: Completed 15-01 - Exponential level distribution
+Last session: 2026-01-20 (plan 15-02 execution)
+Stopped at: Completed 15-02 - Multi-layer graph structure
 Resume file: None
 
 ### Roadmap Evolution
@@ -127,4 +131,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 in progress (1/3)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 in progress (2/3)
