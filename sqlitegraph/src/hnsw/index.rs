@@ -278,7 +278,15 @@ impl HnswIndex {
         // Determine insertion layer using exponential distribution
         let insertion_level = self.determine_insertion_level();
 
+        // Register with multi-layer manager if enabled
+        // This creates the LayerMappings for ID translation before inserting into layers
+        if let Some(manager) = &mut self.multi_layer_manager {
+            let (_highest_level, _layer_assignments) = manager.insert_vector(vector_id)?;
+            // layer_assignments contains (layer_id, local_id) pairs for all layers 0..=insertion_level
+        }
+
         // Insert into layers from insertion_level down to 0
+        // In multi-layer mode, this uses the LayerMappings created above
         for level in (0..=insertion_level).rev() {
             self.insert_into_layer(vector_id, level)?;
         }
@@ -810,6 +818,11 @@ impl HnswIndex {
 
         // Determine insertion layer using exponential distribution
         let insertion_level = self.determine_insertion_level();
+
+        // Register with multi-layer manager if enabled
+        if let Some(manager) = &mut self.multi_layer_manager {
+            let (_highest_level, _layer_assignments) = manager.insert_vector(vector_id)?;
+        }
 
         // Insert into layers from insertion_level down to 0
         for level in (0..=insertion_level).rev() {
