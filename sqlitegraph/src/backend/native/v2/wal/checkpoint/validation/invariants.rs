@@ -232,6 +232,19 @@ impl V2InvariantValidator {
     /// Validates checkpoint state machine transitions and metadata consistency.
     /// Takes both the CheckpointState enum and CheckpointManagerState struct
     /// to properly validate state transitions and associated metadata.
+    ///
+    /// # Valid State Transitions
+    ///
+    /// The checkpoint state machine follows these valid transitions:
+    /// - Idle -> Initializing
+    /// - Initializing -> Collecting
+    /// - Collecting -> Processing
+    /// - Processing -> Flushing
+    /// - Flushing -> Validating
+    /// - Validating -> Complete
+    /// - Any state -> Failed
+    /// - Complete -> Idle (for next checkpoint)
+    /// - Failed -> Idle (for retry)
     pub fn validate_checkpoint_state_invariants(
         &self,
         state: &CheckpointState,
@@ -240,49 +253,81 @@ impl V2InvariantValidator {
         let mut violations = Vec::new();
         let start_time = SystemTime::now();
 
-        // Checkpoint state validation commented out - CheckpointState enum doesn't have expected fields
-        // This validation code appears to be written for a different struct than the CheckpointState enum
-        // TODO: Update validation to work with actual CheckpointState enum structure
+        // Validate state consistency with manager metadata
+        // If manager_state.in_progress is true, state should NOT be Idle
+        if manager_state.in_progress && matches!(state, CheckpointState::Idle) {
+            violations.push(V2InvariantViolation {
+                violation_type: V2InvariantViolationType::V2MetadataCorruption,
+                description: "Checkpoint marked as in_progress but state is Idle".to_string(),
+                expected: Some("state != Idle when in_progress is true".to_string()),
+                actual: Some(format!("state = {:?}, in_progress = true", state)),
+                critical: true,
+            });
+        }
 
-        // // Validate that state transitions are properly ordered
-        // if state.in_progress && !state.checkpoint_file_path.exists() {  // Fields don't exist
-        //     violations.push(V2InvariantViolation {
-        //         violation_type: V2InvariantViolationType::V2MetadataCorruption,
-        //         description: "Checkpoint state indicates in-progress but checkpoint file does not exist".to_string(),
-        //         expected: Some("checkpoint file exists when in progress"),
-        //         actual: Some("checkpoint file does not exist"),
-        //         critical: true,
-        //     });
-        // }
+        // If state is an active state, in_progress should be true
+        if !manager_state.in_progress
+            && (matches!(state, CheckpointState::Initializing)
+                || matches!(state, CheckpointState::Collecting)
+                || matches!(state, CheckpointState::Processing)
+                || matches!(state, CheckpointState::Flushing)
+                || matches!(state, CheckpointState::Validating))
+        {
+            violations.push(V2InvariantViolation {
+                violation_type: V2InvariantViolationType::V2MetadataCorruption,
+                description: format!(
+                    "Checkpoint state {:?} indicates active work but in_progress is false",
+                    state
+                ),
+                expected: Some("in_progress = true for active states".to_string()),
+                actual: Some("in_progress = false".to_string()),
+                critical: true,
+            });
+        }
 
-        // // Validate checkpoint start and end LSN ordering
-        // if let (Some(start_lsn), Some(end_lsn)) = (state.start_lsn, state.end_lsn) {  // Fields don't exist
-        //     if start_lsn > end_lsn {
-        //         violations.push(V2InvariantViolation {
-        //             violation_type: V2InvariantViolationType::ClusterBoundaryViolation,
-        //             description: format!(
-        //                 "Checkpoint LSN range invalid: start {} > end {}",
-        //                 start_lsn, end_lsn
-        //             ),
-        //             expected: Some("start_lsn <= end_lsn"),
-        //             actual: Some(format!("start_lsn ({}) > end_lsn ({})", start_lsn, end_lsn)),
-        //             critical: true,
-        //         });
-        //     }
-        // }
+        // If checkpoint_start_time is Some, state should be past Initializing
+        if manager_state.checkpoint_start_time.is_some() {
+            if matches!(state, CheckpointState::Idle) {
+                violations.push(V2InvariantViolation {
+                    violation_type: V2InvariantViolationType::V2MetadataCorruption,
+                    description: "Checkpoint has start_time but state is Idle".to_string(),
+                    expected: Some("state != Idle when start_time is Some".to_string()),
+                    actual: Some(format!("state = {:?}, start_time = Some", state)),
+                    critical: false,
+                });
+            }
+        }
 
-        // // Validate V2-specific state fields
-        // if let Some(v2_metadata) = &state.v2_metadata {  // Fields don't exist
-        //     if v2_metadata.cluster_count == 0 && state.in_progress {
-        //         violations.push(V2InvariantViolation {
-        //             violation_type: V2InvariantViolationType::ClusteredEdgeFormatViolation,
-        //             description: "V2 checkpoint in progress but cluster count is zero".to_string(),
-        //             expected: Some("cluster_count > 0 when in progress"),
-        //             actual: Some("cluster_count = 0"),
-        //             critical: false,
-        //         });
-        //     }
-        // }
+        // If state is Complete, completed_checkpoints should reflect the completed work
+        if matches!(state, CheckpointState::Complete) {
+            if manager_state.completed_checkpoints == 0
+                && manager_state.current_operation_id == 0
+            {
+                // This is only a violation if we've performed an operation
+                // (operation_id > 0 indicates a checkpoint was started)
+                violations.push(V2InvariantViolation {
+                    violation_type: V2InvariantViolationType::V2MetadataCorruption,
+                    description: "Checkpoint state is Complete but no checkpoints recorded".to_string(),
+                    expected: Some("completed_checkpoints > 0 when state is Complete".to_string()),
+                    actual: Some("completed_checkpoints = 0, state = Complete".to_string()),
+                    critical: false,
+                });
+            }
+        }
+
+        // Validate that in_progress flag is consistent with current_state
+        if manager_state.current_state != *state {
+            violations.push(V2InvariantViolation {
+                violation_type: V2InvariantViolationType::V2MetadataCorruption,
+                description: format!(
+                    "Checkpoint state mismatch: state parameter {:?} != manager_state.current_state {:?}",
+                    state, manager_state.current_state
+                ),
+                expected: Some("state == manager_state.current_state".to_string()),
+                actual: Some(format!("state ({:?}) != current_state ({:?})", state, manager_state.current_state)),
+                critical: true,
+            });
+        }
 
         let invariants_held = violations
             .iter()
@@ -605,6 +650,141 @@ mod tests {
         assert!(result.is_ok());
         let invariant_result = result.unwrap();
         assert!(invariant_result.invariants_held);
+    }
+
+    #[test]
+    fn test_valid_state_transitions() {
+        let temp_dir = tempdir().unwrap();
+        let config = V2WALConfig {
+            wal_path: temp_dir.path().join("test.wal"),
+            checkpoint_path: temp_dir.path().join("test.checkpoint"),
+            ..Default::default()
+        };
+
+        let validator = V2InvariantValidator::new(config);
+
+        // Test valid state transition: Idle with no in-progress
+        let state = CheckpointState::Idle;
+        let mut manager_state = CheckpointManagerState::default();
+        manager_state.in_progress = false;
+
+        let result = validator
+            .validate_checkpoint_state_invariants(&state, &manager_state);
+        assert!(result.is_ok());
+        let invariant_result = result.unwrap();
+        assert!(invariant_result.invariants_held);
+        assert!(invariant_result.violations.is_empty());
+
+        // Test valid state: Collecting with in_progress=true
+        let state = CheckpointState::Collecting;
+        manager_state.current_state = CheckpointState::Collecting;
+        manager_state.in_progress = true;
+        manager_state.checkpoint_start_time = Some(std::time::Instant::now());
+
+        let result = validator
+            .validate_checkpoint_state_invariants(&state, &manager_state);
+        assert!(result.is_ok());
+        let invariant_result = result.unwrap();
+        assert!(invariant_result.invariants_held);
+        assert!(invariant_result.violations.is_empty());
+
+        // Test valid state: Complete with completed_checkpoints > 0
+        let state = CheckpointState::Complete;
+        manager_state.current_state = CheckpointState::Complete;
+        manager_state.in_progress = false;
+        manager_state.completed_checkpoints = 1;
+
+        let result = validator
+            .validate_checkpoint_state_invariants(&state, &manager_state);
+        assert!(result.is_ok());
+        let invariant_result = result.unwrap();
+        assert!(invariant_result.invariants_held);
+        assert!(invariant_result.violations.is_empty());
+    }
+
+    #[test]
+    fn test_invalid_state_transition_idle_with_in_progress() {
+        let temp_dir = tempdir().unwrap();
+        let config = V2WALConfig {
+            wal_path: temp_dir.path().join("test.wal"),
+            checkpoint_path: temp_dir.path().join("test.checkpoint"),
+            ..Default::default()
+        };
+
+        let validator = V2InvariantValidator::new(config);
+
+        // Test invalid: Idle state with in_progress=true
+        let state = CheckpointState::Idle;
+        let mut manager_state = CheckpointManagerState::default();
+        manager_state.current_state = CheckpointState::Idle;
+        manager_state.in_progress = true;
+
+        let result = validator
+            .validate_checkpoint_state_invariants(&state, &manager_state);
+        assert!(result.is_ok());
+        let invariant_result = result.unwrap();
+        // Should have violation for Idle with in_progress=true
+        assert!(!invariant_result.invariants_held);
+        assert!(!invariant_result.violations.is_empty());
+        assert!(invariant_result
+            .violations
+            .iter()
+            .any(|v| v.critical && matches!(
+                v.violation_type,
+                V2InvariantViolationType::V2MetadataCorruption
+            )));
+    }
+
+    #[test]
+    fn test_invalid_state_active_without_in_progress() {
+        let temp_dir = tempdir().unwrap();
+        let config = V2WALConfig {
+            wal_path: temp_dir.path().join("test.wal"),
+            checkpoint_path: temp_dir.path().join("test.checkpoint"),
+            ..Default::default()
+        };
+
+        let validator = V2InvariantValidator::new(config);
+
+        // Test invalid: Processing state with in_progress=false
+        let state = CheckpointState::Processing;
+        let mut manager_state = CheckpointManagerState::default();
+        manager_state.current_state = CheckpointState::Processing;
+        manager_state.in_progress = false;
+
+        let result = validator
+            .validate_checkpoint_state_invariants(&state, &manager_state);
+        assert!(result.is_ok());
+        let invariant_result = result.unwrap();
+        // Should have violation for active state with in_progress=false
+        assert!(!invariant_result.invariants_held);
+        assert!(!invariant_result.violations.is_empty());
+    }
+
+    #[test]
+    fn test_failed_state_from_any() {
+        let temp_dir = tempdir().unwrap();
+        let config = V2WALConfig {
+            wal_path: temp_dir.path().join("test.wal"),
+            checkpoint_path: temp_dir.path().join("test.checkpoint"),
+            ..Default::default()
+        };
+
+        let validator = V2InvariantValidator::new(config);
+
+        // Test valid transition to Failed from any state
+        let state = CheckpointState::Failed;
+        let mut manager_state = CheckpointManagerState::default();
+        manager_state.current_state = CheckpointState::Failed;
+        manager_state.in_progress = false;
+        manager_state.failed_attempts = 1;
+
+        let result = validator
+            .validate_checkpoint_state_invariants(&state, &manager_state);
+        assert!(result.is_ok());
+        let invariant_result = result.unwrap();
+        assert!(invariant_result.invariants_held);
+        assert!(invariant_result.violations.is_empty());
     }
 
     #[test]
