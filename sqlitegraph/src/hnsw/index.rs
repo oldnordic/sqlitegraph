@@ -971,8 +971,17 @@ impl HnswIndex {
 
     /// Insert a vector into a specific layer
     fn insert_into_layer(&mut self, vector_id: u64, level: usize) -> Result<(), HnswError> {
-        // Convert 1-based vector ID to 0-based node ID for layer management
-        let node_id = vector_id - 1;
+        // Determine local node ID based on mode
+        // In multi-layer mode: use LayerMappings for ID translation
+        // In single-layer mode: direct conversion (vector_id - 1)
+        let node_id = if let Some(manager) = &mut self.multi_layer_manager {
+            // Multi-layer mode: use LayerMappings to get local ID
+            manager.get_local_id(vector_id, level)
+                .ok_or_else(|| HnswError::Index(HnswIndexError::NodeNotFound(vector_id)))?
+        } else {
+            // Single-layer mode: direct 1-based to 0-based conversion
+            vector_id - 1
+        };
 
         // Ensure layer exists, create if necessary
         while level >= self.layers.len() {
