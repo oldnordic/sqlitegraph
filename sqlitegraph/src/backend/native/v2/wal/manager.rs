@@ -1244,4 +1244,69 @@ mod tests {
         // Verify requires_checkpoint returns true based on size
         assert!(manager.requires_checkpoint(), "Should require checkpoint when WAL exceeds threshold");
     }
+
+    #[test]
+    fn test_checkpoint_resets_transaction_counter() {
+        let temp_dir = tempdir().unwrap();
+        let v2_graph_path = temp_dir.path().join("test.v2");
+
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create V2 graph file for test");
+
+        let config = V2WALConfig {
+            graph_path: v2_graph_path.clone(),
+            wal_path: temp_dir.path().join("test.wal"),
+            checkpoint_path: temp_dir.path().join("test.checkpoint"),
+            max_wal_size: 1024 * 1024 * 1024,
+            checkpoint_interval: 1000,
+            auto_checkpoint: false,
+            ..Default::default()
+        };
+
+        let manager = V2WALManager::create(config).unwrap();
+
+        // Commit 5 transactions
+        for i in 0..5 {
+            let tx_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+            manager.write_transaction_record(
+                tx_id,
+                V2WALRecord::NodeInsert {
+                    node_id: i,
+                    slot_offset: ((i + 1) * 1024) as u64,
+                    node_data: vec![i as u8],
+                },
+            ).unwrap();
+            manager.commit_transaction(tx_id).unwrap();
+        }
+
+        // Verify counter is 5
+        let metrics = manager.get_metrics();
+        assert_eq!(metrics.transactions_since_checkpoint, 5);
+
+        // Simulate checkpoint completion via callback
+        let checkpointed_lsn = manager.get_header().committed_lsn;
+        manager.on_checkpoint_completed(checkpointed_lsn).unwrap();
+
+        // Verify counter was reset
+        let metrics_after = manager.get_metrics();
+        assert_eq!(metrics_after.transactions_since_checkpoint, 0,
+            "Counter should be reset to 0 after checkpoint");
+        assert_eq!(metrics_after.checkpoint_count, 1);
+
+        // Commit more transactions and verify counter increments from 0
+        let tx_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+        manager.write_transaction_record(
+            tx_id,
+            V2WALRecord::NodeInsert {
+                node_id: 10,
+                slot_offset: 10240,
+                node_data: vec![10],
+            },
+        ).unwrap();
+        manager.commit_transaction(tx_id).unwrap();
+
+        let metrics_final = manager.get_metrics();
+        assert_eq!(metrics_final.transactions_since_checkpoint, 1,
+            "Counter should increment from 0 after checkpoint");
+    }
 }
