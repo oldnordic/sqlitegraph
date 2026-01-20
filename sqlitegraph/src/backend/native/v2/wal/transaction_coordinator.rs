@@ -438,6 +438,77 @@ impl DeadlockDetector {
     }
 }
 
+/// Transaction ID manager with wraparound protection
+///
+/// Uses PostgreSQL's pattern: stop accepting writes at 1M transactions
+/// before u64::MAX to prevent wraparound issues.
+pub struct TransactionIdManager {
+    next_id: Arc<Mutex<u64>>,
+    warn_threshold: u64,
+    hard_limit: u64,
+    last_wrap_check: Arc<Mutex<Instant>>,
+}
+
+impl TransactionIdManager {
+    /// Safety margin from u64::MAX (PostgreSQL pattern: 1M transactions)
+    pub const SAFETY_MARGIN: u64 = 1_000_000;
+
+    /// Warning threshold (10M transactions before hard limit)
+    pub const WRAP_WARNING_THRESHOLD: u64 = u64::MAX - Self::SAFETY_MARGIN - 10_000_000;
+
+    pub fn new() -> Self {
+        Self {
+            next_id: Arc::new(Mutex::new(1)),
+            warn_threshold: Self::WRAP_WARNING_THRESHOLD,
+            hard_limit: u64::MAX - Self::SAFETY_MARGIN,
+            last_wrap_check: Arc::new(Mutex::new(Instant::now())),
+        }
+    }
+
+    /// Allocate next transaction ID with wraparound protection
+    pub fn allocate(&self) -> NativeResult<TransactionId> {
+        let mut next_id = self.next_id.lock();
+        let id = *next_id;
+
+        // Check for wraparound danger
+        if id >= self.hard_limit {
+            return Err(NativeBackendError::TransactionIdExhaustion {
+                current_id: id,
+                remaining: self.hard_limit.saturating_sub(id),
+            });
+        }
+
+        // Log warning if approaching threshold
+        if id >= self.warn_threshold {
+            log::warn!(
+                "Transaction ID approaching wraparound: {} ({} remaining)",
+                id,
+                self.hard_limit.saturating_sub(id)
+            );
+        }
+
+        *next_id = id.wrapping_add(1);
+        Ok(id)
+    }
+
+    /// Check if transaction ID cleanup is needed
+    pub fn needs_wraparound_protection(&self) -> bool {
+        let current = *self.next_id.lock();
+        current >= self.warn_threshold
+    }
+
+    /// Get current transaction ID (for monitoring)
+    pub fn current_id(&self) -> u64 {
+        *self.next_id.lock()
+    }
+
+    /// Get remaining transaction IDs before hard limit
+    pub fn remaining_ids(&self) -> u64 {
+        let current = *self.next_id.lock();
+        self.hard_limit.saturating_sub(current)
+    }
+}
+
 /// Isolation level manager
 pub struct IsolationManager {
     /// Active transactions with their isolation requirements

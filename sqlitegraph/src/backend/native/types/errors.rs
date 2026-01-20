@@ -176,6 +176,9 @@ pub enum NativeBackendError {
 
     #[error("Migration failed: {0}")]
     MigrationFailed(String),
+
+    #[error("Transaction ID exhaustion: current ID {current_id}, {remaining} IDs remaining before wraparound")]
+    TransactionIdExhaustion { current_id: u64, remaining: u64 },
 }
 
 // Add conversion from SystemTimeError
