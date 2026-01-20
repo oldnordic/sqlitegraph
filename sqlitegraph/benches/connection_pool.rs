@@ -33,7 +33,7 @@ fn setup_test_db(db_path: &std::path::Path) {
     )
     .unwrap();
     for i in 0..100 {
-        conn.execute("INSERT INTO test (value) VALUES (?)", &[format!("value_{}", i)])
+        conn.execute("INSERT INTO test (value) VALUES (?)", [format!("value_{}", i)])
             .unwrap();
     }
 }

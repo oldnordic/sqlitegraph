@@ -89,3 +89,8 @@ harness = false
 [[bench]]
 name = "hnsw_multilayer"
 harness = false
+
+# Phase 19: Connection pool performance benchmarks
+[[bench]]
+name = "connection_pool"
+harness = false
