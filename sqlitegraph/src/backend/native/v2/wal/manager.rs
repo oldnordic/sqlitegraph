@@ -1195,4 +1195,53 @@ mod tests {
         assert_eq!(metrics.transactions_since_checkpoint, 0, "Counter should reset after checkpoint");
         assert_eq!(metrics.checkpoint_count, 1, "Checkpoint count should increment");
     }
+
+    #[test]
+    fn test_size_checkpoint_trigger() {
+        let temp_dir = tempdir().unwrap();
+        let v2_graph_path = temp_dir.path().join("test.v2");
+
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create V2 graph file for test");
+
+        // Set small but valid size threshold for testing (minimum is 1MB)
+        let config = V2WALConfig {
+            graph_path: v2_graph_path.clone(),
+            wal_path: temp_dir.path().join("test.wal"),
+            checkpoint_path: temp_dir.path().join("test.checkpoint"),
+            max_wal_size: 1024 * 1024, // 1MB threshold (minimum allowed)
+            auto_checkpoint: false,
+            ..Default::default()
+        };
+
+        let manager = V2WALManager::create(config).unwrap();
+
+        // Write enough data to exceed size threshold
+        let large_data = vec![0u8; 256 * 1024]; // 256KB per record
+        for i in 0..5 {
+            let tx_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+            manager.write_transaction_record(
+                tx_id,
+                V2WALRecord::NodeInsert {
+                    node_id: i,
+                    slot_offset: ((i + 1) * 1024) as u64,
+                    node_data: large_data.clone(),
+                },
+            ).unwrap();
+            manager.commit_transaction(tx_id).unwrap();
+        }
+
+        // Flush to ensure WAL file is written
+        manager.flush().unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+
+        // Check WAL file size
+        let wal_size = std::fs::metadata(temp_dir.path().join("test.wal"))
+            .unwrap()
+            .len();
+        assert!(wal_size > 1024 * 1024, "WAL should exceed 1MB threshold, got {}", wal_size);
+
+        // Verify requires_checkpoint returns true based on size
+        assert!(manager.requires_checkpoint(), "Should require checkpoint when WAL exceeds threshold");
+    }
 }
