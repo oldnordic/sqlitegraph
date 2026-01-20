@@ -25,12 +25,12 @@ Requirements for complete rollback of all operations.
 
 Requirements for data integrity and validation.
 
-- [ ] **ACID-07**: Cluster overlap validation detects allocation corruption at runtime
-- [ ] **ACID-08**: Cluster overlap validation accounts for allocation sequencing timing
-- [ ] **ACID-09**: Checkpoint state invariants validation matches actual CheckpointState enum
-- [ ] **ACID-10**: Checkpoint state validation detects checkpoint corruption
-- [ ] **ACID-11**: Pre-commit validation checks database constraints
-- [ ] **ACID-12**: Post-recovery validation verifies database integrity
+- [x] **ACID-07**: Cluster overlap validation detects allocation corruption at runtime
+- [x] **ACID-08**: Cluster overlap validation accounts for allocation sequencing timing
+- [x] **ACID-09**: Checkpoint state invariants validation matches actual CheckpointState enum
+- [x] **ACID-10**: Checkpoint state validation detects checkpoint corruption
+- [x] **ACID-11**: Pre-commit validation checks database constraints
+- [x] **ACID-12**: Post-recovery validation verifies database integrity
 
 ### ACID - Isolation
 
@@ -87,11 +87,11 @@ Requirements for functional checkpoint triggers.
 
 Requirements for checkpoint integrity verification.
 
-- [ ] **CPV-01**: Checkpoint state validation code matches CheckpointState enum structure
-- [ ] **CPV-02**: Idle state validation passes for Idle variant
-- [ ] **CPV-03**: InProgress state validation verifies LSN and metadata file
-- [ ] **CPV-04**: Complete state validation verifies checkpoint file exists and LSN monotonicity
-- [ ] **CPV-05**: All checkpoint validation is enabled (not commented out)
+- [x] **CPV-01**: Checkpoint state validation code matches CheckpointState enum structure
+- [x] **CPV-02**: Idle state validation passes for Idle variant
+- [x] **CPV-03**: InProgress state validation verifies LSN and metadata file
+- [x] **CPV-04**: Complete state validation verifies checkpoint file exists and LSN monotonicity
+- [x] **CPV-05**: All checkpoint validation is enabled (not commented out)
 
 ---
 
@@ -338,12 +338,12 @@ Requirements mapped to phases in roadmap.
 | ACID-04 | Phase 11 | Complete |
 | ACID-05 | Phase 11 | Complete |
 | ACID-06 | Phase 11 | Complete |
-| ACID-07 | Phase 12 | Pending |
-| ACID-08 | Phase 12 | Pending |
-| ACID-09 | Phase 12 | Pending |
-| ACID-10 | Phase 12 | Pending |
-| ACID-11 | Phase 12 | Pending |
-| ACID-12 | Phase 12 | Pending |
+| ACID-07 | Phase 12 | Complete |
+| ACID-08 | Phase 12 | Complete |
+| ACID-09 | Phase 12 | Complete |
+| ACID-10 | Phase 12 | Complete |
+| ACID-11 | Phase 12 | Complete |
+| ACID-12 | Phase 12 | Complete |
 | ACID-13 | Phase 13 | Pending |
 | ACID-14 | Phase 13 | Pending |
 | ACID-15 | Phase 13 | Pending |
@@ -369,11 +369,11 @@ Requirements mapped to phases in roadmap.
 | CP-02 | Phase 14 | Pending |
 | CP-03 | Phase 14 | Pending |
 | CP-04 | Phase 14 | Pending |
-| CPV-01 | Phase 12 | Pending |
-| CPV-02 | Phase 12 | Pending |
-| CPV-03 | Phase 12 | Pending |
-| CPV-04 | Phase 12 | Pending |
-| CPV-05 | Phase 12 | Pending |
+| CPV-01 | Phase 12 | Complete |
+| CPV-02 | Phase 12 | Complete |
+| CPV-03 | Phase 12 | Complete |
+| CPV-04 | Phase 12 | Complete |
+| CPV-05 | Phase 12 | Complete |
 | SCHEMA-01 | Phase 20 | Pending |
 | SCHEMA-02 | Phase 20 | Pending |
 | SCHEMA-03 | Phase 20 | Pending |

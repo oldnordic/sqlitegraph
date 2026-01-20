@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Feature parity, performance, and reliability equally. Native V2 must match or exceed SQLite backend capabilities while maintaining rock-solid MVCC correctness and achieving best-in-class embedded graph database performance.
-**Current focus:** Phase 12 - ACID Consistency (v1.1 ACID & Reliability)
+**Current focus:** Phase 13 - ACID Isolation (v1.1 ACID & Reliability)
 
 ## Current Position
 
-Phase: 12 of 22 (ACID Consistency)
-Plan: 5 of 5 in current phase
-Status: Phase complete
-Last activity: 2026-01-20 — Completed 12-05: Database integrity checks
+Phase: 13 of 22 (ACID Isolation)
+Plan: 1 of 4 in current phase
+Status: Phase 12 complete, Phase 13 not started
+Last activity: 2026-01-20 — Phase 12 verification passed (4/4 must-haves)
 
-Progress: [███████████████████████████████░░░░] 69%
+Progress: [████████████████████████████████░░░] 71%
 
 ## Performance Metrics
 
@@ -31,7 +31,7 @@ Progress: [███████████████████████
 | 11-12 (v1.1) | 6/45 | 46min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 11-02 (7min), 11-03 (14min), 12-01 (10min), 12-02 (15min), 12-03 (11min), 12-04 (5min), 12-05 (7min)
+- Last 5 plans: 12-01 (10min), 12-02 (15min), 12-03 (11min), 12-04 (5min), 12-05 (7min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -95,4 +95,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3 plans), Phase 12 complete (5/5 plans)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 pending
