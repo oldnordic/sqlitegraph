@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 12 of 22 (ACID Consistency)
-Plan: 1 of 5 in current phase
+Plan: 3 of 5 in current phase
 Status: In progress
-Last activity: 2026-01-20 — Completed 12-01: Cluster overlap validation re-enabled
+Last activity: 2026-01-20 — Completed 12-03: Pre-commit constraint validation for WAL records
 
-Progress: [███████████████████████████░░░░░░░] 58%
+Progress: [████████████████████████████░░░░░░] 60%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 37
+- Total plans completed: 39
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,10 +28,10 @@ Progress: [███████████████████████
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
-| 11-12 (v1.1) | 4/45 | 35min | 8min 45sec |
+| 11-12 (v1.1) | 6/45 | 54min | 9min |
 
 **Recent Trend:**
-- Last 5 plans: 11-01 (7min 38sec), 11-02 (7min), 11-03 (14min), 12-01 (10min)
+- Last 5 plans: 11-02 (7min), 11-03 (14min), 12-01 (10min), 12-02 (4min), 12-03 (13min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -64,6 +64,9 @@ Recent decisions affecting current work:
 - Bidirectional cluster overlap check: `incoming_offset < outgoing_end && outgoing_offset < incoming_end` - 12-01
 - Calculate actual overlap_size and only error if > 0 to allow adjacent clusters - 12-01
 - Only validate when both cluster offsets > 0 to prevent false positives during sequential allocation - 12-01
+- Use local alignment constants (64KB cluster, 4KB block) in validate_pre_commit to avoid circular dependencies - 12-03
+- Validate WAL records before WAL writes to prevent invalid data from being persisted - 12-03
+- Use InvalidParameter error with descriptive context for pre-commit validation failures - 12-03
 
 ### Pending Todos
 
@@ -75,8 +78,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 12-01 execution)
-Stopped at: Completed 12-01 - Cluster overlap validation re-enabled with timing-aware allocation sequencing
+Last session: 2026-01-20 (plan 12-03 execution)
+Stopped at: Completed 12-03 - Pre-commit constraint validation for WAL records
 Resume file: None
 
 ### Roadmap Evolution
@@ -87,4 +90,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3 plans), Phase 12 in progress (1/5 plans)
+  - Progress: Phase 11 complete (3/3 plans), Phase 12 in progress (3/5 plans)
