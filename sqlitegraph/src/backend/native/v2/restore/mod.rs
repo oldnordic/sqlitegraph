@@ -8,7 +8,8 @@ use crate::backend::native::{
     v2::{
         export::manifest::{ExportManifest, ManifestSerializer},
         export::ExportMode,
-        import::snapshot::{SnapshotImporter, SnapshotImportConfig, SnapshotImportResult, ImportMode},
+        import::{ImportMode},
+        import::snapshot::{SnapshotImporter, SnapshotImportConfig, SnapshotImportResult},
     },
 };
 use std::path::{Path, PathBuf};
@@ -436,7 +437,7 @@ mod tests {
 
         // Verify record counts match
         let restored = restored_graph.unwrap();
-        assert_eq!(restored.persistent_header().node_count, manifest.total_records as i32);
+        assert_eq!(restored.persistent_header().node_count as u64, manifest.total_records);
     }
 
     #[test]

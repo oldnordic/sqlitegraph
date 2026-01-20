@@ -290,11 +290,11 @@ impl SnapshotExporter {
             });
         }
 
-        // Validate V2 format
-        if header.version != 2 {
+        // Validate V2 format (versions 2 and 3 are supported)
+        if header.version != 2 && header.version != 3 {
             return Err(NativeBackendError::UnsupportedVersion {
                 version: header.version,
-                supported_version: 2,
+                supported_version: 2, // Report 2 as base supported version
             });
         }
 

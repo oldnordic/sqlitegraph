@@ -11,6 +11,7 @@ pub mod import;
 pub mod migration;
 pub mod node_record_v2;
 pub mod planner;
+pub mod restore;
 pub mod snapshot;
 pub mod storage;
 pub mod string_table;
@@ -27,6 +28,7 @@ pub use import::{
     ImportFactory, ImportMode, ImportValidator, PostImportValidator, V2Importer, V2ImportConfig,
     ImportResult, ImportValidationReport, SnapshotImporter, SnapshotImportConfig, SnapshotImportResult, SnapshotImportValidationReport,
 };
+pub use restore::{RestoreConfig, RestoreResult, restore_backup, restore};
 pub use migration::{detect_format_version, migrate_file, FormatVersion, MigrationResult};
 pub use node_record_v2::{NodeRecordV2, NodeRecordV2Ext};
 pub use planner::{ExportPlanner, PlannerDecision, DecisionReason, WalAnalysis};
