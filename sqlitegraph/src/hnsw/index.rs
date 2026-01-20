@@ -334,7 +334,9 @@ mod tests {
             assert_eq!(hnsw.config().distance_metric, DistanceMetric::Euclidean);
 
             // Save metadata explicitly
-            hnsw.save_metadata(&graph.conn).unwrap();
+            let conn = graph.connection();
+            let conn_ref = conn.underlying();
+            hnsw.save_metadata(conn_ref).unwrap();
         }
 
         // Reopen and verify metadata persists

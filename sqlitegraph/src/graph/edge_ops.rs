@@ -26,7 +26,7 @@ impl SqliteGraph {
             )
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;
         self.invalidate_caches();
-        Ok(self.conn.last_insert_rowid())
+        Ok(self.connection().last_insert_rowid())
     }
 
     pub fn get_edge(&self, id: i64) -> Result<GraphEdge, SqliteGraphError> {

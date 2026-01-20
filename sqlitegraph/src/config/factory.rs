@@ -24,7 +24,7 @@ pub fn open_graph<P: AsRef<Path>>(
             // Apply PRAGMA settings
             for (key, value) in &cfg.sqlite.pragma_settings {
                 let pragma_sql = format!("PRAGMA {} = {}", key, value);
-                match sqlite_graph.conn.execute(&pragma_sql, []) {
+                match sqlite_graph.connection().execute(&pragma_sql, []) {
                     Ok(_) => {}
                     Err(rusqlite::Error::ExecuteReturnedResults) => {}
                     Err(e) => {

@@ -162,5 +162,6 @@ mod pattern_matching;
 mod snapshot;
 mod types;
 
+pub use adjacency::{ConnectionWrapper, StatementWrapper};
 pub use metrics::{GraphMetricsSnapshot, InstrumentedConnection};
 pub use types::{GraphEdge, GraphEntity};

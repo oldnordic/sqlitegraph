@@ -5,7 +5,7 @@ use crate::{
     SqliteGraphError,
     cache::CacheStats,
     fault_injection::{self, FaultPoint},
-    graph::{InstrumentedConnection, SqliteGraph},
+    graph::{ConnectionWrapper, SqliteGraph},
 };
 
 #[derive(Clone, Debug)]
@@ -25,14 +25,17 @@ pub struct GraphEdgeCreate {
 }
 
 /// Transaction safety wrapper for automatic rollback on errors
+///
+/// This wrapper holds onto a connection wrapper for the duration of a transaction.
+/// Note: Due to lifetime constraints, this is typically used within a function scope.
 pub struct TransactionGuard<'a> {
-    conn: InstrumentedConnection<'a>,
+    conn: ConnectionWrapper<'a>,
     committed: bool,
 }
 
 impl<'a> TransactionGuard<'a> {
     /// Start a new transaction with IMMEDIATE mode for better write performance
-    pub fn new(conn: InstrumentedConnection<'a>) -> Result<Self, SqliteGraphError> {
+    pub fn new(conn: ConnectionWrapper<'a>) -> Result<Self, SqliteGraphError> {
         conn.execute("BEGIN IMMEDIATE", [])
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;
         Ok(Self {
@@ -52,17 +55,17 @@ impl<'a> TransactionGuard<'a> {
         Ok(())
     }
 
-    /// Get reference to the underlying connection
-    pub fn conn(&self) -> &InstrumentedConnection<'a> {
+    /// Get reference to the underlying connection wrapper
+    pub fn conn(&self) -> &ConnectionWrapper<'a> {
         &self.conn
     }
 
     /// Execute a function with automatic rollback on error
     pub fn execute<F, R>(mut self, graph: &SqliteGraph, f: F) -> Result<R, SqliteGraphError>
     where
-        F: FnOnce(&mut InstrumentedConnection<'a>) -> Result<R, SqliteGraphError>,
+        F: FnOnce(&ConnectionWrapper<'a>) -> Result<R, SqliteGraphError>,
     {
-        match f(&mut self.conn) {
+        match f(&self.conn) {
             Ok(result) => {
                 self.commit(graph)?;
                 Ok(result)
@@ -285,7 +288,7 @@ fn validate_edge_create(entry: &GraphEdgeCreate) -> Result<(), SqliteGraphError>
 }
 
 fn validate_endpoints_exist(
-    conn: &InstrumentedConnection<'_>,
+    conn: &ConnectionWrapper<'_>,
     from: i64,
     to: i64,
 ) -> Result<(), SqliteGraphError> {

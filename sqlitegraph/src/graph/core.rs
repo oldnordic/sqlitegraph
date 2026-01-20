@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use rusqlite::Connection;
 
@@ -16,20 +16,35 @@ use crate::{
     hnsw::HnswIndex,
 };
 
-use super::metrics::{GraphMetrics, StatementTracker};
+use super::{
+    metrics::{GraphMetrics, StatementTracker},
+    pool::PoolManager,
+};
 
 /// Embedded SQLite-backed graph database.
 ///
 /// Provides a lightweight, deterministic graph database with entity and edge storage,
 /// pattern matching, MVCC-lite snapshots, and deterministic indexing.
+///
+/// # Thread Safety
+///
+/// **NOT thread-safe for concurrent writes.** `SqliteGraph` uses interior mutability
+/// (`RefCell`) and is not `Sync`. However, the underlying connection pool allows
+/// multiple threads to read concurrently when using separate `SqliteGraph` instances.
+///
+/// # Connection Pooling
+///
+/// File-based databases use an r2d2 connection pool (default 5 connections) for
+/// concurrent access. In-memory databases skip pooling and use a single direct connection.
 pub struct SqliteGraph {
-    /// SQLite database connection (public for CLI access)
-    pub conn: Connection,
+    /// Connection pool for file-based databases, or direct connection for in-memory
+    /// (public for CLI access to underlying connection)
+    pub pool: PoolManager,
     pub(crate) outgoing_cache: AdjacencyCache,
     pub(crate) incoming_cache: AdjacencyCache,
     pub(crate) query_cache: QueryCache,
-    pub(crate) metrics: GraphMetrics,
-    pub(crate) statement_tracker: StatementTracker,
+    pub(crate) metrics: Arc<GraphMetrics>,
+    pub(crate) statement_tracker: Arc<StatementTracker>,
     pub(crate) snapshot_manager: SnapshotManager,
     /// HNSW vector indexes stored by name (public for CLI access)
     pub hnsw_indexes: RwLock<HashMap<String, HnswIndex>>,
@@ -49,40 +64,23 @@ pub fn is_in_memory_connection(conn: &Connection) -> bool {
 
 impl SqliteGraph {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, SqliteGraphError> {
-        let conn =
-            Connection::open(path).map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-        ensure_schema(&conn)?;
-        Ok(Self::from_connection(conn))
-    }
-
-    pub fn open_without_migrations<P: AsRef<Path>>(path: P) -> Result<Self, SqliteGraphError> {
-        let conn =
-            Connection::open(path).map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-        crate::schema::ensure_schema_without_migrations(&conn)?;
-        Ok(Self::from_connection(conn))
-    }
-
-    pub fn open_in_memory() -> Result<Self, SqliteGraphError> {
-        let conn = Connection::open_in_memory()
+        let mut pool = PoolManager::new(path)
             .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-        ensure_schema(&conn)?;
-        Ok(Self::from_connection(conn))
-    }
 
-    pub fn open_in_memory_without_migrations() -> Result<Self, SqliteGraphError> {
-        let conn = Connection::open_in_memory()
-            .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-        crate::schema::ensure_schema_without_migrations(&conn)?;
-        Ok(Self::from_connection(conn))
-    }
+        // Initialize schema using first connection from pool
+        {
+            let conn = pool.get()
+                .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+            ensure_schema(&conn)?;
+        }
 
-    fn from_connection(conn: Connection) -> Self {
-        conn.set_prepared_statement_cache_capacity(128);
+        // Configure pool with WAL mode and performance optimizations
+        pool.configure_pool(|conn| {
+            conn.set_prepared_statement_cache_capacity(128);
 
-        // Configure WAL mode and performance optimizations for file-based databases
-        if !is_in_memory_connection(&conn) {
             // Enable WAL mode for better concurrency
-            if let Err(_e) = conn.pragma_update(None, "journal_mode", "WAL") {
+            let result = conn.pragma_update(None, "journal_mode", "WAL");
+            if result.is_err() {
                 // Fallback to DELETE mode if WAL fails (e.g., on some network filesystems)
                 let _ = conn.pragma_update(None, "journal_mode", "DELETE");
             }
@@ -92,18 +90,177 @@ impl SqliteGraph {
             let _ = conn.pragma_update(None, "cache_size", "-64000"); // 64MB cache
             let _ = conn.pragma_update(None, "temp_store", "MEMORY"); // Store temp tables in memory
             let _ = conn.pragma_update(None, "mmap_size", "268435456"); // 256MB memory-mapped I/O
-        }
+
+            Ok(())
+        })?;
 
         // Load existing HNSW indexes from database
-        let hnsw_indexes = Self::load_hnsw_indexes(&conn).unwrap_or_default();
+        let hnsw_indexes = {
+            let conn = pool.get()
+                .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+            Self::load_hnsw_indexes(&conn).unwrap_or_default()
+        };
 
-        Self {
-            conn,
+        Ok(Self {
+            pool,
             outgoing_cache: AdjacencyCache::new(),
             incoming_cache: AdjacencyCache::new(),
             query_cache: QueryCache::new(),
-            metrics: GraphMetrics::default(),
-            statement_tracker: StatementTracker::default(),
+            metrics: Arc::new(GraphMetrics::default()),
+            statement_tracker: Arc::new(StatementTracker::default()),
+            snapshot_manager: SnapshotManager::new(),
+            hnsw_indexes: RwLock::new(hnsw_indexes),
+        })
+    }
+
+    pub fn open_without_migrations<P: AsRef<Path>>(path: P) -> Result<Self, SqliteGraphError> {
+        let mut pool = PoolManager::new(path)
+            .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+
+        // Initialize schema without migrations using first connection from pool
+        {
+            let conn = pool.get()
+                .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+            crate::schema::ensure_schema_without_migrations(&conn)?;
+        }
+
+        // Configure pool with WAL mode and performance optimizations
+        pool.configure_pool(|conn| {
+            conn.set_prepared_statement_cache_capacity(128);
+
+            // Enable WAL mode for better concurrency
+            let result = conn.pragma_update(None, "journal_mode", "WAL");
+            if result.is_err() {
+                let _ = conn.pragma_update(None, "journal_mode", "DELETE");
+            }
+
+            // Performance optimizations
+            let _ = conn.pragma_update(None, "synchronous", "NORMAL");
+            let _ = conn.pragma_update(None, "cache_size", "-64000");
+            let _ = conn.pragma_update(None, "temp_store", "MEMORY");
+            let _ = conn.pragma_update(None, "mmap_size", "268435456");
+
+            Ok(())
+        })?;
+
+        // Load existing HNSW indexes from database
+        let hnsw_indexes = {
+            let conn = pool.get()
+                .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+            Self::load_hnsw_indexes(&conn).unwrap_or_default()
+        };
+
+        Ok(Self {
+            pool,
+            outgoing_cache: AdjacencyCache::new(),
+            incoming_cache: AdjacencyCache::new(),
+            query_cache: QueryCache::new(),
+            metrics: Arc::new(GraphMetrics::default()),
+            statement_tracker: Arc::new(StatementTracker::default()),
+            snapshot_manager: SnapshotManager::new(),
+            hnsw_indexes: RwLock::new(hnsw_indexes),
+        })
+    }
+
+    pub fn open_in_memory() -> Result<Self, SqliteGraphError> {
+        let mut pool = PoolManager::in_memory()
+            .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+
+        // For in-memory databases, configure directly
+        pool.configure_direct(|conn| {
+            ensure_schema(conn).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            conn.set_prepared_statement_cache_capacity(128);
+            Ok(())
+        }).map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+
+        // Load HNSW indexes (will be empty for fresh in-memory database)
+        let hnsw_indexes = pool.direct_connection()
+            .map(|conn| Self::load_hnsw_indexes(conn).unwrap_or_default())
+            .unwrap_or_default();
+
+        Ok(Self {
+            pool,
+            outgoing_cache: AdjacencyCache::new(),
+            incoming_cache: AdjacencyCache::new(),
+            query_cache: QueryCache::new(),
+            metrics: Arc::new(GraphMetrics::default()),
+            statement_tracker: Arc::new(StatementTracker::default()),
+            snapshot_manager: SnapshotManager::new(),
+            hnsw_indexes: RwLock::new(hnsw_indexes),
+        })
+    }
+
+    pub fn open_in_memory_without_migrations() -> Result<Self, SqliteGraphError> {
+        let mut pool = PoolManager::in_memory()
+            .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+
+        // For in-memory databases, configure directly
+        pool.configure_direct(|conn| {
+            crate::schema::ensure_schema_without_migrations(conn).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            conn.set_prepared_statement_cache_capacity(128);
+            Ok(())
+        }).map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+
+        // Load HNSW indexes (will be empty for fresh in-memory database)
+        let hnsw_indexes = pool.direct_connection()
+            .map(|conn| Self::load_hnsw_indexes(conn).unwrap_or_default())
+            .unwrap_or_default();
+
+        Ok(Self {
+            pool,
+            outgoing_cache: AdjacencyCache::new(),
+            incoming_cache: AdjacencyCache::new(),
+            query_cache: QueryCache::new(),
+            metrics: Arc::new(GraphMetrics::default()),
+            statement_tracker: Arc::new(StatementTracker::default()),
+            snapshot_manager: SnapshotManager::new(),
+            hnsw_indexes: RwLock::new(hnsw_indexes),
+        })
+    }
+
+    /// Create a SqliteGraph from an existing connection.
+    ///
+    /// This is used internally for in-memory databases where pooling is skipped.
+    /// The connection is wrapped in a PoolManager that provides direct access.
+    fn from_connection(conn: Connection) -> Self {
+        let mut pool = PoolManager::from_connection(conn);
+
+        // Configure the connection
+        let _ = pool.configure_direct(|c| {
+            c.set_prepared_statement_cache_capacity(128);
+
+            // Configure WAL mode and performance optimizations for file-based databases
+            let is_mem = is_in_memory_connection(c);
+            if !is_mem {
+                // Enable WAL mode for better concurrency
+                let result = c.pragma_update(None, "journal_mode", "WAL");
+                if result.is_err() {
+                    // Fallback to DELETE mode if WAL fails
+                    let _ = c.pragma_update(None, "journal_mode", "DELETE");
+                }
+
+                // Performance optimizations
+                let _ = c.pragma_update(None, "synchronous", "NORMAL");
+                let _ = c.pragma_update(None, "cache_size", "-64000");
+                let _ = c.pragma_update(None, "temp_store", "MEMORY");
+                let _ = c.pragma_update(None, "mmap_size", "268435456");
+            }
+
+            Ok(())
+        });
+
+        // Load HNSW indexes
+        let hnsw_indexes = pool.direct_connection()
+            .map(|conn| Self::load_hnsw_indexes(conn).unwrap_or_default())
+            .unwrap_or_default();
+
+        Self {
+            pool,
+            outgoing_cache: AdjacencyCache::new(),
+            incoming_cache: AdjacencyCache::new(),
+            query_cache: QueryCache::new(),
+            metrics: Arc::new(GraphMetrics::default()),
+            statement_tracker: Arc::new(StatementTracker::default()),
             snapshot_manager: SnapshotManager::new(),
             hnsw_indexes: RwLock::new(hnsw_indexes),
         }
@@ -177,7 +334,7 @@ impl SqliteGraph {
         };
 
         // Check if in-memory database
-        let is_in_memory = is_in_memory_connection(&self.conn);
+        let is_in_memory = self.pool.is_in_memory();
 
         // Get file size (only for file-based databases)
         let file_size = if is_in_memory {
@@ -291,17 +448,19 @@ impl SqliteGraph {
 
     /// Get the database file path if this is a file-based database.
     fn get_database_path(&self) -> Option<String> {
-        if is_in_memory_connection(&self.conn) {
+        if self.pool.is_in_memory() {
             None
         } else {
             // Try to get the database path from SQLite
-            self.conn
-                .pragma_query_value(None, "database_list", |row| {
-                    let name: String = row.get(1)?;
-                    Ok(name)
-                })
-                .ok()
-                .filter(|name| !name.is_empty() && name != ":memory:")
+            self.pool.get().ok().and_then(|conn| {
+                conn
+                    .pragma_query_value(None, "database_list", |row| {
+                        let name: String = row.get(1)?;
+                        Ok(name)
+                    })
+                    .ok()
+                    .filter(|name| !name.is_empty() && name != ":memory:")
+            })
         }
     }
 }

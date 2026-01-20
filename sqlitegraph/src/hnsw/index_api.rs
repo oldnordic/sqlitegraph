@@ -427,7 +427,9 @@ impl crate::SqliteGraph {
         let hnsw = HnswIndex::new(name, config).map_err(|e| crate::SqliteGraphError::invalid_input(e.to_string()))?;
 
         // Save metadata to database
-        hnsw.save_metadata(&self.conn).map_err(|e| crate::SqliteGraphError::invalid_input(format!("Failed to save HNSW index metadata: {}", e)))?;
+        let conn = self.connection();
+        let conn_ref = conn.underlying();
+        hnsw.save_metadata(conn_ref).map_err(|e| crate::SqliteGraphError::invalid_input(format!("Failed to save HNSW index metadata: {}", e)))?;
 
         // Store the index
         let mut indexes = self.hnsw_indexes.write().map_err(|e| crate::SqliteGraphError::invalid_input(format!("RwLock poisoned: {}", e)))?;
@@ -482,24 +484,28 @@ impl crate::SqliteGraph {
         }
 
         // Check if database is file-based (not in-memory)
-        let is_file_based = !crate::graph::is_in_memory_connection(&self.conn);
+        let is_file_based = !self.pool.is_in_memory();
 
         // Create index with appropriate storage backend
         let hnsw = if is_file_based {
             // For file-based databases, use persistent storage
-            // First, save metadata on the MAIN connection to ensure it persists
+            // Get a connection from the pool for metadata operations
+            let conn = self.connection();
+            let conn_ref = conn.underlying();
+
+            // First, save metadata to ensure it persists
             let temp_index = HnswIndex::new(name, config.clone())
                 .map_err(|e| crate::SqliteGraphError::invalid_input(format!("Failed to create HNSW index: {}", e)))?;
-            temp_index.save_metadata(&self.conn)
+            temp_index.save_metadata(conn_ref)
                 .map_err(|e| crate::SqliteGraphError::invalid_input(format!("Failed to save HNSW index metadata: {}", e)))?;
 
             // Get the index_id from the database
-            let index_id = HnswIndex::get_index_id(&self.conn, name)
+            let index_id = HnswIndex::get_index_id(conn_ref, name)
                 .map_err(|e| crate::SqliteGraphError::invalid_input(format!("Failed to get index_id: {}", e)))?
                 .ok_or_else(|| crate::SqliteGraphError::invalid_input(format!("Failed to get index_id after saving metadata")))?;
 
             // Get database path to open a new connection for storage
-            let db_path = self.conn.pragma_query_value(None, "database_list", |row| {
+            let db_path = conn_ref.pragma_query_value(None, "database_list", |row| {
                 let name: String = row.get(1)?;
                 Ok(name)
             }).map_err(|e| crate::SqliteGraphError::invalid_input(format!("Failed to get database path: {}", e)))?;

@@ -14,13 +14,15 @@ impl SqliteGraph {
     }
 
     pub fn schema_version(&self) -> Result<i64, crate::errors::SqliteGraphError> {
-        read_schema_version(&self.conn)
+        let conn = self.connection();
+        read_schema_version(conn.underlying())
     }
 
     pub fn run_pending_migrations(
         &self,
         dry_run: bool,
     ) -> Result<MigrationReport, crate::errors::SqliteGraphError> {
-        run_pending_migrations(&self.conn, dry_run)
+        let conn = self.connection();
+        run_pending_migrations(conn.underlying(), dry_run)
     }
 }

@@ -4,7 +4,10 @@ pub mod metrics_snapshot;
 pub mod statement_tracker;
 pub mod utils;
 
-pub use instrumented::InstrumentedConnection;
+pub use instrumented::{
+    InstrumentedConnection, PooledInstrumentedConnection,
+    InstrumentedCachedStatement, PooledInstrumentedCachedStatement
+};
 pub use metrics_core::GraphMetrics;
 pub use metrics_snapshot::GraphMetricsSnapshot;
 pub use statement_tracker::StatementTracker;

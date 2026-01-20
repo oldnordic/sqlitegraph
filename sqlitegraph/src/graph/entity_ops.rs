@@ -25,7 +25,7 @@ impl SqliteGraph {
                 ],
             )
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;
-        Ok(self.conn.last_insert_rowid())
+        Ok(self.connection().last_insert_rowid())
     }
 
     pub fn get_entity(&self, id: i64) -> Result<GraphEntity, SqliteGraphError> {
