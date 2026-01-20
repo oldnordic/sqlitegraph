@@ -4,7 +4,7 @@
 //! buffer management, and file size operations for GraphFile instances.
 
 use crate::backend::native::{
-    graph_file::buffers::WriteBuffer, types::NativeResult,
+    graph_file::buffers::WriteBuffer, types::NativeResult, NativeBackendError,
 };
 
 #[cfg(feature = "v2_experimental")]
