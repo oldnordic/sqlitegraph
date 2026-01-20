@@ -295,7 +295,7 @@ impl V2GraphFileReplayer {
             V2WALRecord::NodeUpdate { node_id, slot_offset, new_data, old_data } => {
                 self.operations.handle_node_update(*node_id as u64, *slot_offset, &new_data, Some(&old_data), rollback_data)
             }
-            V2WALRecord::NodeDelete { node_id, slot_offset, old_data } => {
+            V2WALRecord::NodeDelete { node_id, slot_offset, old_data, outgoing_edges: _, incoming_edges: _ } => {
                 self.operations.handle_node_delete(*node_id as u64, *slot_offset, Some(&old_data), rollback_data)
             }
             V2WALRecord::StringInsert { string_id, string_value } => {

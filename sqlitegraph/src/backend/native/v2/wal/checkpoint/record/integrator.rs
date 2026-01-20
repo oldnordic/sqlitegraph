@@ -90,6 +90,8 @@ impl V2GraphIntegrator {
                 node_id,
                 slot_offset,
                 old_data: _,
+                outgoing_edges: _,
+                incoming_edges: _,
             } => self.apply_node_delete((*node_id).try_into().unwrap(), *slot_offset, lsn),
 
             // Edge operations (existing)

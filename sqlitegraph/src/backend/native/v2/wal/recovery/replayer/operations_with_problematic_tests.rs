@@ -215,6 +215,9 @@ impl ReplayOperationHandler for DefaultReplayOperations {
         let rollback_op = RollbackOperation::NodeDelete {
             node_id: node_record.id as NativeNodeId,
             slot_offset,
+            old_data: Vec::new(),  // TODO: Should capture before insert for proper rollback
+            outgoing_edges: Vec::new(),
+            incoming_edges: Vec::new(),
         };
         rollback_data.push(rollback_op);
 
@@ -844,7 +847,7 @@ mod tests {
         assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
 
         // Verify rollback operation structure
-        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset }) = rollback_data.first() {
+        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset, .. }) = rollback_data.first() {
             assert_eq!(*node_id, 42, "Rollback should preserve node ID");
             assert_eq!(*slot_offset, 4096, "Rollback should preserve slot offset");
         } else {
@@ -880,7 +883,7 @@ mod tests {
         // Should record rollback with preserved data
         assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
 
-        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset }) = rollback_data.first() {
+        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset, .. }) = rollback_data.first() {
             assert_eq!(*node_id, 123);
             assert_eq!(*slot_offset, 8192);
         } else {
@@ -950,7 +953,7 @@ mod tests {
         // 4. Rollback operation recording
         assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
 
-        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset }) = rollback_data.first() {
+        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset, .. }) = rollback_data.first() {
             assert_eq!(*node_id, 456);
             assert_eq!(*slot_offset, 4096);
         } else {
@@ -1025,7 +1028,7 @@ mod tests {
 
         assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
 
-        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset }) = rollback_data.first() {
+        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset, .. }) = rollback_data.first() {
             assert_eq!(*node_id, 789, "Should preserve correct node ID");
             assert_eq!(*slot_offset, test_slot_offset, "Should preserve exact slot offset for restoration");
         } else {

@@ -96,8 +96,8 @@ impl RollbackSystem {
             RollbackOperation::NodeUpdate { node_id, old_data } => {
                 self.rollback_node_update(*node_id, old_data)?;
             }
-            RollbackOperation::NodeDelete { node_id, slot_offset, old_data } => {
-                self.rollback_node_delete(*node_id, *slot_offset, old_data.clone())?;
+            RollbackOperation::NodeDelete { node_id, slot_offset, old_data, outgoing_edges, incoming_edges } => {
+                self.rollback_node_delete(*node_id, *slot_offset, old_data.clone(), outgoing_edges.clone(), incoming_edges.clone())?;
             }
             RollbackOperation::StringInsert { string_id, string_value } => {
                 self.rollback_string_insert(*string_id, string_value)?;
@@ -197,8 +197,14 @@ impl RollbackSystem {
         Ok(())
     }
 
-    /// Rollback node deletion by reinserting the node
-    fn rollback_node_delete(&self, node_id: NativeNodeId, _slot_offset: u64, old_data: Vec<u8>) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
+    /// Rollback node deletion by reinserting the node with all edges
+    fn rollback_node_delete(&self,
+        node_id: NativeNodeId,
+        _slot_offset: u64,
+        old_data: Vec<u8>,
+        outgoing_edges: Vec<crate::backend::native::v2::edge_cluster::CompactEdgeRecord>,
+        incoming_edges: Vec<crate::backend::native::v2::edge_cluster::CompactEdgeRecord>,
+    ) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
         debug_log!("Rolling back node delete: node_id={}, slot_offset={}, old_data_size={}", node_id, _slot_offset, old_data.len());
 
         // Step 1: Deserialize old node data
@@ -246,6 +252,246 @@ impl RollbackSystem {
                 ))?;
 
             debug_log!("Successfully wrote restored node record to NodeStore");
+        }
+
+        // Step 4: Restore outgoing cluster if edges were captured
+        if !outgoing_edges.is_empty() {
+            debug_log!("Restoring {} outgoing edges for node {}", outgoing_edges.len(), node_id);
+
+            use crate::backend::native::v2::{EdgeCluster, Direction};
+
+            let cluster_data = {
+                // Create cluster from captured edges
+                let cluster = EdgeCluster::create_from_compact_edges(
+                    outgoing_edges.clone(),
+                    node_id as i64,
+                    Direction::Outgoing,
+                ).map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                    format!("Failed to create outgoing cluster: {:?}", e)
+                ))?;
+
+                cluster.serialize()
+            };
+
+            let cluster_offset = {
+                let mut free_space_guard = self.free_space_manager.lock()
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::replay_failure(
+                        format!("Failed to lock free space manager: {}", e)
+                    ))?;
+
+                let free_space_manager = free_space_guard.as_mut()
+                    .ok_or_else(|| crate::backend::native::v2::wal::recovery::errors::RecoveryError::replay_failure(
+                        "Free space manager not initialized".to_string()
+                    ))?;
+
+                // Calculate required size and validate against cluster_floor
+                let cluster_floor = {
+                    let graph_file = self.graph_file.read()
+                        .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                            format!("Failed to lock graph file for cluster_floor check: {}", e)
+                        ))?;
+
+                    graph_file.cluster_floor()
+                };
+
+                // Use regular allocate since allocate_with_floor doesn't exist
+                // The cluster will be allocated at or above cluster_floor naturally
+                let allocated_offset = free_space_manager.allocate(
+                    cluster_data.len() as u32
+                ).map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                    format!("Failed to allocate space for outgoing cluster: {:?}", e)
+                ))?;
+
+                // Verify allocation is above cluster_floor
+                if allocated_offset < cluster_floor {
+                    return Err(crate::backend::native::v2::wal::recovery::errors::RecoveryError::validation(
+                        format!("Allocated offset {} is below cluster_floor {}", allocated_offset, cluster_floor)
+                    ));
+                }
+
+                allocated_offset
+            };
+
+            // Write cluster data to allocated offset
+            {
+                let mut graph_file = self.graph_file.write()
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                        format!("Failed to lock graph file for cluster write: {}", e)
+                    ))?;
+
+                graph_file.write_bytes(cluster_offset, &cluster_data)
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                        format!("Failed to write outgoing cluster at offset {}: {:?}", cluster_offset, e)
+                    ))?;
+
+                debug_log!("Wrote outgoing cluster: offset={}, size={}", cluster_offset, cluster_data.len());
+            }
+
+            // Update node record with cluster reference
+            {
+                let mut node_store_guard = self.node_store.lock()
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::replay_failure(
+                        format!("Failed to lock node store for node update: {}", e)
+                    ))?;
+
+                let node_store = node_store_guard.as_mut()
+                    .ok_or_else(|| crate::backend::native::v2::wal::recovery::errors::RecoveryError::replay_failure(
+                        "NodeStore initialization failed".to_string()
+                    ))?;
+
+                let mut updated_node = node_store.read_node_v2(node_id)
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                        format!("Failed to read node for cluster reference update: {}", e)
+                    ))?;
+
+                updated_node.outgoing_cluster_offset = cluster_offset;
+                updated_node.outgoing_cluster_size = cluster_data.len() as u32;
+                updated_node.outgoing_edge_count = outgoing_edges.len() as u32;
+
+                node_store.write_node_v2(&updated_node)
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                        format!("Failed to update node with outgoing cluster reference: {}", e)
+                    ))?;
+
+                debug_log!("Updated node {} with outgoing cluster: offset={}, size={}, count={}",
+                           node_id, cluster_offset, cluster_data.len(), outgoing_edges.len());
+            }
+        }
+
+        // Step 5: Restore incoming cluster if edges were captured
+        if !incoming_edges.is_empty() {
+            debug_log!("Restoring {} incoming edges for node {}", incoming_edges.len(), node_id);
+
+            use crate::backend::native::v2::{EdgeCluster, Direction};
+
+            let cluster_data = {
+                // Create cluster from captured edges
+                let cluster = EdgeCluster::create_from_compact_edges(
+                    incoming_edges.clone(),
+                    node_id as i64,
+                    Direction::Incoming,
+                ).map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                    format!("Failed to create incoming cluster: {:?}", e)
+                ))?;
+
+                cluster.serialize()
+            };
+
+            let cluster_offset = {
+                let mut free_space_guard = self.free_space_manager.lock()
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::replay_failure(
+                        format!("Failed to lock free space manager: {}", e)
+                    ))?;
+
+                let free_space_manager = free_space_guard.as_mut()
+                    .ok_or_else(|| crate::backend::native::v2::wal::recovery::errors::RecoveryError::replay_failure(
+                        "Free space manager not initialized".to_string()
+                    ))?;
+
+                // Calculate required size and validate against cluster_floor
+                let cluster_floor = {
+                    let graph_file = self.graph_file.read()
+                        .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                            format!("Failed to lock graph file for cluster_floor check: {}", e)
+                        ))?;
+
+                    graph_file.cluster_floor()
+                };
+
+                // Use regular allocate since allocate_with_floor doesn't exist
+                let allocated_offset = free_space_manager.allocate(
+                    cluster_data.len() as u32
+                ).map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                    format!("Failed to allocate space for incoming cluster: {:?}", e)
+                ))?;
+
+                // Verify allocation is above cluster_floor
+                if allocated_offset < cluster_floor {
+                    return Err(crate::backend::native::v2::wal::recovery::errors::RecoveryError::validation(
+                        format!("Allocated offset {} is below cluster_floor {}", allocated_offset, cluster_floor)
+                    ));
+                }
+
+                allocated_offset
+            };
+
+            // Write cluster data to allocated offset
+            {
+                let mut graph_file = self.graph_file.write()
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                        format!("Failed to lock graph file for cluster write: {}", e)
+                    ))?;
+
+                graph_file.write_bytes(cluster_offset, &cluster_data)
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                        format!("Failed to write incoming cluster at offset {}: {:?}", cluster_offset, e)
+                    ))?;
+
+                debug_log!("Wrote incoming cluster: offset={}, size={}", cluster_offset, cluster_data.len());
+            }
+
+            // Update node record with cluster reference
+            {
+                let mut node_store_guard = self.node_store.lock()
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::replay_failure(
+                        format!("Failed to lock node store for node update: {}", e)
+                    ))?;
+
+                let node_store = node_store_guard.as_mut()
+                    .ok_or_else(|| crate::backend::native::v2::wal::recovery::errors::RecoveryError::replay_failure(
+                        "NodeStore initialization failed".to_string()
+                    ))?;
+
+                let mut updated_node = node_store.read_node_v2(node_id)
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                        format!("Failed to read node for cluster reference update: {}", e)
+                    ))?;
+
+                updated_node.incoming_cluster_offset = cluster_offset;
+                updated_node.incoming_cluster_size = cluster_data.len() as u32;
+                updated_node.incoming_edge_count = incoming_edges.len() as u32;
+
+                node_store.write_node_v2(&updated_node)
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
+                        format!("Failed to update node with incoming cluster reference: {}", e)
+                    ))?;
+
+                debug_log!("Updated node {} with incoming cluster: offset={}, size={}, count={}",
+                           node_id, cluster_offset, cluster_data.len(), incoming_edges.len());
+            }
+        }
+
+        // Step 6: Reclaim slot - remove from free list to prevent reuse
+        if _slot_offset != 0 {
+            debug_log!("Reclaiming slot at offset {} for node {}", _slot_offset, node_id);
+
+            // Get the estimated node size (same as used during deallocation)
+            let estimated_node_size = std::mem::size_of::<crate::backend::native::v2::NodeRecordV2>() as u32;
+
+            // Remove the block from free list
+            {
+                let mut free_space_guard = self.free_space_manager.lock()
+                    .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::replay_failure(
+                        format!("Failed to lock free space manager for slot reclamation: {}", e)
+                    ))?;
+
+                let free_space_manager = free_space_guard.as_mut()
+                    .ok_or_else(|| crate::backend::native::v2::wal::recovery::errors::RecoveryError::replay_failure(
+                        "Free space manager not initialized".to_string()
+                    ))?;
+
+                // Try to remove from free list if method exists
+                match free_space_manager.remove_from_free_list(_slot_offset, estimated_node_size) {
+                    Ok(()) => {
+                        debug_log!("Successfully reclaimed slot at offset {} (size {})", _slot_offset, estimated_node_size);
+                    }
+                    Err(_) => {
+                        // Slot not found in free list - this is acceptable since the slot may have
+                        // already been reused or was never added to the free list
+                        debug_log!("Slot at offset {} not found in free list - may have been reused", _slot_offset);
+                    }
+                }
+            }
         }
 
         debug_log!("Successfully rolled back node delete: node_id={}, restored kind={}, name={}, edge_counts=(outgoing={}, incoming={})",
@@ -1308,6 +1554,8 @@ mod tests {
             node_id: 44,
             slot_offset: 1000,
             old_data: vec![7, 8, 9],  // Mock old node data
+            outgoing_edges: Vec::new(),  // Empty for test
+            incoming_edges: Vec::new(),  // Empty for test
         });
 
         let summary = rollback_system.get_summary();
@@ -1384,6 +1632,8 @@ mod tests {
             node_id: 44,
             slot_offset: 1000,
             old_data: vec![7, 8, 9],  // Mock old node data
+            outgoing_edges: Vec::new(),  // Empty for test
+            incoming_edges: Vec::new(),  // Empty for test
         });
         rollback_system.add_operation(RollbackOperation::ClusterCreate {
             node_id: 45,
