@@ -275,15 +275,17 @@ impl HnswIndex {
         // Store the vector
         let vector_id = self.storage.store_vector(vector, metadata)?;
 
-        // Determine insertion layer using exponential distribution
-        let insertion_level = self.determine_insertion_level();
-
-        // Register with multi-layer manager if enabled
-        // This creates the LayerMappings for ID translation before inserting into layers
-        if let Some(manager) = &mut self.multi_layer_manager {
-            let (_highest_level, _layer_assignments) = manager.insert_vector(vector_id)?;
-            // layer_assignments contains (layer_id, local_id) pairs for all layers 0..=insertion_level
-        }
+        // Determine insertion layer and register with multi-layer manager
+        // In multi-layer mode, the manager determines the level and creates mappings
+        // In single-layer mode, we use the level distributor
+        let insertion_level = if let Some(manager) = &mut self.multi_layer_manager {
+            // Multi-layer mode: let the manager determine the level and create mappings
+            let (highest_level, _layer_assignments) = manager.insert_vector(vector_id)?;
+            highest_level
+        } else {
+            // Single-layer mode: use level distributor
+            self.determine_insertion_level()
+        };
 
         // Insert into layers from insertion_level down to 0
         // In multi-layer mode, this uses the LayerMappings created above
@@ -784,13 +786,17 @@ impl HnswIndex {
         // Store the vector in memory (not to database)
         self.storage.store_vector_with_id(vector_id, vector.to_vec(), metadata)?;
 
-        // Determine insertion layer using exponential distribution
-        let insertion_level = self.determine_insertion_level();
-
-        // Register with multi-layer manager if enabled
-        if let Some(manager) = &mut self.multi_layer_manager {
-            let (_highest_level, _layer_assignments) = manager.insert_vector(vector_id)?;
-        }
+        // Determine insertion layer and register with multi-layer manager
+        // In multi-layer mode, the manager determines the level and creates mappings
+        // In single-layer mode, we use the level distributor
+        let insertion_level = if let Some(manager) = &mut self.multi_layer_manager {
+            // Multi-layer mode: let the manager determine the level and create mappings
+            let (highest_level, _layer_assignments) = manager.insert_vector(vector_id)?;
+            highest_level
+        } else {
+            // Single-layer mode: use level distributor
+            self.determine_insertion_level()
+        };
 
         // Insert into layers from insertion_level down to 0
         for level in (0..=insertion_level).rev() {
@@ -982,12 +988,23 @@ impl HnswIndex {
             return Ok(());
         }
 
-        // Find entry points after adding the node (convert to 0-based node IDs)
-        let entry_points: Vec<u64> = self
-            .get_layer_entry_points(level)
-            .into_iter()
-            .map(|vector_id| vector_id - 1) // Convert to 0-based node IDs
-            .collect();
+        // Find entry points after adding the node
+        // In multi-layer mode, use manager to convert global IDs to local IDs
+        // In single-layer mode, use direct 1-based to 0-based conversion
+        let global_entry_points = self.get_layer_entry_points(level);
+        let entry_points: Vec<u64> = if let Some(manager) = &self.multi_layer_manager {
+            // Multi-layer mode: use LayerMappings for ID translation
+            global_entry_points
+                .into_iter()
+                .filter_map(|global_id| manager.get_local_id(global_id, level))
+                .collect()
+        } else {
+            // Single-layer mode: direct 1-based to 0-based conversion
+            global_entry_points
+                .into_iter()
+                .map(|global_id| global_id - 1)
+                .collect()
+        };
 
         // Connect to entry points (excluding self)
         let layer = &mut self.layers[level];
@@ -1001,6 +1018,10 @@ impl HnswIndex {
     }
 
     /// Get entry points for a specific layer
+    ///
+    /// Returns global vector IDs (1-based) for vectors that are entry points
+    /// in the specified layer. In multi-layer mode, uses the manager to
+    /// translate local node IDs to global vector IDs.
     fn get_layer_entry_points(&self, level: usize) -> Vec<u64> {
         if self.layers.is_empty() {
             return Vec::new();
@@ -1012,18 +1033,36 @@ impl HnswIndex {
         } else if level == 0 {
             // Base layer: use its own entry points
             let layer_entry_points = self.layers[level].get_entry_points();
-            layer_entry_points
-                .iter()
-                .map(|&node_id| node_id + 1) // Convert 0-based to 1-based
-                .collect()
+            if let Some(manager) = &self.multi_layer_manager {
+                // Multi-layer mode: convert local node IDs to global vector IDs
+                layer_entry_points
+                    .iter()
+                    .filter_map(|&local_id| manager.get_global_id(level, local_id))
+                    .collect()
+            } else {
+                // Single-layer mode: direct 0-based to 1-based conversion
+                layer_entry_points
+                    .iter()
+                    .map(|&node_id| node_id + 1)
+                    .collect()
+            }
         } else {
             // Intermediate layers: use entry points from the layer above
             if level + 1 < self.layers.len() {
                 let layer_entry_points = self.layers[level + 1].get_entry_points();
-                layer_entry_points
-                    .iter()
-                    .map(|&node_id| node_id + 1) // Convert 0-based to 1-based
-                    .collect()
+                if let Some(manager) = &self.multi_layer_manager {
+                    // Multi-layer mode: convert local node IDs to global vector IDs
+                    layer_entry_points
+                        .iter()
+                        .filter_map(|&local_id| manager.get_global_id(level + 1, local_id))
+                        .collect()
+                } else {
+                    // Single-layer mode: direct 0-based to 1-based conversion
+                    layer_entry_points
+                        .iter()
+                        .map(|&node_id| node_id + 1)
+                        .collect()
+                }
             } else {
                 Vec::new()
             }

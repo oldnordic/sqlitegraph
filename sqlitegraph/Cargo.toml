@@ -82,3 +82,8 @@ harness = false
 [[bench]]
 name = "wal_recovery_benchmarks"
 harness = false
+
+# Phase 15: Multi-layer HNSW benchmarks
+[[bench]]
+name = "hnsw_multilayer"
+harness = false
