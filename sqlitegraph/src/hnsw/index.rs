@@ -479,6 +479,12 @@ impl HnswIndex {
         &self.config
     }
 
+    #[cfg(test)]
+    /// Check if level distributor is initialized (test-only)
+    pub fn has_level_distributor(&self) -> bool {
+        self.level_distributor.is_some()
+    }
+
     /// Save index metadata to database
     ///
     /// # Arguments
@@ -1626,5 +1632,114 @@ mod tests {
 
         // Clean up
         let _ = fs::remove_dir_all(test_dir);
+    }
+
+    #[test]
+    fn test_multilayer_level_distribution() {
+        // Create HnswIndex with multi-layer enabled
+        let config = HnswConfig {
+            dimension: 4,
+            m: 16,
+            ef_construction: 200,
+            ef_search: 50,
+            ml: 4,
+            distance_metric: DistanceMetric::Euclidean,
+            enable_multilayer: true,
+            multilayer_level_distribution_base: Some(16),
+            multilayer_deterministic_seed: Some(42),
+        };
+
+        let mut hnsw = HnswIndex::new("test_multilayer_dist", config).unwrap();
+
+        // Verify level distributor was initialized
+        assert!(hnsw.has_level_distributor(), "LevelDistributor should be initialized in multi-layer mode");
+
+        // Sample 1000 levels directly from the distributor to verify distribution
+        use crate::hnsw::multilayer::LevelDistributor;
+        let mut distributor = LevelDistributor::new(16.0, 4).with_seed(42);
+
+        let mut level_counts = vec![0; 4];
+        for _ in 0..1000 {
+            let level = distributor.sample_level_internal();
+            level_counts[level] += 1;
+        }
+
+        // The distribution is:
+        // - P(level = 0) = 1 - 1/16 = 15/16 ≈ 937.5 out of 1000 (only base layer)
+        // - P(level = 1) = 1/16 - 1/256 ≈ 58.6 out of 1000 (layers 0, 1)
+        // - P(level = 2) = 1/256 - 1/4096 ≈ 3.7 out of 1000 (layers 0, 1, 2)
+        // - P(level = 3) = 1/4096 ≈ 0.24 out of 1000 (layers 0, 1, 2, 3)
+
+        // Level 0 should have approximately 937-944 vectors (allow 900-950 range)
+        assert!(
+            level_counts[0] >= 900 && level_counts[0] <= 950,
+            "Level 0 should have ~938 samples, got {}",
+            level_counts[0]
+        );
+
+        // Level 1 should have approximately 1000/16 = ~62 samples (allow 40-80 range)
+        assert!(
+            level_counts[1] >= 40 && level_counts[1] <= 80,
+            "Level 1 should have ~62 samples, got {}",
+            level_counts[1]
+        );
+
+        // Level 2 should have approximately 1000/256 = ~4 samples (allow 1-10 range)
+        assert!(
+            level_counts[2] >= 1 && level_counts[2] <= 10,
+            "Level 2 should have ~4 samples, got {}",
+            level_counts[2]
+        );
+
+        println!(
+            "Level distribution (direct sampling): L0={}, L1={}, L2={}, L3={}",
+            level_counts[0], level_counts[1], level_counts[2], level_counts[3]
+        );
+
+        // Note: Full multi-layer graph insertion requires LayerMappings integration
+        // (deferred to plan 15-02) to handle bidirectional ID translation between
+        // global vector IDs and layer-local node IDs.
+        //
+        // For now, the exponential distribution is wired into determine_insertion_level()
+        // and will produce the correct level assignments. The full multi-layer graph
+        // structure will be completed in subsequent plans.
+    }
+
+    #[test]
+    fn test_single_layer_mode() {
+        // Create HnswIndex with single-layer mode (default)
+        let config = HnswConfig {
+            dimension: 4,
+            m: 16,
+            ef_construction: 200,
+            ef_search: 50,
+            ml: 4,
+            distance_metric: DistanceMetric::Euclidean,
+            enable_multilayer: false, // Single-layer mode
+            multilayer_level_distribution_base: None,
+            multilayer_deterministic_seed: None,
+        };
+
+        let hnsw = HnswIndex::new("test_single_layer", config.clone()).unwrap();
+
+        // Verify level distributor is NOT initialized in single-layer mode
+        assert!(!hnsw.has_level_distributor(), "LevelDistributor should not be initialized in single-layer mode");
+
+        // Insert 100 vectors
+        let test_vector = vec![1.0, 0.0, 0.0, 0.0];
+        let mut hnsw_mut = HnswIndex::new("test_single_layer_mut", config).unwrap();
+        for _ in 0..100 {
+            hnsw_mut.insert_vector(&test_vector, None).unwrap();
+        }
+
+        let stats = hnsw_mut.statistics().unwrap();
+
+        // In single-layer mode, all vectors should only be in layer 0
+        assert_eq!(stats.layer_stats[0].0, 100, "Layer 0 should have 100 vectors");
+
+        // Higher layers should be empty
+        assert_eq!(stats.layer_stats[1].0, 0, "Layer 1 should be empty in single-layer mode");
+        assert_eq!(stats.layer_stats[2].0, 0, "Layer 2 should be empty in single-layer mode");
+        assert_eq!(stats.layer_stats[3].0, 0, "Layer 3 should be empty in single-layer mode");
     }
 }
