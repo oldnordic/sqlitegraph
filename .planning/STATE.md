@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 11 of 22 (ACID Atomicity)
-Plan: 2 of 3 in current phase
-Status: In progress
-Last activity: 2026-01-20 — Completed 11-02: Node deletion rollback with edge restoration
+Plan: 3 of 3 in current phase
+Status: Phase complete
+Last activity: 2026-01-20 — Completed 11-03: IN_PROGRESS transaction recovery tests
 
-Progress: [██████████████████████░░░░░░░░░] 53%
+Progress: [████████████████████████░░░░░░░░░] 55%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 35
+- Total plans completed: 36
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,10 +28,10 @@ Progress: [██████████████████████░
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
-| 11-22 (v1.1) | 2/45 | 7min 38sec | TBD |
+| 11-22 (v1.1) | 3/45 | 8min 23sec | 2min 49sec |
 
 **Recent Trend:**
-- Last 5 plans: 11-01 (7min 38sec), 11-02 (7min)
+- Last 5 plans: 11-01 (7min 38sec), 11-02 (7min), 11-03 (14min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -59,6 +59,8 @@ Recent decisions affecting current work:
 - Replace serde_json with NodeRecordV2::serialize/deserialize for consistency - 11-01
 - EdgeCluster::create_from_compact_edges for cluster restoration during rollback - 11-02
 - FreeSpaceManager::remove_from_free_list for slot reclamation during rollback - 11-02
+- Rollback state persistence deferred to Phase 13+ (memory-only acceptable for recovery replay) - 11-03
+- IN_PROGRESS transactions filtered by `committed=true && commit_lsn.is_some()` - 11-03
 
 ### Pending Todos
 
@@ -70,15 +72,16 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 11-02 execution)
-Stopped at: Completed 11-02 - Node deletion rollback with edge restoration and slot reclamation
+Last session: 2026-01-20 (plan 11-03 execution)
+Stopped at: Completed 11-03 - IN_PROGRESS transaction recovery tests and verification
 Resume file: None
 
 ### Roadmap Evolution
 
 - **v0.2 Foundation** (2026-01-17): Phases 1-7 complete
 - **v1.0 Production** (2026-01-17): Phases 8-10 complete
-- **v1.1 ACID & Reliability** (2026-01-20): PLANNED
+- **v1.1 ACID & Reliability** (2026-01-20): IN PROGRESS
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
+  - Progress: Phase 11 complete (3/3 plans)
