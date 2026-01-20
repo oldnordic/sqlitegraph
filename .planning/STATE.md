@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 18 of 22 complete, next: Phase 19 (Concurrent Features)
-Status: Phase 16 complete, Phase 17 redundant (completed in Phase 16), Phase 18 complete
-Last activity: 2026-01-20 — Completed Phase 18: Code Structure (all 4 plans)
+Phase: 18 of 22 complete, in progress: Phase 19 (Concurrent Features)
+Status: Phase 16 complete, Phase 17 redundant (completed in Phase 16), Phase 18 complete, Phase 19 Plan 01 complete
+Last activity: 2026-01-20 — Completed Phase 19 Plan 01: Connection Pooling
 
-Progress: [████████████████████████████████████] 91% (Phase 11-18 complete)
+Progress: [████████████████████████████████░] 93% (Phase 11-19-01 complete)
 
 ## Performance Metrics
 
@@ -155,6 +155,14 @@ Recent decisions affecting current work:
 - Clone audit completed: 222 clone() calls documented, ~95% necessary for Rust ownership model - 18-04
 - Only optimize clones if profiling shows hot paths; Arc clones, config clones, and RwLock snapshots are idiomatic - 18-04
 
+**v1.1 Concurrent Features (Phase 19):**
+- Use r2d2_sqlite 0.24 for compatibility with rusqlite 0.31 (0.32+ requires rusqlite 0.38+) - 19-01
+- Created PoolManager wrapper instead of directly exposing r2d2::Pool for future flexibility - 19-01
+- Use Arc<GraphMetrics> and Arc<StatementTracker> for shared ownership in pooled connections - 19-01
+- Create ConnectionWrapper enum to unify borrowed (in-memory) and pooled (file-based) access patterns - 19-01
+- Keep in-memory databases without pooling since each connection would have isolated data - 19-01
+- Default pool size of 5 connections (configurable via with_max_size()) - 19-01
+
 ### Pending Todos
 
 - Layer persistence (Tasks 3-4 from 15-04) requires separate planning for database schema changes
@@ -166,8 +174,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 18-04 execution)
-Stopped at: Completed 18-04 - Split checkpoint/operations.rs and complete clone audit
+Last session: 2026-01-20 (plan 19-01 execution)
+Stopped at: Completed 19-01 - Connection pooling with r2d2 for SQLite backend
 Resume file: None
 
 ### Roadmap Evolution
@@ -178,4 +186,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 Plan 01 complete (1/?, connection pooling implemented)
