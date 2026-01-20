@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 14 of 22 (ACID Durability)
-Plan: 2 of 4 in current phase
-Status: Phase 14 plan 02 complete, plan 03 pending
-Last activity: 2026-01-20 — Completed 14-02 size-based checkpoint trigger
+Plan: 3 of 4 in current phase
+Status: Phase 14 plan 03 complete, plan 04 pending
+Last activity: 2026-01-20 — Completed 14-03 transaction counter integration
 
-Progress: [██████████████████████████████████ ] 80%
+Progress: [██████████████████████████████████ ] 82%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 44
+- Total plans completed: 45
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,10 +28,10 @@ Progress: [███████████████████████
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
-| 11-14 (v1.1) | 15/45 | 112min | 7min |
+| 11-14 (v1.1) | 16/45 | 116min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 13-01 (19min), 13-02 (3min), 13-03 (6min), 13-04 (3min), 14-01 (2min)
+- Last 5 plans: 13-02 (3min), 13-03 (6min), 13-04 (3min), 14-01 (2min), 14-02 (2min), 14-03 (4min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -86,6 +86,12 @@ Recent decisions affecting current work:
 - SizeThreshold checkpoint strategy reads actual WAL file size via std::fs::metadata().len() - 14-02
 - get_wal_size() helper method exposes WAL size for external monitoring - 14-02
 - estimate_wal_size() in manager.rs confirmed correct - uses std::fs::metadata with metrics fallback - 14-02
+- Added transactions_since_checkpoint to CheckpointManagerState as pub field for strategy evaluation - 14-03
+- Added checkpointed_wal_size to CheckpointManagerState for adaptive size delta calculations - 14-03
+- TransactionCount strategy uses state.transactions_since_checkpoint for accurate trigger evaluation - 14-03
+- Counters reset in force_checkpoint() success branch to prevent immediate re-triggering - 14-03
+- on_checkpoint_completed() callback provides external notification path for counter synchronization - 14-03
+- Adaptive strategy combines time interval guard with OR condition for size/transaction triggers - 14-03
 
 ### Pending Todos
 
@@ -97,8 +103,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 14-02 execution)
-Stopped at: Completed 14-02 - Size-based checkpoint trigger
+Last session: 2026-01-20 (plan 14-03 execution)
+Stopped at: Completed 14-03 - Transaction counter integration
 Resume file: None
 
 ### Roadmap Evolution
@@ -109,4 +115,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 in progress (2/4)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 in progress (3/4)
