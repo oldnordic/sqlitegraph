@@ -99,9 +99,9 @@ Requirements for checkpoint integrity verification.
 
 Requirements for file format consistency.
 
-- [ ] **SCHEMA-01**: Schema version field uses 4 bytes instead of 8 bytes
-- [ ] **SCHEMA-02**: Schema version migration preserves backward compatibility
-- [ ] **SCHEMA-03**: File format version bump documents schema change
+- [x] **SCHEMA-01**: Schema version field uses 4 bytes instead of 8 bytes
+- [x] **SCHEMA-02**: Schema version migration preserves backward compatibility
+- [x] **SCHEMA-03**: File format version bump documents schema change
 
 ---
 
@@ -178,10 +178,10 @@ Requirements for multi-writer support.
 
 Requirements for automated file format migration.
 
-- [ ] **MIGRATE-01**: File migration API detects old format versions
-- [ ] **MIGRATE-02**: File migration API converts to current format
-- [ ] **MIGRATE-03**: Migration is atomic (write to new file, replace old)
-- [ ] **MIGRATE-04**: Migration can be rolled back
+- [x] **MIGRATE-01**: File migration API detects old format versions
+- [x] **MIGRATE-02**: File migration API converts to current format
+- [x] **MIGRATE-03**: Migration is atomic (write to new file, replace old)
+- [x] **MIGRATE-04**: Migration can be rolled back
 
 ---
 
@@ -189,9 +189,9 @@ Requirements for automated file format migration.
 
 Requirements for high-level snapshot API.
 
-- [ ] **BACKUP-01**: Backup API creates consistent snapshot of database
-- [ ] **BACKUP-02**: Restore API loads snapshot and verifies integrity
-- [ ] **BACKUP-03**: Snapshot includes all data pages and WAL position
+- [x] **BACKUP-01**: Backup API creates consistent snapshot of database
+- [x] **BACKUP-02**: Restore API loads snapshot and verifies integrity
+- [x] **BACKUP-03**: Snapshot includes all data pages and WAL position
 
 ---
 
@@ -404,13 +404,13 @@ Requirements mapped to phases in roadmap.
 | CW-01 | Phase 13 | Complete |
 | CW-02 | Phase 13 | Complete |
 | CW-03 | Phase 13 | Complete |
-| MIGRATE-01 | Phase 20 | Pending |
-| MIGRATE-02 | Phase 20 | Pending |
-| MIGRATE-03 | Phase 20 | Pending |
-| MIGRATE-04 | Phase 20 | Pending |
-| BACKUP-01 | Phase 20 | Pending |
-| BACKUP-02 | Phase 20 | Pending |
-| BACKUP-03 | Phase 20 | Pending |
+| MIGRATE-01 | Phase 20 | Complete |
+| MIGRATE-02 | Phase 20 | Complete |
+| MIGRATE-03 | Phase 20 | Complete |
+| MIGRATE-04 | Phase 20 | Complete |
+| BACKUP-01 | Phase 20 | Complete |
+| BACKUP-02 | Phase 20 | Complete |
+| BACKUP-03 | Phase 20 | Complete |
 | TEST-WAL-01 | Phase 21 | Pending |
 | TEST-WAL-02 | Phase 21 | Pending |
 | TEST-WAL-03 | Phase 21 | Pending |
