@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 21 of 22 complete, next: Phase 22 (Scaling & Dependencies)
-Status: Phase 21 complete (4/4 plans executed, 15/16 must_haves verified)
-Last activity: 2026-01-20 — Completed Phase 21: Test Coverage (WAL, cluster, checkpoint, HNSW, Miri tests)
+Phase: 22 (Scaling & Dependencies) - Plan 2 of 4 complete
+Status: Phase 22 in progress (2/4 plans executed)
+Last activity: 2026-01-20 — Completed 22-02: Dirty Block Overflow Strategy
 
-Progress: [████████████████████████████████] 100% (Phase 11-21 complete)
+Progress: [████████████████████████████████░] 95% (Phase 11-21 complete, 22-02 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 65 (33 for v0.2/v1.0, 32 for v1.1)
-- Average duration: TBD
+- Total plans completed: 67 (33 for v0.2/v1.0, 34 for v1.1)
+- Average duration: 8min (last 5 plans: 6min, 5min, 5min, 5min, 5min)
 - Total execution time: TBD
 
 **By Phase:**
@@ -204,6 +204,21 @@ Recent decisions affecting current work:
 - Crash recovery tests verify recovery engine creation and state management - 21-03
 - Checkpoint executor bug fix: LSN must be >= 1 validation handled - 21-03
 
+**v1.1 Scaling & Dependencies (Phase 22):**
+- Multi-file checkpoint module with segment writer/reader and parallel I/O support - 22-01
+- SegmentWriter writes sequential checkpoint data to segment files with configurable size limits - 22-01
+- SegmentReader reads and validates segment files with CRC checksums and index-based access - 22-01
+- CheckpointSegments manages multiple segments with parallel write/read capabilities - 22-01
+- DirtyBlockOverflowStrategy enum with 4 variants: Reject, ForceCheckpoint, SpillToDisk, HierarchicalPromotion - 22-02
+- Default overflow strategy is Reject to maintain backward compatibility - 22-02
+- DiskOverflowStore tracks spilled blocks with timestamp metadata for later recovery - 22-02
+- mark_global_block_dirty handles overflow based on configured strategy - 22-02
+- ForceCheckpoint returns checkpoint_required error for auto-triggering - 22-02
+- SpillToDisk spills oldest 1000 blocks to overflow store when capacity exceeded - 22-02
+- HierarchicalPromotion moves cluster-affinity blocks to cluster-specific tracking - 22-02
+- Checkpoint manager auto-triggers checkpoint on ForceCheckpoint overflow - 22-02
+- 11 overflow handling tests verify all strategies and edge cases - 22-02
+
 ### Pending Todos
 
 - Layer persistence (Tasks 3-4 from 15-04) requires separate planning for database schema changes
@@ -215,16 +230,17 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 21-02 execution)
-Stopped at: Completed 21-02 - Cluster Validation Tests (partial: 2/3 tests passing)
+Last session: 2026-01-20 (plan 22-02 execution)
+Stopped at: Completed 22-02 - Dirty Block Overflow Strategy
 Resume file: None
 
 ### Roadmap Evolution
 
 - **v0.2 Foundation** (2026-01-17): Phases 1-7 complete
 - **v1.0 Production** (2026-01-17): Phases 8-10 complete
-- **v1.1 ACID & Reliability** (2026-01-20): COMPLETE
+- **v1.1 ACID & Reliability** (2026-01-20): In Progress
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
-  - Total: 64 plans completed (all v1.1 plans)
+  - Total: 67 plans completed
   - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (4/4, v3 file format with migration API, backup API, and restore API), Phase 21 complete (4/4: test coverage for WAL recovery, node deletion rollback, HNSW multi-layer, Miri integration)
+  - Phase 22 in progress: 2/4 (22-01 multi-file checkpoint, 22-02 dirty block overflow)
