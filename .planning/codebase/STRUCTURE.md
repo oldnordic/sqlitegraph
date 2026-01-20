@@ -5,252 +5,285 @@
 ## Directory Layout
 
 ```
-sqlitegraph/                # Main project root
-├── sqlitegraph/            # Library crate source
-│   ├── src/               # All source files (239 .rs files)
-│   │   ├── graph/         # Core graph implementation
-│   │   ├── backend/       # Storage backend implementations
-│   │   ├── hnsw/          # HNSW vector search
-│   │   ├── pattern_engine/       # Pattern matching
-│   │   ├── pattern_engine_cache/ # Pattern matching cache
-│   │   └── backend/
-│   │       ├── sqlite/    # SQLite backend
-│   │       ├── native/    # Native storage backend
-│   │       │   └── v2/    # Native V2 clustered edge format
-│   │       │       ├── edge_cluster/    # Compact edge records
-│   │       │       ├── free_space/      # Free space management
-│   │       │       ├── string_table/    # String deduplication
-│   │       │       ├── wal/             # Write-Ahead Log
-│   │       │       │   ├── checkpoint/  # WAL checkpointing
-│   │       │       │   └── recovery/    # WAL recovery
-│   │       │       ├── export/          # Snapshot export
-│   │       │       ├── import/          # Snapshot import
-│   │       │       └── snapshot/        # Atomic snapshots
-│   │       ├── graph_file/             # Native file operations
-│   │       ├── adjacency/              # Native adjacency iterators
-│   │       └── edge_store/             # Edge storage management
-├── benches/               # Criterion benchmarks (16 files)
-├── tests/                 # Integration tests (50+ files)
-├── docs/                  # Project documentation
-├── scripts/               # Utility scripts
-├── Cargo.toml             # Library manifest
-├── CHANGELOG.md           # Version history
-├── CLAUDE.md              # Development rules
-└── README.md              # Project overview
+[project-root]/
+├── sqlitegraph/          # Main library crate (core implementation)
+│   ├── src/             # Library source code
+│   │   ├── algo.rs      # Graph algorithms (PageRank, Louvain, etc.)
+│   │   ├── api_ergonomics.rs  # Public API type aliases
+│   │   ├── backend.rs   # Backend trait and redirection
+│   │   ├── backend/     # Backend implementations
+│   │   │   ├── sqlite/  # SQLite backend (mod.rs, types.rs, helpers.rs)
+│   │   │   └── native/  # Native backend (file-based storage)
+│   │   │       ├── adjacency/      # Adjacency iteration
+│   │   │       ├── edge_store/     # Edge storage management
+│   │   │       ├── graph_file/     # File I/O and memory mapping
+│   │   │       ├── v2/             # V2 clustered edge kernel
+│   │   │       │   ├── edge_cluster/    # Compact edge records
+│   │   │       │   ├── string_table/    # String deduplication
+│   │   │       │   ├── wal/            # Write-ahead log
+│   │   │       │   │   ├── checkpoint/  # Checkpoint operations
+│   │   │       │   │   ├── recovery/    # WAL recovery
+│   │   │       │   │   └── metrics/     # WAL metrics
+│   │   │       │   ├── export/         # Snapshot export
+│   │   │       │   ├── import/         # Snapshot import
+│   │   │       │   ├── free_space/     # Free space management
+│   │   │       │   └── node_record_v2/ # V2 node records
+│   │   │       ├── graph_backend.rs     # Native GraphBackend impl
+│   │   │       ├── node_store.rs        # Node storage
+│   │   │       ├── constants.rs         # File format constants
+│   │   │       ├── cpu_tuning.rs        # CPU feature detection
+│   │   │       └── mod.rs               # Native module exports
+│   │   ├── bfs.rs       # Breadth-first search traversal
+│   │   ├── cache.rs     # LRU-K adjacency cache
+│   │   ├── config/      # Configuration and factory
+│   │   │   ├── mod.rs          # Config module exports
+│   │   │   ├── config.rs       # GraphConfig struct
+│   │   │   ├── factory.rs      # open_graph() factory
+│   │   │   ├── kinds.rs        # BackendKind enum
+│   │   │   ├── native.rs       # NativeConfig options
+│   │   │   └── sqlite.rs       # SqliteConfig options
+│   │   ├── debug.rs     # Debugging utilities
+│   │   ├── dsl.rs       # Domain-specific language helpers
+│   │   ├── errors.rs    # Error type definitions
+│   │   ├── graph/       # Core graph database implementation
+│   │   │   ├── mod.rs            # Graph module exports
+│   │   │   ├── core.rs           # SqliteGraph struct
+│   │   │   ├── types.rs          # GraphEntity, GraphEdge
+│   │   │   ├── adjacency.rs      # Adjacency list management
+│   │   │   ├── entity_ops.rs     # Node CRUD operations
+│   │   │   ├── edge_ops.rs       # Edge CRUD operations
+│   │   │   ├── pattern_matching.rs  # Triple pattern matching
+│   │   │   ├── snapshot.rs       # Internal snapshot logic
+│   │   │   └── metrics/          # Performance instrumentation
+│   │   ├── hnsw/       # HNSW vector search index
+│   │   │   ├── mod.rs                  # HNSW module exports
+│   │   │   ├── index.rs                # HnswIndex struct
+│   │   │   ├── config.rs               # HnswConfig struct
+│   │   │   ├── builder.rs              # Config builder
+│   │   │   ├── distance_metric.rs      # Distance functions
+│   │   │   ├── multilayer.rs           # Multi-layer graph
+│   │   │   ├── neighborhood.rs         # Neighbor selection
+│   │   │   ├── storage.rs              # Vector storage trait
+│   │   │   └── errors.rs               # HNSW error types
+│   │   ├── index.rs    # Index utilities (add_label, add_property)
+│   │   ├── introspection.rs  # Graph introspection API
+│   │   ├── lib.rs      # Library root with public API re-exports
+│   │   ├── multi_hop.rs # Multi-hop traversal (k-hop, chain queries)
+│   │   ├── mvcc.rs     # MVCC-lite snapshot system
+│   │   ├── pattern.rs  # Pattern matching types
+│   │   ├── pattern_engine/     # Triple pattern engine
+│   │   │   ├── mod.rs               # Pattern engine exports
+│   │   │   ├── matcher.rs           # Pattern matcher
+│   │   │   ├── pattern.rs           # PatternTriple type
+│   │   │   ├── query.rs             # PatternQuery type
+│   │   │   └── property.rs          # Property filtering
+│   │   ├── pattern_engine_cache/  # Pattern engine caching
+│   │   │   ├── mod.rs                  # Cache exports
+│   │   │   ├── fast_path_detection.rs  # Fast path detection
+│   │   │   ├── fast_path_execution.rs  # Fast path execution
+│   │   │   └── edge_validation.rs      # Edge validation helpers
+│   │   ├── progress.rs  # Progress tracking for algorithms
+│   │   ├── query.rs    # GraphQuery fluent API
+│   │   ├── query_cache.rs  # Query result caching
+│   │   ├── recovery.rs  # Backup and restore utilities
+│   │   ├── schema.rs   # Database schema management
+│   │   ├── graph_opt.rs  # Graph operations (bulk insert, cache stats)
+│   │   └── tests/      # Integration tests
+│   ├── benches/    # Criterion benchmarks
+│   │   ├── bfs.rs
+│   │   ├── k_hop.rs
+│   │   ├── insert.rs
+│   │   ├── hnsw.rs
+│   │   ├── comprehensive_performance.rs
+│   │   └── wal_recovery_benchmarks.rs
+│   └── Cargo.toml   # Library crate manifest
+├── sqlitegraph-cli/    # CLI binary crate
+│   ├── src/
+│   │   └── main.rs    # CLI entry point
+│   └── Cargo.toml
+├── docs/           # Documentation
+├── scripts/        # Utility scripts
+├── tests/          # Integration tests
+├── Cargo.toml      # Workspace configuration
+├── Cargo.lock      # Dependency lock file
+├── README.md       # Project overview
+├── CHANGELOG.md    # Version history
+└── CLAUDE.md       # Development rules
+
 ```
 
 ## Directory Purposes
 
 **sqlitegraph/src/:**
-- Purpose: All library source code (239 Rust files, 44 directories)
-- Contains: Core implementation, algorithms, backends, utilities
-- Key files: `lib.rs` (entry point), `graph/core.rs` (main struct), `backend.rs` (trait)
-
-**sqlitegraph/src/graph/:**
-- Purpose: Core graph database implementation
-- Contains: `SqliteGraph`, `GraphEntity`, `GraphEdge`, CRUD operations
-- Key files:
-  - `mod.rs` - Module documentation and re-exports
-  - `core.rs` - `SqliteGraph` struct and construction
-  - `types.rs` - `GraphEntity`, `GraphEdge` data structures
-  - `entity_ops.rs` - Node/entity CRUD operations
-  - `edge_ops.rs` - Edge/relationship CRUD operations
-  - `adjacency.rs` - Adjacency list management
-  - `snapshot.rs` - Snapshot creation and management
-  - `pattern_matching.rs` - Pattern matching integration
+- Purpose: Core library implementation
+- Contains: All graph database logic, backend implementations, algorithms
+- Key files: `lib.rs` (public API), `graph/core.rs` (SqliteGraph), `backend.rs` (trait)
 
 **sqlitegraph/src/backend/:**
 - Purpose: Storage backend abstraction and implementations
-- Contains: `GraphBackend` trait, backend implementations
-- Key files:
-  - `sqlite/mod.rs` - SQLite backend (`SqliteGraphBackend`)
-  - `sqlite/helpers.rs` - SQLite query helpers
-  - `native/mod.rs` - Native backend organization
-  - `native/graph_backend.rs` - `NativeGraphBackend` implementation
-  - `native/v2/mod.rs` - V2 clustered edge kernel
+- Contains: `GraphBackend` trait, SQLite and Native implementations
+- Key files: `backend.rs` (trait definition), `sqlite/mod.rs`, `native/mod.rs`
 
 **sqlitegraph/src/backend/native/v2/:**
-- Purpose: High-performance native storage with WAL and clustering
-- Contains: WAL system, edge clustering, free space management
-- Key files:
-  - `mod.rs` - V2 module organization and exports
-  - `edge_cluster/` - Compact edge record format
-  - `wal/mod.rs` - WAL manager and integration
-  - `wal/checkpoint/` - Checkpoint coordinator and strategies
-  - `wal/recovery/` - Recovery replayer and validator
-  - `string_table/mod.rs` - String deduplication
-  - `free_space/` - Block-level free space management
-  - `export/`, `import/` - Snapshot migration
+- Purpose: Next-generation native storage with clustered edges
+- Contains: Edge clustering, WAL system, snapshot support
+- Key files: `edge_cluster/`, `wal/`, `string_table/`
+
+**sqlitegraph/src/graph/:**
+- Purpose: Core graph database operations
+- Contains: SqliteGraph implementation, entity/edge operations
+- Key files: `core.rs`, `types.rs`, `adjacency.rs`
 
 **sqlitegraph/src/hnsw/:**
-- Purpose: Hierarchical Navigable Small World vector search
-- Contains: HNSW index, configuration, distance metrics
-- Key files:
-  - `mod.rs` - Module documentation
-  - `index.rs` - `HnswIndex` main implementation
-  - `config.rs` - `HnswConfig`, `HnswConfigBuilder`
-  - `distance_metric.rs` - Distance metric enum
-  - `distance_functions.rs` - SIMD-ready calculations
-  - `storage.rs` - `VectorStorage` trait for pluggable backends
+- Purpose: Vector similarity search using HNSW algorithm
+- Contains: Index implementation, distance metrics, multi-layer graph
+- Key files: `index.rs`, `config.rs`, `distance_metric.rs`
+
+**sqlitegraph/src/algo.rs:**
+- Purpose: Graph analysis algorithms
+- Contains: PageRank, Betweenness, Louvain, Label Propagation
+- Single large file with algorithm implementations
+
+**sqlitegraph/src/mvcc.rs:**
+- Purpose: Snapshot isolation for concurrent reads
+- Contains: SnapshotManager, GraphSnapshot, SnapshotState
+
+**sqlitegraph/src/cache.rs:**
+- Purpose: LRU-K adjacency caching
+- Contains: AdjacencyCache, CacheStats
 
 **sqlitegraph/src/pattern_engine/:**
 - Purpose: Triple pattern matching
-- Contains: `PatternTriple`, `match_triples`, query execution
-- Key files:
-  - `mod.rs` - Module exports
-  - `pattern.rs` - `PatternTriple` definition
-  - `matcher.rs` - Pattern matching logic
-  - `query.rs` - Pattern query execution
+- Contains: PatternTriple, matcher, query types
 
-**sqlitegraph/src/pattern_engine_cache/:**
-- Purpose: Fast-path pattern matching with caching
-- Contains: Edge validation, fast path detection/execution
-- Key files:
-  - `mod.rs` - Cache module exports
-  - `fast_path_detection.rs` - Detects cacheable patterns
-  - `fast_path_execution.rs` - Executes cached patterns
-  - `edge_validation.rs` - Edge existence validation
+**sqlitegraph/src/config/:**
+- Purpose: Backend selection and configuration
+- Contains: GraphConfig, BackendKind, factory functions
 
 **sqlitegraph/benches/:**
-- Purpose: Criterion benchmarks for performance testing
-- Contains: Algorithm benchmarks, backend comparisons, WAL recovery
-- Key files:
-  - `algo_benchmarks.rs` - PageRank, Betweenness, Louvain
-  - `bfs.rs`, `k_hop.rs` - Traversal benchmarks
-  - `hnsw.rs` - Vector search benchmarks
-  - `comprehensive_performance.rs` - Full system comparison
-  - `wal_recovery_benchmarks.rs` - WAL recovery performance
+- Purpose: Performance benchmarks using Criterion
+- Contains: BFS, k-hop, insert, HNSW benchmarks
 
-**sqlitegraph/tests/:**
-- Purpose: Integration tests (not unit tests in src/)
-- Contains: Algorithm validation, regression tests, stress tests
-- Key files:
-  - `algo_tests.rs` - Algorithm correctness validation
-  - `adjacency_iterator_infinite_loop_test.rs` - Regression tests
-  - `cluster_offset_corruption_regression.rs` - Data integrity tests
+**sqlitegraph-cli/src/:**
+- Purpose: Command-line interface
+- Contains: CLI argument parsing, command dispatch
 
-**sqlitegraph/docs/:**
-- Purpose: Project documentation (mdBook format)
-- Contains: Architecture guides, API documentation, tutorials
+**docs/:**
+- Purpose: Project documentation
+- Contains: API docs, architecture guides
 
 ## Key File Locations
 
 **Entry Points:**
-- `sqlitegraph/src/lib.rs`: Library entry point, public API re-exports
+- `sqlitegraph/src/lib.rs`: Library root, public API re-exports
 - `sqlitegraph/src/config/factory.rs`: `open_graph()` factory function
-- `sqlitegraph/src/client.rs`: CLI entry point (binary crate)
+- `sqlitegraph/src/graph/core.rs`: `SqliteGraph` main struct
+- `sqlitegraph-cli/src/main.rs`: CLI binary entry point
 
 **Configuration:**
-- `sqlitegraph/Cargo.toml`: Library manifest, dependencies, features
-- `sqlitegraph/src/config/mod.rs`: Configuration module re-exports
-- `sqlitegraph/src/config/kinds.rs`: `BackendKind` enum
-- `sqlitegraph/src/config/config.rs`: `GraphConfig` struct
-- `sqlitegraph/src/config/native.rs`: `NativeConfig` (CPU profiles, capacity)
-- `sqlitegraph/src/config/sqlite.rs`: `SqliteConfig` (WAL mode, cache size)
+- `sqlitegraph/src/config/mod.rs`: Config module exports
+- `sqlitegraph/src/config/kinds.rs`: BackendKind enum
+- `sqlitegraph/Cargo.toml`: Library features and dependencies
+- `Cargo.toml`: Workspace configuration
 
 **Core Logic:**
-- `sqlitegraph/src/graph/core.rs`: `SqliteGraph` main struct
-- `sqlitegraph/src/graph/types.rs`: `GraphEntity`, `GraphEdge`
-- `sqlitegraph/src/graph/entity_ops.rs`: Node/Entity CRUD
-- `sqlitegraph/src/graph/edge_ops.rs`: Edge/Relationship CRUD
-- `sqlitegraph/src/backend.rs`: `GraphBackend` trait definition
-- `sqlitegraph/src/backend/native/graph_backend.rs`: Native backend implementation
+- `sqlitegraph/src/graph/core.rs`: SqliteGraph implementation
+- `sqlitegraph/src/graph/entity_ops.rs`: Node operations
+- `sqlitegraph/src/graph/edge_ops.rs`: Edge operations
+- `sqlitegraph/src/graph/adjacency.rs`: Adjacency list management
+- `sqlitegraph/src/algo.rs`: Graph algorithms
 
-**Algorithms:**
-- `sqlitegraph/src/algo.rs`: All graph algorithms (PageRank, Betweenness, etc.)
-- `sqlitegraph/src/bfs.rs`: Breadth-first search traversal
-- `sqlitegraph/src/multi_hop.rs`: k-hop queries and chain queries
+**Backend Implementations:**
+- `sqlitegraph/src/backend/sqlite/mod.rs`: SQLite backend
+- `sqlitegraph/src/backend/native/graph_backend.rs`: Native backend
+- `sqlitegraph/src/backend/native/v2/`: Native V2 clustered edge kernel
 
 **Testing:**
-- `sqlitegraph/tests/`: Integration tests (50+ test files)
-- `sqlitegraph/benches/`: Criterion benchmarks (16 bench files)
-- Unit tests embedded in `src/**/*.rs` files in `#[cfg(test)]` modules
+- `sqlitegraph/tests/`: Integration tests
+- `sqlitegraph/src/*/tests.rs`: Module unit tests
+- `sqlitegraph/benches/`: Performance benchmarks
 
 ## Naming Conventions
 
 **Files:**
-- Core modules: `mod_name.rs` (e.g., `algo.rs`, `cache.rs`)
-- Submodules: `mod_name/mod.rs` with child files (e.g., `graph/mod.rs`, `graph/core.rs`)
-- Test files: `*_tests.rs` in `tests/` directory (e.g., `algo_tests.rs`)
-- Benchmark files: `*.rs` in `benches/` directory (e.g., `bfs.rs`)
+- Module implementation: `mod_name.rs` (e.g., `cache.rs`, `mvcc.rs`)
+- Module with submodules: `mod_name/` directory with `mod.rs`
+- Tests: `tests.rs` within module directory or `tests/` at crate root
+- Benchmarks: `bench_name.rs` in `benches/` directory
 
 **Directories:**
-- Plural names for collections: `metrics/`, `benchmarks/`, `tests/`
-- Snake_case for multi-word directories: `graph_file/`, `edge_store/`, `string_table/`
-- Feature-specific directories: `pattern_engine/`, `pattern_engine_cache/`
-- Version-specific directories: `v2/` (native V2 format)
+- Backend modules: `backend/` with `sqlite/` and `native/` subdirectories
+- Feature modules: Direct directory under `src/` (e.g., `hnsw/`, `pattern_engine/`)
+- V2 components: `backend/native/v2/` with feature-specific subdirectories
 
 **Types:**
-- Structs: `PascalCase` (e.g., `SqliteGraph`, `GraphEntity`, `HnswIndex`)
-- Enums: `PascalCase` (e.g., `BackendKind`, `DistanceMetric`)
-- Traits: `PascalCase` (e.g., `GraphBackend`, `ProgressCallback`)
-- Type aliases: `PascalCase` (e.g., `NodeId`, `Label`)
+- Public structs: PascalCase (e.g., `SqliteGraph`, `GraphEntity`, `HnswIndex`)
+- Public functions: snake_case (e.g., `open_graph`, `fetch_outgoing`)
+- Private fields: snake_case
+- Type aliases: PascalCase (e.g., `NodeId`, `Label`)
 
-**Functions:**
-- Public API: `snake_case` (e.g., `insert_node`, `fetch_outgoing`, `pagerank`)
-- Private helpers: `snake_case` with leading underscore if unused
-- Methods: `snake_case` (e.g., `graph.neighbors()`, `cache.get()`)
+**Traits:**
+- Trait names: PascalCase (e.g., `GraphBackend`, `ProgressCallback`)
+- Trait methods: snake_case
 
 **Constants:**
-- SCREAMING_SNAKE_CASE for constants (e.g., `MAX_AVG_EDGE_SIZE`, `V2_MAGIC`)
+- Module constants: SCREAMING_SNAKE_CASE (e.g., `V2_MAGIC`, `MAX_AVG_EDGE_SIZE`)
+- Const generics: SCREAMING_SNAKE_CASE
 
 ## Where to Add New Code
 
+**New Feature:**
+- Primary code: `sqlitegraph/src/feature_name.rs` (single file) or `sqlitegraph/src/feature_name/` (multi-file module)
+- Tests: `sqlitegraph/src/feature_name/tests.rs` or inline `#[cfg(test)]` mod
+- Public API: Add `pub mod` declaration and re-export in `sqlitegraph/src/lib.rs`
+
 **New Graph Algorithm:**
-- Primary code: `src/algo.rs` (add public function at module level)
-- Tests: `tests/algo_tests.rs` (add test case)
-- Benchmarks: `benches/algo_benchmarks.rs` (add benchmark)
+- Implementation: `sqlitegraph/src/algo.rs` (add function to existing file)
+- Tests: `sqlitegraph/src/algo.rs` inline test module
+- Benchmarks: `sqlitegraph/benches/algorithm_name.rs`
 
-**New Backend Feature:**
-- SQLite: `src/backend/sqlite/helpers.rs` or new file in `src/backend/sqlite/`
-- Native V2: `src/backend/native/v2/` (create new submodule if needed)
-- Tests: `src/backend/native/v2/wal/tests.rs` or separate test file
-
-**New Pattern Matching Feature:**
-- Implementation: `src/pattern_engine/` (matcher, pattern, or query)
-- Cache optimization: `src/pattern_engine_cache/`
-- Tests: `src/pattern_engine/tests.rs`
+**New Backend:**
+- Implementation: `sqlitegraph/src/backend/backend_name/` directory
+- GraphBackend impl: `sqlitegraph/src/backend/backend_name/graph_backend.rs`
+- Types: `sqlitegraph/src/backend/backend_name/types.rs`
+- Registration: Add variant to `BackendKind` in `config/kinds.rs`
 
 **New HNSW Distance Metric:**
-- Implementation: `src/hnsw/distance_functions.rs`
-- Enum variant: `src/hnsw/distance_metric.rs`
-- Tests: Unit tests in `src/hnsw/distance_functions.rs`
+- Implementation: `sqlitegraph/src/hnsw/distance_metric.rs` (add to enum)
+- Tests: Inline test module in `hnsw/distance_metric.rs`
 
-**New Storage Format Version:**
-- Create: `src/backend/native/v3/` (new directory)
-- Modules: Follow v2 structure (edge_cluster, wal, string_table, etc.)
-- Update: `src/backend/native/mod.rs` to include v3
+**New Pattern Operation:**
+- Implementation: `sqlitegraph/src/pattern_engine/matcher.rs` or new file
+- Cache optimization: `sqlitegraph/src/pattern_engine_cache/`
 
 **Utilities:**
-- Shared helpers: `src/bench_utils.rs` (for benchmarks)
-- Common types: `src/api_ergonomics.rs` (public type aliases)
-- Error types: `src/errors.rs`
-
-**Configuration Options:**
-- Backend selection: `src/config/kinds.rs`
-- Native config: `src/config/native.rs`
-- SQLite config: `src/config/sqlite.rs`
-- Factory logic: `src/config/factory.rs`
+- Shared helpers: `sqlitegraph/src/utils.rs` (create if needed) or appropriate module
+- CLI utilities: `sqlitegraph-cli/src/`
 
 ## Special Directories
 
-**sqlitegraph/sqlitegraph/.cargo/:**
-- Purpose: Vendored cargo registry (for vendored dependencies)
-- Generated: Yes (by cargo vendor)
+**sqlitegraph/.cargo/:**
+- Purpose: Vendored cargo registry for offline builds
+- Generated: Yes (by cargo)
+- Committed: Yes (for reproducible builds)
+
+**sqlitegraph/target/:**
+- Purpose: Build artifacts (compiler output)
+- Generated: Yes
+- Committed: No
+
+**docs/:**
+- Purpose: Generated and hand-written documentation
+- Generated: Partially (cargo doc generates API docs)
+- Committed: Yes (for hand-written docs)
+
+**.planning/:**
+- Purpose: Development planning and codebase analysis
+- Generated: No
 - Committed: Yes
 
-**sqlitegraph/sqlitegraph/target/:**
-- Purpose: Cargo build output (not in project root, but in subdirectory)
-- Generated: Yes (by cargo build)
-- Committed: No (in .gitignore)
-
-**sqlitegraph/docs/:**
-- Purpose: mdBook documentation source
-- Generated: Partially (some auto-generated from docs)
-- Committed: Yes
-
-**sqlitegraph/scripts/:**
-- Purpose: Utility scripts for development, testing, deployment
+**scripts/:**
+- Purpose: Development and maintenance utilities
 - Generated: No
 - Committed: Yes
 

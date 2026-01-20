@@ -5,108 +5,93 @@
 ## Languages
 
 **Primary:**
-- Rust 2024 Edition - Core library and CLI (`sqlitegraph/`, `sqlitegraph-cli/`)
-- Rust 2021 Edition - CLI binary (for ecosystem compatibility)
+- Rust 2024 edition - Main library (`sqlitegraph/Cargo.toml` uses `edition = "2024"`)
+- Rust 2021 edition - CLI tool (`sqlitegraph-cli/Cargo.toml` uses `edition = "2021"`)
 
 **Secondary:**
-- SQL - SQLite queries and schema definitions
-- Markdown - Documentation (`docs/`, `*.md`)
+- Python - Used in benchmark scripts in `/scripts` (comparison scripts against NetworkX)
 
 ## Runtime
 
 **Environment:**
-- Rust 1.70.0+ (MSRV defined in `clippy.toml`)
-- Edition 2024 for library, Edition 2021 for CLI
+- Rust 1.70.0+ (Minimum Supported Rust Version per `sqlitegraph/clippy.toml`)
 
 **Package Manager:**
-- Cargo (workspace with resolver = "3")
-- Lockfile: `Cargo.lock` (present, committed)
-
-**Workspace Structure:**
-```
-sqlitegraph/          # Core library crate (lib)
-sqlitegraph-cli/      # CLI binary crate
-```
+- Cargo (workspace resolver v3)
+- Lockfile: Present (`Cargo.lock` at workspace root)
 
 ## Frameworks
 
 **Core:**
-- rusqlite 0.31 - SQLite database access with bundled libsqlite3
-- None - Pure Rust embedded database (no external framework)
+- rusqlite 0.31 - SQLite bindings with bundled libsqlite3
+- None - Pure Rust embedded database (no runtime required)
 
 **Testing:**
-- Criterion 0.5 - Benchmark framework with HTML reports
-- assert_cmd 2.1 - CLI command testing
-- tempfile 3.23 - Temporary file/directory for tests
+- criterion 0.5 - Benchmarking framework with HTML reports
+- assert_cmd 2.1 - CLI testing utilities
+- tempfile 3.23 - Temporary file/directory management
 
 **Build/Dev:**
-- clap 4.5 - CLI argument parsing (derive API)
-- rayon 1.10 - Parallel data processing
+- clap 4.5 - CLI argument parsing with derive macros
+- binrw 0.13 - Binary serialization for native backend
+- bincode 1.3 - Binary serialization for graph data
+- rayon 1.10 - Parallelism (optional via features)
 
 ## Key Dependencies
 
 **Critical:**
-- rusqlite 0.31 (bundled) - SQLite backend for ACID transactions
-- serde 1.0 + serde_json 1.0 - JSON serialization for metadata
-- binrw 0.13 - Binary serialization for Native V2 format
-- bytemuck 1.13 - Byte-level casting for memory-mapped I/O
-- memmap2 0.9 - Memory-mapped file access
+- rusqlite 0.31 (bundled) - Core SQLite backend integration
+- serde 1.0 + serde_json 1.0 - JSON serialization for entity/edge metadata
+- thiserror 1.0 - Error handling derivations
+- anyhow 1.0 - CLI error handling
 
 **Infrastructure:**
+- bytemuck 1.13 + bytemuck_derive - Zero-copy byte casting (performance)
+- memmap2 0.9 - Memory-mapped file I/O for native backend
 - ahash 0.8 - Fast non-cryptographic hashing
-- parking_lot 0.12 - High-performance mutexes
-- rand 0.8 - Random number generation
-- arc-swap 1.7 - Atomic pointer swapping
+- parking_lot 0.12 - High-performance mutex types
+- arc-swap 1.7 - Atomic arc swapping for concurrent access
+- rand 0.8 - Random number generation for graph algorithms
 - log 0.4 - Logging facade
-- thiserror 1.0 - Error derivation
 
-**Binary I/O:**
-- bincode 1.3 - Binary serialization
-- binrw 0.13 - Declarative binary read/write
+**Binary Format:**
+- binrw 0.13 - Declarative binary reader/writer for V2 backend structures
+- bincode 1.3 - Compact binary serialization
 
-**CLI:**
-- clap 4.5 (derive) - CLI parsing
-- anyhow 1.0 - Error handling in CLI
+**Performance/Parallelism:**
+- rayon 1.10 - Data parallelism (graph algorithms, WAL recovery)
 
 ## Configuration
 
 **Environment:**
-- Feature-based backend selection (`default`, `sqlite-backend`, `native-v2`)
-- Debug features: `debug`, `trace_v2_io`, `bench-ci`
-- No environment variables required for core operation
+- `GRAPH_BACKEND` - Runtime backend selection (SQLite|Native) via `backend_selector.rs`
+- `SQLITEGRAPH_BENCH_FILE` - Benchmark output file path
+- Debug flags: `EDGE_DEBUG`, `V2_CLUSTER_AUDIT`, `CLUSTER_VALIDATION_DEBUG`, `WRITEBUF_DEBUG`, `HEADER_VALIDATE_DEBUG`, `TRUNC_AUDIT`, `SLOT_CORRUPTION_DEBUG`, `TX_BEGIN_AUDIT`
 
 **Build:**
-- Workspace `Cargo.toml` with profile configurations
-- Release profile: `opt-level = 3`, `lto = "thin"`, `codegen-units = 1`
-- Bench profile: Same as release with `debug = true` for profiling
-- Test profile: `opt-level = 2` for faster test execution
+- Workspace `Cargo.toml` with shared release profiles
+- Feature flags: `sqlite-backend` (default), `native-v2`, `debug`, `trace_v2_io`, `bench-ci`
+- Clippy configuration: `sqlitegraph/clippy.toml`
 
-**Linting:**
-- Clippy configured in `sqlitegraph/clippy.toml`
-- MSRV: 1.70.0
-- Complexity thresholds adjusted for graph algorithms
+**Profile Configurations:**
+- Release: `opt-level = 3`, `codegen-units = 1`, `lto = "thin"`, `panic = "abort"`
+- Bench: Inherits release with `debug = true` for flamegraph profiling
+- Test: `opt-level = 2` for faster test execution
 
 ## Platform Requirements
 
 **Development:**
 - Rust 1.70.0+ toolchain
-- Cargo with workspace support
-- SQLite (bundled with rusqlite)
+- Cargo with workspace resolver v3
 
 **Production:**
-- Linux, macOS, Windows (cross-platform via Rust)
-- No external runtime dependencies for Native backend
-- libsqlite3 dynamically linked for SQLite backend (unless bundled)
+- Embedded deployment: No external dependencies for native backend
+- SQLite backend: Uses bundled libsqlite3 (no system SQLite required)
+- Platforms: Linux, macOS, Windows (cross-platform atomic operations)
 
-**Native Backend (V2):**
-- Pure Rust, no external dependencies
-- Custom binary format with clustered adjacency
-- WAL (Write-Ahead Log) for durability
-
-**SQLite Backend:**
-- Uses bundled libsqlite3 via rusqlite feature
-- Supports WAL mode for concurrent access
-- Standard SQLite file format
+**Feature-Specific:**
+- HNSW vector search: Optional, works with both backends
+- WAL mode: SQLite backend supports WAL; native backend has custom WAL implementation
 
 ---
 

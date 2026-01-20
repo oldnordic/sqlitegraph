@@ -5,375 +5,337 @@
 ## Naming Patterns
 
 **Files:**
-- `snake_case.rs` for all Rust source files
-- Module directories use `snake_case`
-- Test files use `<topic>_tests.rs` pattern (e.g., `cache_tests.rs`, `integration_tests.rs`)
+- `snake_case.rs` for all source files
+- `mod.rs` for module directories containing submodules
+- `tests.rs` for module-level test files within a module
+- `lib.rs` for library root
 
 **Functions:**
-- `snake_case` for all functions
-- Public API functions use descriptive names: `insert_node`, `fetch_outgoing`, `match_triples`
-- Private helper functions often prefixed or have contextual names
-- Builder-style methods use the verb form: `start_label()`, `end_property()`, `direction()`
+- `snake_case` for all functions and methods
+- Builder pattern methods: `snake_case` (e.g., `dimension()`, `m()`, `ef_construction()`)
+- Constructor: `new()` for standard, `from_xxx()` for conversions
 
 **Variables:**
-- `snake_case` for local variables
-- Short names for loop counters: `i`, `idx`, `id`
-- Descriptive names for graph elements: `start_id`, `end_id`, `edge_type`, `node_id`
+- `snake_case` for local variables and parameters
+- `SCREAMING_SNAKE_CASE` for constants (e.g., `V2_MAGIC`, `NODE_SLOT_SIZE`)
 
 **Types:**
 - `PascalCase` for structs, enums, and type aliases
-- `PascalCase` for trait names
-- Newtype wrappers use `PascalCase` with tuple contents: `NodeId(pub i64)`, `EdgeId(pub i64)`
-- Error types use descriptive `PascalCase` with `Error` suffix: `SqliteGraphError`, `NativeBackendError`
+- `PascalCase` for traits
+- Newtype wrappers follow `PascalCase` (e.g., `NodeId`, `EdgeId`, `Label`, `PropertyKey`)
 
-**Constants:**
-- `SCREAMING_SNAKE_CASE` for constants: `BASE_SCHEMA_VERSION`, `SCHEMA_VERSION`
-- Static values also use `SCREAMING_SNAKE_CASE`: `MIGRATION_STEPS`
+**Modules:**
+- `snake_case` for module directories and declarations
+- Submodules organized by feature (e.g., `backend/native/v2/wal/checkpoint`)
 
 ## Code Style
 
 **Formatting:**
-- No explicit rustfmt.toml found in project root (uses defaults)
-- 100-character line limit typically not enforced (some lines exceed 100 chars)
-- Standard Rust formatting with 4-space indentation
+- Tool: `rustfmt` (default configuration)
+- No custom `rustfmt.toml` at project root
+- Edition: Rust 2024
+- Max line length: Not enforced (no `max_width` override)
+- Edition-specific features: 2024 edition enabled in `sqlitegraph/Cargo.toml`
 
 **Linting:**
-- Clippy configured via `sqlitegraph/clippy.toml`
+- Tool: `clippy` with custom configuration at `sqlitegraph/clippy.toml`
 - MSRV: 1.70.0
-- Cognitive complexity threshold: 30
-- Type complexity threshold: 300
-- Too-many-arguments threshold: 12
-- Too-many-lines threshold: 150
-- Most lint suppressions handled via `#[allow]` attributes in code rather than global config
+- Key thresholds:
+  - `cognitive-complexity-threshold = 30`
+  - `type-complexity-threshold = 300`
+  - `too-many-arguments-threshold = 12`
+  - `too-many-lines-threshold = 150`
 
-**Derive Macros:**
-Common derive patterns observed:
-- `Debug` on almost all public types
-- `Clone` on data-carrying types and newtype wrappers
-- `Copy` on newtype wrappers with primitive inner types: `NodeId`, `EdgeId`
-- `PartialEq, Eq` on types that need comparison
-- `Hash` on types used as map keys
-- `Serialize, Deserialize` on types that need persistence (from `serde`)
-- `Default` on config/builder types
-- `thiserror::Error` on error types
-
-Example:
-```rust
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct NodeId(pub i64);
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Label(pub String);
-
-#[derive(Debug, Error)]
-pub enum SqliteGraphError {
-    #[error("connection error: {0}")]
-    ConnectionError(String),
-    // ...
-}
-```
+**Dead code policy:**
+- Dead code is intentionally NOT silenced globally
+- Cross-target dead_code false positives documented in `clippy.toml`
+- Use `#[allow(dead_code)]` sparingly and with justification
 
 ## Import Organization
 
 **Order:**
 1. Standard library imports (`std::*`)
-2. Third-party crate imports (external dependencies)
-3. Local crate imports (`crate::*`)
-4. Module imports (`super::*`, `self::*`)
+2. Third-party crate imports (alphabetical)
+3. Local crate imports (`crate::*` or `super::*`)
+4. Module declarations (`mod xxx;`)
 
 **Path Aliases:**
-- `use crate::errors::SqliteGraphError;` - error type pattern
-- `use crate::graph::SqliteGraph;` - main type imports
-- Re-exports at module level for public API
-- `pub use` directives in `lib.rs` to shape public API
+- No `path` aliases configured in `Cargo.toml`
+- Use `crate::` for absolute paths within the crate
+- Re-exports at module root for public API (`pub use xxx::Yyy;`)
 
-**Typical import pattern:**
+**Example from `sqlitegraph/src/lib.rs`:**
 ```rust
-use std::collections::VecDeque;
-use ahash::{AHashMap, AHashSet};
-use crate::{errors::SqliteGraphError, graph::SqliteGraph};
-use crate::progress::ProgressCallback;
-```
+// Third-party
+use std::fmt;
 
-**Common external dependencies:**
-- `serde::{Deserialize, Serialize}` - serialization
-- `serde_json::json` - JSON macro
-- `thiserror::Error` - error derive macro
-- `ahash::{AHashMap, AHashSet}` - fast hashmap (preferred over std)
-- `parking_lot::{Mutex, RwLock}` - lock primitives (preferred over std)
-- `rusqlite` - SQLite bindings
-- `log` - logging facade
+// Local crate
+use crate::cache::AdjacencyCache;
+use crate::errors::SqliteGraphError;
+
+// Re-exports for public API
+pub use api_ergonomics::{Label, NodeId, PropertyKey, PropertyValue};
+```
 
 ## Error Handling
 
 **Patterns:**
-- All fallible operations return `Result<T, SqliteGraphError>`
-- Error variants use descriptive names: `ConnectionError`, `SchemaError`, `QueryError`, `NotFound`, `InvalidInput`
-- Convenience constructors on error type: `SqliteGraphError::connection()`, `SqliteGraphError::invalid_input()`
-- `?` operator used extensively for error propagation
-- Context added via `.map_err(|e| SqliteGraphError::schema(e.to_string()))` pattern
-- No `unwrap()` in production code paths (per CLAUDE.md rules)
-- `expect()` used only in test code with descriptive messages
+- Use `thiserror` for error enums with `#[derive(Debug, thiserror::Error)]`
+- Error variants use descriptive names with context
+- Conversion errors via `#[from]` attribute
+- Contextual errors with manual formatting using `#[error("...")]`
 
-**Error type pattern:**
+**Error type structure from `sqlitegraph/src/errors.rs`:**
 ```rust
-// errors.rs
+use thiserror::Error;
+
 #[derive(Debug, Error)]
 pub enum SqliteGraphError {
     #[error("connection error: {0}")]
     ConnectionError(String),
     #[error("schema error: {0}")]
     SchemaError(String),
-    #[error("query error: {0}")]
-    QueryError(String),
     #[error("entity not found: {0}")]
     NotFound(String),
-    #[error("invalid input: {0}")]
-    InvalidInput(String),
-    #[error("fault injected: {0}")]
-    FaultInjected(String),
-    #[error("transaction error: {0}")]
-    TransactionError(String),
-    #[error("validation error: {0}")]
-    ValidationError(String),
-    #[error("native backend error: {0}")]
-    NativeError(#[from] crate::backend::native::types::NativeBackendError),
-}
-
-impl SqliteGraphError {
-    pub fn connection<T: Into<String>>(msg: T) -> Self {
-        SqliteGraphError::ConnectionError(msg.into())
-    }
-    // ... other convenience constructors
+    // ... more variants
 }
 ```
 
-**Validation pattern:**
+**Native backend errors from `backend/native/types/errors.rs`:**
 ```rust
-pub fn validate_entity(entity: &GraphEntity) -> Result<(), SqliteGraphError> {
-    if entity.kind.trim().is_empty() {
-        return Err(SqliteGraphError::invalid_input("entity kind must be set"));
-    }
-    if entity.name.trim().is_empty() {
-        return Err(SqliteGraphError::invalid_input("entity name must be set"));
-    }
-    Ok(())
+#[derive(Debug, thiserror::Error)]
+pub enum NativeBackendError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("Invalid magic number: expected {expected:08x}, found {found:08x}")]
+    InvalidMagic { expected: u64, found: u64 },
+
+    #[error("Node {node_id} not found during {operation}")]
+    NodeNotFound { node_id: NativeNodeId, operation: String },
+    // ... more variants
 }
 ```
+
+**Constructor helpers:**
+- Each error variant has a constructor helper method
+- Pattern: `pub fn variant_name<T: Into<String>>(msg: T) -> Self`
+- Example: `SqliteGraphError::connection("database busy")`
+
+**Return type pattern:**
+- Public API: `Result<T, SqliteGraphError>`
+- Backend-specific: `Result<T, NativeBackendError>` aliased as `NativeResult<T>`
 
 ## Logging
 
-**Framework:** `log` crate facade (not `println!` or `eprintln!` in production code)
+**Framework:**
+- `log` crate for facaded logging (version 0.4)
+- `debug` feature flag for conditional debug logging
+- No direct logging in release builds (zero overhead)
 
 **Patterns:**
-- No direct logging calls observed in main source (uses `log` facade)
-- Debug feature available: `debug = []` in Cargo.toml features
-- Debug and trace features for V2 I/O: `trace_v2_io = []`
-- Logging disabled in release for zero overhead
+- Use `log::{debug, info, warn, error, trace}` macros
+- Debug-only logging with `#[cfg(feature = "debug")]`
+- Error messages go to stderr via `eprintln!` for critical failures
 
-**Configuration:**
-- `debug` feature enables debug/info logging
-- `trace_v2_io` feature for V2 I/O operation debugging
-- Release builds optimize for zero overhead
+**Example from `sqlitegraph/src/hnsw/index.rs`:**
+```rust
+// Debug-only logging
+#[cfg(feature = "debug")]
+{
+    log::debug!("Loading HNSW index: {}", name);
+}
+```
 
 ## Comments
 
 **When to Comment:**
-- Complex algorithm explanations (BFS, graph algorithms)
-- Performance characteristics documentation
-- Thread safety guarantees
-- Memory ordering explanations (for concurrent code)
-- Invariant assertions in debug mode
+- Module-level: Always provide `//!` documentation
+- Public API: Always document with `///` doc comments
+- Complex algorithms: Explain approach with inline comments
+- Invariants: Document critical guarantees
+- Performance notes: Document O(n) complexity
 
-**JSDoc/TSDoc equivalent:**
-- Rust doc comments (`///`) used extensively
-- Module-level docs with `//!` at file top
-- Function documentation includes:
-  - Description
-  - `# Arguments` section
-  - `# Returns` section
-  - `# Complexity` (for algorithms)
-  - `# Example` (for public APIs)
-  - `# Panics` (when applicable)
+**JSDoc/TSDoc equivalent (rustdoc):**
+- Use `///` for item documentation
+- Use `//!` for module-level documentation
+- Include examples in doc comments with `rust,ignore` flag
+- Document panics, errors, and safety in `# Panics`, `# Errors`, `# Safety` sections
 
-**Documentation pattern:**
+**Example from `sqlitegraph/src/lib.rs`:**
 ```rust
-/// Finds all connected components in the graph using BFS.
-///
-/// A connected component is a maximal subgraph where any two nodes are connected
-/// by a path. This function uses bidirectional BFS (both incoming and outgoing edges).
-///
-/// # Arguments
-/// * `graph` - The graph to analyze
-///
-/// # Returns
-/// Vector of components, where each component is a sorted vector of node IDs.
-/// Components are sorted by their smallest node ID.
-///
-/// # Complexity
-/// Time: O(|V| + |E|) - visits each node and edge once
-/// Space: O(|V|) for visited set and BFS queue
-///
-/// # Example
-/// ```
-/// use sqlitegraph::{SqliteGraph, algo::connected_components};
-/// let graph = SqliteGraph::open_in_memory()?;
-/// let components = connected_components(&graph)?;
-/// # Ok::<(), sqlitegraph::SqliteGraphError>(())
-/// ```
+//! SQLite-based graph database with unified backend support.
+//!
+//! This crate provides a lightweight, deterministic graph database...
+//!
+//! # Quick Start
+//!
+//! ```rust,ignore
+//! use sqlitegraph::{open_graph, GraphConfig, BackendKind};
+//!
+//! let graph = open_graph("my_graph.db", &GraphConfig::sqlite())?;
+//! ```
 ```
 
-**Module documentation:**
+**Function documentation:**
 ```rust
-//! Graph algorithms for centrality, community detection, and structure analysis.
-//!
-//! This module provides a collection of graph algorithms for analyzing graph
-//! topology, identifying important nodes, and discovering community structure.
+/// Load HNSW indexes from database
+///
+/// This is called during SqliteGraph construction to restore any
+/// previously created HNSW indexes with full vector data.
+///
+/// # Errors
+///
+/// Returns `SqliteGraphError::InvalidInput` if index loading fails.
+fn load_hnsw_indexes(conn: &Connection) -> Result<HashMap<String, HnswIndex>, SqliteGraphError>
 ```
 
 ## Function Design
 
-**Size:** No strict limit observed, but:
-- Most functions under 50 lines
-- Algorithm implementations can be longer (up to 150+ lines)
-- Clippy threshold: 150 lines per function
+**Size:**
+- Target: Keep functions under 50 lines
+- Acceptable: Up to 150 lines (per clippy config)
+- Beyond 150: Consider splitting into helper functions
 
 **Parameters:**
-- Prefer specific types over generics when possible
-- Borrowed references for read-only: `&SqliteGraph`
-- Slice references for collections: `&[ChainStep]`
-- Configuration structs for many parameters
+- Prefer 3-5 parameters
+- Maximum: 12 parameters (per clippy config)
+- Beyond 5: Consider builder pattern or struct parameter
 
 **Return Values:**
-- `Result<T, SqliteGraphError>` for fallible operations
-- `Option<T>` for optional values
-- `Vec<T>` for collections
-- Tuple returns for multiple related values: `(usize, usize)` for `(incoming, outgoing)` degree
+- Use `Result<T, Error>` for fallible operations
+- Use `Option<T>` for optional returns (not errors)
+- Public API never panics (documented invariants only)
+- Use `unwrap()` sparingly, only in tests or with justification
+
+**Example parameter pattern (builder for config):**
+```rust
+// From hnsw/config.rs
+pub fn dimension(mut self, dimension: usize) -> Self {
+    self.dimension = dimension;
+    self
+}
+
+pub fn m(mut self, m: usize) -> Self {
+    self.m = m;
+    self
+}
+```
 
 ## Module Design
 
 **Exports:**
-- Public items re-exported in module `mod.rs` files
-- `pub use` extensively for shaping public API
-- Private items in submodules with selective re-export
+- Public API re-exported at `lib.rs` level
+- Internal modules marked `pub(crate)` or `pub` for tests
+- Module-level `tests.rs` files for co-located tests
+- Pattern: `pub use self::inner::PublicType;` for convenience
 
 **Barrel Files:**
-- `lib.rs` acts as main barrel file
-- Module `mod.rs` files re-export sub-items
-- Pattern: `pub use self::core::{SqliteGraph, is_in_memory_connection};`
-
-**Module organization:**
+- `mod.rs` re-exports submodule contents
+- Example from `backend/native/v2/mod.rs`:
 ```rust
-// Public modules
-pub mod backend;
-pub mod config;
-pub mod graph;
+pub mod edge_cluster;
+pub mod free_space;
+pub mod wal;
 
-// Re-exports for public API
-pub use api_ergonomics::{Label, NodeId, PropertyKey, PropertyValue};
-pub use graph_opt::{GraphEdgeCreate, GraphEntityCreate, ...};
-
-// Internal modules (private)
-mod api_ergonomics;
-mod client;
-mod reasoning;
+// Re-export V2 types
+pub use edge_cluster::{CompactEdgeRecord, Direction, EdgeCluster};
+pub use wal::{V2WALManager, V2WALConfig, WALManagerMetrics};
 ```
 
-## Async/Promise Equivalent Patterns
+**Module visibility for tests:**
+- Test utilities: `pub mod xxx; // Public for tests`
+- Internal modules with tests: Keep module-private, use `#[cfg(test)]`
+- Benchmark utilities: `pub mod bench_utils; // Public for tests`
 
-**No async/await:**
-- This is a synchronous, blocking codebase
-- Uses `Result<T, E>` for error handling (not Promise/Future)
-- Thread-safe types use interior mutability: `ArcSwap`, `parking_lot::RwLock`
+**Feature-gated modules:**
+```rust
+#[cfg(feature = "native-v2")]
+pub mod v2;
 
-**Thread Safety:**
-- `SqliteGraph` is NOT `Sync` (uses `RefCell`)
-- `GraphSnapshot` IS `Sync` (uses Arc)
-- `Arc<SnapshotState>` for shared read-only data
+// Or at file level:
+#![cfg(feature = "v2_experimental")]
+```
 
-## File Size Guidelines
+## Constants and Magic Numbers
 
-**Per CLAUDE.md:**
-- Max 300 LOC per file (600 with justification)
-- Large files observed: `algo.rs` (1398 lines), `lib.rs` (340 lines)
-- Large algorithm modules justified by complexity
+**Named constants:**
+- File format constants: `pub const V2_MAGIC: [u8; 8]`
+- Size limits: `const NODE_SLOT_SIZE: u64 = 4096`
+- Performance targets: `pub const MAX_AVG_EDGE_SIZE: usize = 100`
+
+**Organization:**
+- Module-level constants in dedicated `constants.rs` or at module top
+- Test constants in test module or test function
+- Document units and purpose in comments
+
+**Example from tests:**
+```rust
+const NODE_SLOT_SIZE: u64 = 4096; // From code: hardcoded 4096 bytes per node slot
+const EDGE_SLOT_SIZE: u64 = 256;  // From code: hardcoded 256 bytes per edge slot
+```
 
 ## Newtype Wrapper Pattern
 
-**For type safety:**
+**Purpose:**
+- Type safety for IDs (prevent mixing `i64` values)
+- Display implementation for user-friendly output
+- Conversion methods for underlying access
+
+**Pattern from `api_ergonomics.rs`:**
 ```rust
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct NodeId(pub i64);
-
-impl NodeId {
-    pub fn as_i64(self) -> i64 {
-        self.0
-    }
-}
-
-impl From<i64> for NodeId {
-    fn value: i64) -> Self {
-        NodeId(value)
-    }
-}
 
 impl fmt::Display for NodeId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
-```
 
-## Trait Implementation Patterns
-
-** blanket implementations for references:**
-```rust
-impl<B> GraphBackend for &B
-where
-    B: GraphBackend + ?Sized,
-{
-    fn insert_node(&self, node: NodeSpec) -> Result<i64, SqliteGraphError> {
-        (*self).insert_node(node)
-    }
-    // ...
-}
-```
-
-**Default implementations:**
-```rust
-impl Default for SnapshotManager {
-    fn default() -> Self {
-        Self::new()
+impl From<i64> for NodeId {
+    fn from(value: i64) -> Self {
+        NodeId(value)
     }
 }
 ```
 
-## Attribute Usage
-
-**Conditional compilation:**
+**String wrappers:**
 ```rust
-#[cfg(feature = "native-v2")]
-pub use backend::native::v2::wal::{V2WALConfig, V2WALManager, ...};
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Label(pub String);
 
-#[cfg(test)]
-mod tests { ... }
-
-#[cfg(debug_assertions)]
-{
-    // Debug-only validation
-}
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PropertyKey(pub String);
 ```
 
-**Allow attributes:**
+## Generic Bounds
+
+**Naming:**
+- Type parameters: `T`, `U`, `E` for errors
+- Iterator types: `I`, `IT`
+- Use descriptive names when generic serves specific purpose
+
+**Pattern from error types:**
 ```rust
-#[allow(unused_imports)] // Backend trait API types for future use
-pub use sqlite::types::{BackendDirection, EdgeSpec, NeighborQuery, NodeSpec};
+#[error("Invalid parameter: {context}")]
+InvalidParameter {
+    context: String,
+    source: Option<Box<dyn std::error::Error + Send + Sync>>,
+},
 ```
 
-**Test attributes:**
+## Unsafe Code
+
+**Policy:**
+- Use only when necessary (FFI, raw pointer manipulation)
+- Document safety invariants in `# Safety` sections
+- Prefer `bytemuck` for safe byte casting
+
+**Example pattern:**
 ```rust
-#[test]
-fn test_function_name() { ... }
+// From hnsw/index.rs
+let vector_bytes = bytemuck::cast_slice::<f32, u8>(&vector).to_vec();
 ```
 
 ---

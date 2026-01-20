@@ -4,146 +4,129 @@
 
 ## APIs & External Services
 
-**None** - This is an embedded, self-contained database library.
+**None detected**
 
-The project provides database functionality rather than consuming external APIs:
-- No REST API clients
-- No cloud service integrations
-- No third-party API dependencies
+This is a self-contained embedded database with no external API integrations. The project operates entirely as a local library and CLI tool with no network dependencies.
 
 ## Data Storage
 
 **Databases:**
-- **SQLite** (via rusqlite 0.31)
-  - Connection: File path or `:memory:`
-  - Client: rusqlite with bundled libsqlite3
-  - Usage: Default backend for ACID transactions
+- SQLite (bundled rusqlite 0.31)
+  - Connection: Direct file path or in-memory
+  - Client: rusqlite with bundled libsqlite3 (no system dependency)
+  - Schema location: `sqlitegraph/src/schema.rs`
 
-**Native Storage:**
-- **Custom Binary Format** (Native V2 backend)
-  - Files: `*.db`, `*.db-wal`, `*.db-shm`
-  - Format: Clustered adjacency with WAL
-  - Client: Pure Rust implementation (`src/backend/native/`)
+- Custom Native V2 Format
+  - Binary file format defined in `sqlitegraph/src/backend/native/`
+  - Memory-mapped I/O via memmap2
+  - WAL (Write-Ahead Log) for transaction logging
 
 **File Storage:**
 - Local filesystem only
-- Memory-mapped I/O via memmap2
-- Atomic file operations for crash safety
+- Database files: `.db` extension for SQLite backend, custom binary for native
+- WAL files: `-wal` and `-shm` suffixes (SQLite), separate WAL file for native backend
 
 **Caching:**
-- LRU-K adjacency cache (`src/cache.rs`)
-- Query result cache (`src/query_cache.rs`)
-- In-memory only (no external cache)
+- LRU-K adjacency cache: `sqlitegraph/src/cache.rs`
+- Pattern engine cache: `sqlitegraph/src/pattern_engine_cache/`
+- No external caching services
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- None (embedded database with no network access)
+- None - Local embedded database with no authentication layer
 
 **Implementation:**
-- No authentication layer
-- No user management
-- Direct file-based access control via OS permissions
+- Direct file access with OS-level permissions
+- No user management, sessions, or authentication
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None (no external error tracking service)
+- None - Uses thiserror for structured error types
 
 **Logs:**
-- log crate facade (0.4) - structured logging interface
-- Console output via debug commands
-- No log aggregation service
+- `log` 0.4 facade with `debug` feature flag
+- Debug tracing via `trace_v2_io` feature for development
+- No external logging service integration
 
-**Introspection:**
-- `GraphIntrospection` trait for stats (`src/introspection.rs`)
-- Cache statistics, edge counts, file sizes
-- Debug CLI commands: `debug-stats`, `debug-dump`, `debug-trace`
-
-**Progress Tracking:**
-- `ProgressCallback` trait (`src/progress.rs`)
-- `ConsoleProgress` for terminal progress bars
-- Algorithm progress reporting (PageRank, Louvain, etc.)
+**Metrics:**
+- Internal metrics: `sqlitegraph/src/introspection.rs` for graph statistics
+- WAL metrics: `sqlitegraph/src/backend/native/v2/wal/metrics/`
+- No external metrics export
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- crates.io: https://crates.io/crates/sqlitegraph
-- GitHub: https://github.com/oldnordic/sqlitegraph
-- Docs.rs: https://docs.rs/sqlitegraph
+- GitHub repository: https://github.com/oldnordic/sqlitegraph
+- crates.io: Published as `sqlitegraph`
 
 **CI Pipeline:**
-- No detected CI configuration (.github, .gitlab-ci.yml, etc.)
-- Manual testing via `cargo test --workspace`
+- None detected (no `.github/workflows/` directory)
+- Manual testing via cargo test/bench
 
 **Deployment:**
-- Static binary compilation via `cargo build --release`
-- No containerization detected
-- No cloud deployment configuration
+- Library: Published to crates.io
+- CLI: Compiled binary distribution
+- No hosted services
 
 ## Environment Configuration
 
 **Required env vars:**
-- None for core operation
+- None required for basic operation
 
 **Optional env vars:**
-- None (configuration via `GraphConfig` struct)
+- `GRAPH_BACKEND` - Backend selection (SQLite|Native)
+- `SQLITEGRAPH_BENCH_FILE` - Benchmark output path
+- Debug flags (development only):
+  - `EDGE_DEBUG` - Edge cluster debugging
+  - `V2_CLUSTER_AUDIT` - V2 serialization auditing
+  - `CLUSTER_VALIDATION_DEBUG` - Node record validation
+  - `WRITEBUF_DEBUG` - Write buffer debugging
+  - `HEADER_VALIDATE_DEBUG` - Header validation debugging
+  - `TRUNC_AUDIT` - File truncation auditing
+  - `SLOT_CORRUPTION_DEBUG` - Slot corruption debugging
+  - `TX_BEGIN_AUDIT` - Transaction begin auditing
 
 **Secrets location:**
-- Not applicable (no authentication/external services)
+- Not applicable (no external services requiring secrets)
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- None (no HTTP server)
+- None
 
 **Outgoing:**
-- None (no HTTP client)
+- None
 
-**Internal Callbacks:**
-- `ProgressCallback` - Long-running algorithm progress
-- `WALManagerMetrics` - WAL operation metrics
-- Cache eviction callbacks
+## Data Import/Export
 
-## Algorithm Libraries
+**Import Formats:**
+- JSON - Graph entity/edge data via `load_graph_from_path()`
+- Native binary format - Snapshot restoration
 
-**Graph Algorithms (Internal):**
-- PageRank - `src/algo.rs`
-- Betweenness Centrality - `src/algo.rs`
-- Label Propagation - `src/algo.rs`
-- Louvain Method - `src/algo.rs`
-- BFS, k-hop, shortest path - `src/bfs.rs`, `src/multi_hop.rs`
+**Export Formats:**
+- JSON - Graph dumps via `dump_graph_to_path()`
+- Native binary format - Snapshots via snapshot API
 
-**Vector Search (Internal):**
-- HNSW (Hierarchical Navigable Small World) - `src/hnsw/`
-- Distance metrics: Cosine, Euclidean, Dot Product, Manhattan
-- Pluggable vector storage (in-memory or SQLite)
+**CLI Commands:**
+- `dump-graph` - Export to JSON
+- `load-graph` - Import from JSON
+- `snapshot-create` - Create binary snapshot
+- `snapshot-load` - Restore from snapshot
 
-## Testing Infrastructure
+## Benchmarking Integration
 
-**Test Framework:**
-- Rust built-in (`cargo test`)
-- Criterion for benchmarks (`cargo bench`)
+**Python Scripts:**
+- `scripts/networkx_benchmark.py` - Comparison with NetworkX
+- `scripts/quick_comparison_demo.py` - Quick benchmark demos
+- `scripts/run_comparative_benchmarks.sh` - Shell runner
+- `scripts/run_simple_comparative_benchmarks.py` - Simple comparison
+- `scripts/sqlite_fts5_benchmark.py` - SQLite FTS5 comparison
 
-**Test Utilities:**
-- tempfile - Temporary test databases
-- assert_cmd - CLI testing
-- rand - Test data generation
-
-**Coverage:**
-- No tarpaulin or coverage tool configured
-- Manual test coverage tracking via test modules
-
-## Developer Tools
-
-**Binary Format Tools:**
-- binrw derive macros for serialization
-- bytemuck for unsafe byte casting
-
-**Debugging:**
-- CLI debug commands
-- Introspection API
-- Pattern engine tracing
+**Output Formats:**
+- JSON results stored in project root
+- Criterion HTML reports in `target/criterion/`
 
 ---
 

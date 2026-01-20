@@ -4,307 +4,215 @@
 
 ## Tech Debt
 
-### Incomplete HNSW Multi-Layer Implementation
+**Incomplete HNSW Multi-Layer Implementation:**
+- Issue: HNSW index only uses base layer (layer 0), multi-layer graph functionality is stubbed
+- Files: `sqlitegraph/src/hnsw/index.rs:921-922`
+- Impact: HNSW performance is degraded - missing O(log N) search complexity benefit from hierarchical layers
+- Fix approach: Implement `determine_insertion_level()` with proper exponential distribution based on `ml` parameter and layer count
 
-**HNSW index is single-layer only**, missing the core HNSW feature.
+**Unimplemented Checkpoint Strategies:**
+- Issue: Three checkpoint strategies return hardcoded `false` instead of actual condition evaluation
+- Files: `sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:676,679,682`
+- Impact: Checkpointing only works with time-based strategy; transaction-count and size-based triggers are non-functional
+- Fix approach: Implement transaction counter in WAL manager, track WAL file size, wire up to `should_checkpoint()`
 
-- **Issue:** `determine_insertion_level()` always returns 0, disabling multi-layer graph structure
-- **Files:** `sqlitegraph/src/hnsw/index.rs:919-923`
-- **Impact:** HNSW performance degrades to O(n) linear search instead of O(log n) with proper layers; defeats the purpose of using HNSW
-- **Fix approach:** Implement proper exponential distribution for layer selection: `-ln(uniform(0,1)) * ml` where `ml` is `1/ln(m)`
+**Placeholder Node Deletion in WAL Recovery:**
+- Issue: Node deletion replay operation is stubbed with warning log
+- Files: `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/operations_with_problematic_tests.rs:455-457`
+- Impact: WAL recovery cannot restore node deletions, potentially causing database inconsistency after crash
+- Fix approach: Implement rollback data capture during node deletion, proper slot reclamation
 
-### Checkpoint Strategies Not Implemented
+**Disabled Cluster Overlap Validation:**
+- Issue: Cluster overlap validation is commented out due to "timing issues"
+- Files: `sqlitegraph/src/backend/native/v2/node_record_v2/validation.rs:79-119`
+- Impact: No runtime detection of cluster allocation corruption in node records
+- Fix approach: Implement validation that accounts for allocation sequencing or add validation at allocation completion
 
-**Three checkpoint strategies return hardcoded `false`**, making them non-functional.
+**Checkpoint State Invariant Validation Mismatch:**
+- Issue: Validation code written for different struct than actual `CheckpointState` enum
+- Files: `sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:236-275`
+- Impact: 40 lines of commented validation code provide no invariant checking
+- Fix approach: Update validation to match `CheckpointState` enum or add proper fields to enum
 
-- **Issue:** `TransactionCount`, `SizeThreshold`, and `Adaptive` checkpoint strategies always return `false`
-- **Files:** `sqlitegraph/src/backend/native/v2/wal/checkpoint/core.rs:676-683`
-- **Impact:** Checkpointing only works with time-based strategy; other strategies do nothing
-- **Fix approach:** Implement transaction counting, WAL size tracking, and adaptive decision logic
-
-### Node Deletion Incomplete
-
-**Node deletion doesn't clean up edges or reclaim space.**
-
-- **Issue:** `delete_node()` only removes from index, leaving orphaned edges and wasted space
-- **Files:** `sqlitegraph/src/backend/native/node_store.rs:393-399`, `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/operations_with_problematic_tests.rs:455-458`
-- **Impact:** Database grows unbounded with orphaned edges; space never reclaimed
-- **Fix approach:** Implement edge cascade deletion and free space management integration
-
-### WAL Recovery Scanning Stub
-
-**WAL recovery scanner returns empty results.**
-
-- **Issue:** `scan_wal_for_transactions()` creates placeholder result instead of actual scanning
-- **Files:** `sqlitegraph/src/backend/native/v2/wal/recovery/core.rs:445-465`
-- **Impact:** WAL recovery after crash doesn't restore transactions; data loss possible
-- **Fix approach:** Implement async WAL scanning with transaction reassembly
-
-### Checkpoint Validation Disabled
-
-**Checkpoint state validation is commented out entirely.**
-
-- **Issue:** Validation code exists but is completely disabled due to struct mismatch
-- **Files:** `sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:236-259`
-- **Impact:** No integrity checks during checkpoint; silent corruption possible
-- **Fix approach:** Update validation to match actual `CheckpointState` enum structure
-
-### Schema Version Field Size Inconsistent
-
-**Schema version read as 8 bytes but should be 4 bytes.**
-
-- **Issue:** `get_slice_safe(bytes, offset, 8)` used for schema_version
-- **Files:** `sqlitegraph/src/backend/native/graph_file/encoding.rs:134`
-- **Impact:** Potential misalignment in binary format; compatibility issues
-- **Fix approach:** Change to 4 bytes and update all serialization/deserialization
+**Schema Version Field Size Inconsistency:**
+- Issue: Schema version uses 8 bytes but comment suggests it should be 4 bytes
+- Files: `sqlitegraph/src/backend/native/graph_file/encoding.rs:134`
+- Impact: Wasted disk space (4 bytes per file), potential compatibility issues
+- Fix approach: Migrate to 4-byte schema version field with format version bump
 
 ## Known Bugs
 
-### Neo4j Backend Unimplemented
-
-**Neo4j backend selection causes panic.**
-
-- **Symptoms:** `panic!("Neo4j backend not implemented")`
-- **Files:** `sqlitegraph/src/backend_selector.rs:36`
-- **Trigger:** Selecting `BackendKind::Neo4j`
-- **Workaround:** Don't use Neo4j backend; only SQLite and Native V2 are supported
-
-### Default Checkpoint Strategy Panics
-
-**Adaptive checkpoint strategy panics when accessed.**
-
-- **Symptoms:** `panic!("Default strategy should be Adaptive")`
-- **Files:** `sqlitegraph/src/backend/native/v2/wal/checkpoint/strategies.rs:533`
-- **Trigger:** Using default checkpoint strategy without explicit configuration
-- **Workaround:** Always explicitly configure checkpoint strategy
+**Tests Written for Unimplemented Features (TDD Debt):**
+- Symptoms: Multiple tests marked with "TODO: This test will fail until real implementation is complete"
+- Files: `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/operations_with_problematic_tests.rs:838,876,904,942,976,998,1022,1064`
+- Trigger: Running WAL recovery tests
+- Workaround: None - tests will fail
+- Note: These represent intentional TDD "failing tests" debt
 
 ## Security Considerations
 
-### Unsafe Lifetime Extension Pattern
+**Unsafe Lifetime Transmutation:**
+- Risk: `std::mem::transmute` used to extend `GraphFile` lifetime to `'static` in multiple locations
+- Files:
+  - `sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:449-450`
+  - `sqlitegraph/src/backend/native/v2/wal/checkpoint/record/integrator.rs:40`
+  - `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/rollback.rs:142,179,224,524,629,716,890`
+- Current mitigation: Comments claim this is "production pattern" when GraphFile is owned by integrator
+- Recommendations:
+  - Audit all transmute sites for actual lifetime guarantees
+  - Consider replacing with `Arc<RwLock<GraphFile>>` pattern without lifetime transmutation
+  - Add miri tests to validate safety invariants
 
-**Transmute used to extend `GraphFile` lifetime to `'static` throughout WAL code.**
+**Deadlock Detection Not Fully Implemented:**
+- Risk: Deadlock detector has placeholder parameters
+- Files: `sqlitegraph/src/backend/native/v2/wal/transaction_coordinator.rs:274,367`
+- Current mitigation: Only transaction-level deadlock detection; resource-specific detection stubbed
+- Recommendations: Implement resource-level deadlock detection or document why it's not needed
 
-- **Risk:** Undefined behavior if `GraphFile` is moved or dropped while references exist
-- **Files:**
-  - `sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs:447-459`
-  - `sqlitegraph/src/backend/native/v2/wal/checkpoint/record/integrator.rs:38-50`
-  - `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/rollback.rs:143,180,225,525,630,717,891`
-  - `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/operations/edge_ops.rs:169,290,598`
-  - `sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs:142-154`
-- **Current mitigation:** Comments claim this is a "production pattern" when GraphFile is owned by integrator
-- **Recommendations:** Refactor to use proper ownership with `Arc<GraphFile>` or arena allocation
-
-### Unaligned Pointer Reads
-
-**Direct unaligned reads from byte slices in WAL code.**
-
-- **Risk:** Undefined behavior on architectures that don't support unaligned access (some ARM, older CPUs)
-- **Files:** `sqlitegraph/src/backend/native/v2/wal/reader.rs:207`, `sqlitegraph/src/backend/native/v2/wal/writer.rs:167`
-- **Current mitigation:** x86_64 dominates target platforms; unaligned access is generally safe
-- **Recommendations:** Use `bytemuck::read_unaligned` consistently or verify alignment
-
-### Memory-Mapped File Without Synchronization
-
-**MMAP operations use interior mutability without explicit memory barriers.**
-
-- **Risk:** Concurrent writes may not be visible across threads due to CPU cache coherency issues
-- **Files:** `sqlitegraph/src/backend/native/graph_file/memory_mapping.rs:30,33,99,248`
-- **Current mitigation:** Single-threaded access pattern documented
-- **Recommendations:** Add explicit memory ordering or use atomic operations for shared mutable state
+**No Input Sanitization on External Data:**
+- Risk: User-provided JSON data stored without validation
+- Files: Throughout graph entity/edge operations
+- Current mitigation: Relies on serde_json for deserialization safety
+- Recommendations: Add size limits, depth limits for JSON payloads
 
 ## Performance Bottlenecks
 
-### Excessive Cloning in HNSW Storage
+**Large File Exceeding Module Complexity Guidelines:**
+- Problem: Multiple files exceed 600 LOC guideline, some approaching 1600 LOC
+- Files:
+  - `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/rollback.rs` (1654 LOC)
+  - `sqlitegraph/src/hnsw/index.rs` (1605 LOC)
+  - `sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs` (1594 LOC)
+  - `sqlitegraph/src/algo.rs` (1398 LOC)
+  - `sqlitegraph/src/backend/native/v2/wal/recovery/validator.rs` (1300 LOC)
+- Cause: WAL recovery and HNSW implementation complexity
+- Improvement path: Split into smaller submodules by responsibility
 
-**Vector data cloned on every read operation.**
+**Clone Operations:**
+- Problem: 263 clone() calls detected in codebase
+- Files: Throughout `sqlitegraph/src/`
+- Cause: Arc/RwLock patterns requiring clone for shared access
+- Improvement path: Audit clones for necessity; use references where possible
 
-- **Problem:** `get_vector()` clones entire vector for each access; `get_vector_with_metadata()` double-clones
-- **Files:** `sqlitegraph/src/hnsw/storage.rs:768-775`
-- **Cause:** Returning owned `Vec<f32>` instead of references or `Cow`
-- **Improvement path:** Return `&[f32]` slices or use `Arc<Vec<f32>>` for shared storage
-
-### Inefficient Candidate Sorting in HNSW Search
-
-**Repeated sorting of candidate list during graph search.**
-
-- **Problem:** `candidates.sort_by()` called on each iteration of search loop
-- **Files:** `sqlitegraph/src/hnsw/neighborhood.rs:309-314`
-- **Cause:** Linear search through candidates instead of using priority queue
-- **Improvement path:** Replace `Vec` with `BinaryHeap` for O(log n) extraction instead of O(n log n) sorting
-
-### Path Cloning in Cycle Detection
-
-**Entire paths cloned on each cycle discovery.**
-
-- **Problem:** `let mut cycle = path.clone()` and `let mut new_path = path.clone()` in tight loops
-- **Files:** `sqlitegraph/src/algo.rs:248,260`
-- **Cause:** Ownership semantics force copying
-- **Improvement path:** Use `VecDeque` or indices to avoid full path duplication
+**No Connection Pooling:**
+- Problem: Each graph operation may open/close connections
+- Files: `sqlitegraph/src/backend/sqlite/`
+- Cause: SQLite backend uses rusqlite connection per operation
+- Improvement path: Implement connection pooling for concurrent operations
 
 ## Fragile Areas
 
-### WAL Recovery Rollback Operations
+**WAL Recovery Rollback System:**
+- Files: `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/rollback.rs` (1654 LOC)
+- Why fragile: Complex rollback operation handling with many edge cases; uses unsafe lifetime extension
+- Safe modification: Add comprehensive unit tests for each rollback operation type before changes
+- Test coverage: Has tests but file size suggests high complexity
 
-**Highly complex rollback code with many placeholders.**
+**HNSW Index Core:**
+- Files: `sqlitegraph/src/hnsw/index.rs` (1605 LOC)
+- Why fragile: Multi-layer management partially implemented, critical vector search functionality
+- Safe modification: All changes must preserve existing search contract; add regression tests
+- Test coverage: Good unit test coverage in same file
 
-- **Files:** `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/rollback.rs` (1654 lines)
-- **Why fragile:** Mixes unsafe transmute, complex state management, and stubbed operations
-- **Safe modification:** Write comprehensive tests before touching rollback logic; use property-based testing
-- **Test coverage:** Many test cases are disabled with `#[ignore]` pending real implementation
+**Checkpoint Integration:**
+- Files: `sqlitegraph/src/backend/native/v2/wal/checkpoint/operations.rs`, `checkpoint/record/integrator.rs`
+- Why fragile: Multiple unsafe transmutes, complex state management, validation commented out
+- Safe modification: Review all lifetime assumptions before any changes
+- Test coverage: Integration tests exist but commented validation reduces confidence
 
-### HNSW Index Integration Tests
-
-**12 tests marked as failing until implementation complete.**
-
-- **Files:** `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/operations_with_problematic_tests.rs:838,876,904,942,976,998,1022,1064`
-- **Why fragile:** Tests document expected behavior that isn't implemented yet
-- **Safe modification:** Enable tests one at a time and implement corresponding functionality
-- **Test coverage:** Tests exist but are ignored; real coverage unknown
-
-### Edge Cluster Serialization
-
-**Multiple binrw serialization stubs.**
-
-- **Files:** `tests/v2_edge_cluster_serialization_binrw_tests.rs:39,42`, `tests/v2_node_serialization_binrw_tests.rs:38,41`
-- **Why fragile:** Hand-rolled serialization instead of using binrw as planned
-- **Safe modification:** Replace hand-rolled serialization with binrw derive macros; verify byte-for-byte compatibility
-- **Test coverage:** Serialization tests exist but use custom implementations
+**Edge Cluster Allocation:**
+- Files: `sqlitegraph/src/backend/native/v2/edge_cluster/cluster.rs`, `node_record_v2/validation.rs`
+- Why fragile: Cluster overlap validation disabled, multiple DEBUG env var gates
+- Safe modification: Re-enable validation before allocation logic changes
+- Test coverage: Has debug flags but automated validation is disabled
 
 ## Scaling Limits
 
-### Single-Threaded Writes
+**Checkpoint File Size:**
+- Current capacity: MAX_CHECKPOINT_SIZE = 1GB
+- Limit: Single checkpoint file capped at 1GB
+- Scaling path: Implement multi-file checkpointing or streaming checkpoint
 
-**SqliteGraph is NOT thread-safe for concurrent writes.**
+**Dirty Block Tracking:**
+- Current capacity: MAX_DIRTY_BLOCKS_PER_CLUSTER = 10,000, MAX_GLOBAL_DIRTY_BLOCKS = 50,000
+- Limit: Tracking tables capped; beyond this, blocks may not be tracked
+- Scaling path: Implement overflow strategy or hierarchical tracking
 
-- **Current capacity:** Single writer thread; all writes must be serialized
-- **Limit:** Write throughput bounded by single CPU core; ~10-100μs per operation
-- **Scaling path:** Document requires external write coordination; no built-in concurrency
+**WAL Transaction Coordinator:**
+- Current capacity: No explicit transaction limit documented
+- Limit: Deadlock detection uses in-memory HashMap; unbounded growth possible
+- Scaling path: Add transaction ID bounds and cleanup verification
 
-### RefCell Borrow Checking Overhead
-
-**Interior mutability causes runtime borrow checks.**
-
-- **Current capacity:** ~10,000-100,000 operations/second before borrow check overhead significant
-- **Limit:** Each operation may panic on borrow violation; no compile-time safety
-- **Where:** `sqlitegraph/src/lib.rs:96` documents RefCell usage throughout graph core
-- **Scaling path:** Refactor to use `Arc<RwLock<T>>` or lock-free structures for concurrent access
-
-### Snapshot Isolation
-
-**Each snapshot clones entire graph state.**
-
-- **Current capacity:** Limited by available memory; each snapshot duplicates node/edge indexes
-- **Limit:** ~10-100MB per snapshot for large graphs
-- **Where:** `sqlitegraph/src/graph/snapshot.rs` implements snapshot via ArcSwap but still has overhead
-- **Scaling path:** Implement copy-on-write at storage layer rather than snapshot layer
+**HNSW Index Size:**
+- Current capacity: Limited by memory only
+- Limit: No disk-based HNSW storage; all vectors in memory
+- Scaling path: Implement disk-based HNSW or external vector database
 
 ## Dependencies at Risk
 
-### Rusqlite 0.31 with Bundled SQLite
+**rusqlite 0.31:**
+- Risk: Uses bundled SQLite; may have security vulnerabilities from bundled C code
+- Impact: SQLite backend core dependency
+- Migration plan: Monitor rusqlite updates; consider using system SQLite for security patches
 
-**Using `bundled` feature compiles SQLite from source.**
-
-- **Risk:** Bundled version may lag behind SQLite releases; security patches delayed
-- **Impact:** Database backend; core functionality depends on rusqlite
-- **Migration plan:** Switch to system SQLite via `pkg-config` or track rusqlite updates closely
-
-### Rand 0.8
-
-**Older version of rand; newer features unavailable.**
-
-- **Risk:** Missing thread-local RNG, SIMD optimizations
-- **Impact:** HNSW layer selection uses random; algorithms may be slower than necessary
-- **Migration plan:** Upgrade to rand 0.9 when ecosystem catches up
-
-### Rayon 1.10
-
-**Thread pool not optimally configured.**
-
-- **Risk:** Default rayon thread pool may oversubscribe CPU
-- **Impact:** Parallel WAL recovery may have diminishing returns beyond 4-8 threads
-- **Migration plan:** Expose thread pool configuration in `GraphConfig`
+**bincode 1.3:**
+- Risk: Older version; bincode 2.0 has breaking changes
+- Impact: Used for serialization in multiple places
+- Migration plan: Plan migration to bincode 2.0 with format version bump
 
 ## Missing Critical Features
 
-### Async I/O Support
+**Concurrent Write Support:**
+- Problem: Native V2 backend has WAL but concurrent writes may conflict
+- Blocks: Multi-writer scenarios, high throughput writes
+- Status: Transaction coordinator exists but deadlock detection incomplete
 
-**All I/O operations are synchronous.**
+**Graph File Migration:**
+- Problem: No automated migration path between storage format versions
+- Blocks: Seamless upgrades between versions
+- Status: Manual export/import required
 
-- **Problem:** No async/await support; blocking I/O on every database operation
-- **Blocks:** Async application integration (tokio, async-std)
-- **Impact:** Cannot integrate with async runtimes without thread pool
+**Backup/Restore API:**
+- Problem: No native backup API for V2 backend (snapshot system exists but high-level API missing)
+- Blocks: Production deployment without external backup tools
+- Status: Low-level snapshot functions available
 
-### Graphviz Export
-
-**No visualization export capability.**
-
-- **Problem:** No DOT/Graphviz export for debugging or documentation
-- **Blocks:** Graph visualization tools integration
-- **Impact:** Debugging complex traversals requires manual inspection
-
-### Backup/Restore API Incomplete
-
-**Only basic dump/load utilities exist.**
-
-- **Problem:** `dump_graph_to_path` and `load_graph_from_path` are basic
-- **Blocks:** Incremental backups, point-in-time recovery
-- **Impact:** Production deployments need external backup solutions
+**Node Deletion WAL Replay:**
+- Problem: Node deletion replay not implemented (see Tech Debt)
+- Blocks: Full crash recovery consistency
+- Status: Stub implementation
 
 ## Test Coverage Gaps
 
-### V1 Prevention Tests Disabled
+**WAL Recovery Edge Cases:**
+- What's not tested: Multiple test cases marked as "will fail until implementation complete" - node deletion rollback scenarios
+- Files: `sqlitegraph/src/backend/native/v2/wal/recovery/replayer/operations_with_problematic_tests.rs`
+- Risk: Crash recovery may not properly restore state after node deletions
+- Priority: High - data consistency risk
 
-**8 compilation tests for V1 prevention are always ignored.**
+**Cluster Overlap Validation:**
+- What's not tested: Validation code is commented out entirely
+- Files: `sqlitegraph/src/backend/native/v2/node_record_v2/validation.rs:79-119`
+- Risk: Silent data corruption if cluster allocation bugs exist
+- Priority: High - corruption detection disabled
 
-- **What's not tested:** Runtime enforcement of V1 feature blocking
-- **Files:** `tests/v1_prevention_compilation_tests.rs:18,26,34,43,68,77`
-- **Risk:** V1 code could accidentally be reintroduced without detection
-- **Priority:** Medium - V1 is permanently removed, but guard could fail
+**Checkpoint State Transitions:**
+- What's not tested: Checkpoint state invariants validation is commented out
+- Files: `sqlitegraph/src/backend/native/v2/wal/checkpoint/validation/invariants.rs:236-275`
+- Risk: Checkpoint corruption may go undetected
+- Priority: Medium - has other validation layers
 
-### Checkpoint/Recovery Integration Tests Disabled
+**HNSW Multi-Layer:**
+- What's not tested: Multi-layer insertion and search (only layer 0 used)
+- Files: `sqlitegraph/src/hnsw/index.rs`
+- Risk: HNSW performance not optimal; algorithm not fully implemented
+- Priority: Medium - functional but suboptimal
 
-**7 WAL checkpoint tests are ignored.**
-
-- **What's not tested:** End-to-end checkpoint and recovery workflows
-- **Files:** `tests/wal_checkpoint_recovery_tests.rs:108,119,126,133,140`
-- **Risk:** Crash recovery may not work correctly
-- **Priority:** High - Data loss possible if recovery fails
-
-### Stress Tests Disabled
-
-**4 stress/integrity tests require manual enabling.**
-
-- **What's not tested:** Concurrent crash simulation, integrity under load
-- **Files:** `tests/v2_crash_simulation.rs:328,362`, `tests/v2_stress_integrity.rs:69,107,426`
-- **Risk:** Race conditions and corruption under concurrent access
-- **Priority:** High - Production workloads may trigger undiscovered bugs
-
-### Tokio Async Tests Disabled
-
-**3 async tests are ignored due to missing runtime.**
-
-- **What's not tested:** Async transaction coordinator functionality
-- **Files:** `sqlitegraph/src/backend/native/v2/wal/transaction_coordinator.rs:968,976`, `sqlitegraph/src/backend/native/v2/wal/v2_integration.rs:1005`
-- **Risk:** Deadlock detection and async coordination are untested
-- **Priority:** Medium - Async support not production-ready
-
-### MMAP I/O Tests Are Stubs
-
-**10 MMAP tests are placeholders awaiting implementation.**
-
-- **What's not tested:** Memory-mapped I/O correctness and performance
-- **Files:** `tests/v2_mmap_io_invariants_tests.rs:28,48,102,120,167,196,241`
-- **Risk:** MMAP path may have data corruption issues
-- **Priority:** Medium - MMAP is optional feature, but should work if enabled
-
-### Snapshot Edge Validation Unimplemented
-
-**Edge validation in snapshot tests is hardcoded `true`.**
-
-- **What's not tested:** Actual edge consistency during snapshot/restore
-- **Files:** `tests/snapshot_integration_tests.rs:452,476,479`
-- **Risk:** Corrupted snapshots may not be detected
-- **Priority:** Medium - Snapshot corruption could cause silent data loss
+**Unsafe Block Testing:**
+- What's not tested: Unsafe lifetime transmute not validated with miri
+- Files: Multiple files using `std::mem::transmute`
+- Risk: Undefined behavior in edge cases
+- Priority: High - memory safety
 
 ---
 
