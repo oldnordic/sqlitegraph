@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 14 of 22 (ACID Durability)
-Plan: 3 of 4 in current phase
-Status: Phase 14 plan 03 complete, plan 04 pending
-Last activity: 2026-01-20 — Completed 14-03 transaction counter integration
+Plan: 4 of 4 in current phase
+Status: Phase 14 complete
+Last activity: 2026-01-20 — Completed 14-04 checkpoint configuration
 
-Progress: [██████████████████████████████████ ] 82%
+Progress: [██████████████████████████████████ ] 84%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 45
+- Total plans completed: 46
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,10 +28,10 @@ Progress: [███████████████████████
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
-| 11-14 (v1.1) | 16/45 | 116min | 7min |
+| 11-14 (v1.1) | 17/45 | 122min | 7min |
 
 **Recent Trend:**
-- Last 5 plans: 13-02 (3min), 13-03 (6min), 13-04 (3min), 14-01 (2min), 14-02 (2min), 14-03 (4min)
+- Last 5 plans: 13-02 (3min), 13-03 (6min), 13-04 (3min), 14-01 (2min), 14-02 (2min), 14-03 (4min), 14-04 (6min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -92,6 +92,9 @@ Recent decisions affecting current work:
 - Counters reset in force_checkpoint() success branch to prevent immediate re-triggering - 14-03
 - on_checkpoint_completed() callback provides external notification path for counter synchronization - 14-03
 - Adaptive strategy combines time interval guard with OR condition for size/transaction triggers - 14-03
+- checkpoint_strategy field added to NativeConfig with Option<CheckpointStrategy> type - 14-04
+- Builder methods provide convenient API: with_checkpoint_strategy, with_transaction_checkpoint, with_size_checkpoint, with_time_checkpoint - 14-04
+- Tests verify all checkpoint strategies (transaction-count, size-based) and counter reset behavior - 14-04
 
 ### Pending Todos
 
@@ -103,8 +106,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 14-03 execution)
-Stopped at: Completed 14-03 - Transaction counter integration
+Last session: 2026-01-20 (plan 14-04 execution)
+Stopped at: Completed 14-04 - Checkpoint configuration
 Resume file: None
 
 ### Roadmap Evolution
@@ -115,4 +118,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 in progress (3/4)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4)
