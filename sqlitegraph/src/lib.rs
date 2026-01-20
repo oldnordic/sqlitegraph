@@ -368,6 +368,16 @@ pub fn create_backup(
     db_path: &std::path::Path,
     backup_dir: &std::path::Path,
 ) -> Result<BackupResult, SqliteGraphError> {
-    database_backup(db_path, crate::backend::native::v2::backup::BackupConfig::new(backup_dir))
-        .map_err(|e| SqliteGraphError::Backend(e.to_string()))
+    let native_result = database_backup(db_path, crate::backend::native::v2::backup::BackupConfig::new(backup_dir))
+        .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+    Ok(BackupResult {
+        snapshot_path: native_result.snapshot_path,
+        manifest_path: native_result.manifest_path,
+        size_bytes: native_result.size_bytes,
+        checksum: native_result.checksum,
+        record_count: native_result.record_count,
+        duration_secs: native_result.duration_secs,
+        timestamp: native_result.timestamp,
+        checkpoint_performed: native_result.checkpoint_performed,
+    })
 }
