@@ -355,6 +355,27 @@ impl DeadlockDetector {
         recursion_stack.remove(&tx_id);
         false
     }
+
+    /// Select the youngest transaction from a cycle as the deadlock victim
+    ///
+    /// Returns the transaction ID with the latest start_time (youngest).
+    /// If multiple transactions have the same start_time, returns the
+    /// transaction with the highest ID (most recently allocated).
+    pub fn select_victim(
+        &self,
+        cycle: &[TransactionId],
+        contexts: &HashMap<TransactionId, TransactionContext>,
+    ) -> Option<TransactionId> {
+        cycle
+            .iter()
+            .min_by_key(|&&tx_id| {
+                contexts
+                    .get(&tx_id)
+                    .map(|c| (c.start_time, u64::MAX - tx_id))
+                    .unwrap_or((Instant::now(), u64::MAX))
+            })
+            .copied()
+    }
 }
 
 /// Isolation level manager
