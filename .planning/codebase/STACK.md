@@ -1,95 +1,113 @@
 # Technology Stack
 
-**Analysis Date:** 2026-01-17
+**Analysis Date:** 2026-01-20
 
 ## Languages
 
 **Primary:**
-- Rust 2024 - Core library (sqlitegraph/Cargo.toml:4)
-- Rust 2021 - CLI application (sqlitegraph-cli/Cargo.toml:4)
+- Rust 2024 Edition - Core library and CLI (`sqlitegraph/`, `sqlitegraph-cli/`)
+- Rust 2021 Edition - CLI binary (for ecosystem compatibility)
 
 **Secondary:**
-- Markdown - Documentation
-- TOML - Configuration
-- Shell - Build scripts (if any)
+- SQL - SQLite queries and schema definitions
+- Markdown - Documentation (`docs/`, `*.md`)
 
 ## Runtime
 
 **Environment:**
-- Rust (no external runtime required)
-- Target platforms: Linux, macOS, Windows
-- MSRV: 1.70.0 (from sqlitegraph/clippy.toml:13)
+- Rust 1.70.0+ (MSRV defined in `clippy.toml`)
+- Edition 2024 for library, Edition 2021 for CLI
 
 **Package Manager:**
-- Cargo - Rust's package manager
-- Workspace configuration at root Cargo.toml
-- Resolver: version 3
-- Lockfile: Cargo.lock present
+- Cargo (workspace with resolver = "3")
+- Lockfile: `Cargo.lock` (present, committed)
+
+**Workspace Structure:**
+```
+sqlitegraph/          # Core library crate (lib)
+sqlitegraph-cli/      # CLI binary crate
+```
 
 ## Frameworks
 
 **Core:**
-- None (vanilla Rust library)
-
-**CLI:**
-- clap 4.x - Command-line argument parsing and UI
-- serde/serde_json - Serialization for JSON output
+- rusqlite 0.31 - SQLite database access with bundled libsqlite3
+- None - Pure Rust embedded database (no external framework)
 
 **Testing:**
-- Rust built-in test framework (#[test])
-- criterion 0.5 - Benchmarking with HTML reports
-- assert_cmd 2 - CLI command testing
-- tempfile 3 - Temporary file handling
+- Criterion 0.5 - Benchmark framework with HTML reports
+- assert_cmd 2.1 - CLI command testing
+- tempfile 3.23 - Temporary file/directory for tests
 
 **Build/Dev:**
-- Cargo - Build system and package manager
-- rustfmt - Code formatting
-- clippy - Linting with custom configuration
+- clap 4.5 - CLI argument parsing (derive API)
+- rayon 1.10 - Parallel data processing
 
 ## Key Dependencies
 
 **Critical:**
-- rusqlite 0.31 - SQLite database backend (bundled)
-- thiserror 1 - Error handling
-- serde 1 - Serialization framework
-- memmap2 0.9 - Memory-mapped file I/O for native backend
+- rusqlite 0.31 (bundled) - SQLite backend for ACID transactions
+- serde 1.0 + serde_json 1.0 - JSON serialization for metadata
+- binrw 0.13 - Binary serialization for Native V2 format
+- bytemuck 1.13 - Byte-level casting for memory-mapped I/O
+- memmap2 0.9 - Memory-mapped file access
 
 **Infrastructure:**
-- parking_lot 0.12 - Efficient mutexes and RwLock
-- ahash 0.8 - Fast hashing
-- arc-swap 1 - Atomic reference swapping
-- binrw 0.13 - Binary format reading/writing
-- bytemuck 1.13 - Memory-safe byte operations
+- ahash 0.8 - Fast non-cryptographic hashing
+- parking_lot 0.12 - High-performance mutexes
+- rand 0.8 - Random number generation
+- arc-swap 1.7 - Atomic pointer swapping
+- log 0.4 - Logging facade
+- thiserror 1.0 - Error derivation
 
-**Algorithms:**
-- rand 0.8 - Random number generation for HNSW
+**Binary I/O:**
+- bincode 1.3 - Binary serialization
+- binrw 0.13 - Declarative binary read/write
+
+**CLI:**
+- clap 4.5 (derive) - CLI parsing
+- anyhow 1.0 - Error handling in CLI
 
 ## Configuration
 
 **Environment:**
-- No environment variables required
-- Code-based configuration via GraphConfig
-- Backend selection via BackendKind enum
-- Configuration types in sqlitegraph/src/config/config.rs
+- Feature-based backend selection (`default`, `sqlite-backend`, `native-v2`)
+- Debug features: `debug`, `trace_v2_io`, `bench-ci`
+- No environment variables required for core operation
 
 **Build:**
-- Workspace Cargo.toml with resolver version 3
-- Custom clippy.toml with relaxed thresholds
-- Optimization profiles for release, bench, and test
+- Workspace `Cargo.toml` with profile configurations
+- Release profile: `opt-level = 3`, `lto = "thin"`, `codegen-units = 1`
+- Bench profile: Same as release with `debug = true` for profiling
+- Test profile: `opt-level = 2` for faster test execution
+
+**Linting:**
+- Clippy configured in `sqlitegraph/clippy.toml`
+- MSRV: 1.70.0
+- Complexity thresholds adjusted for graph algorithms
 
 ## Platform Requirements
 
 **Development:**
-- Rust 1.70.0 or later
-- Cargo (comes with Rust)
-- Linux/macOS/Windows (any platform with Rust support)
+- Rust 1.70.0+ toolchain
+- Cargo with workspace support
+- SQLite (bundled with rusqlite)
 
 **Production:**
-- Standalone native binary (no runtime dependencies)
-- Cross-platform support (Linux, macOS, Windows)
-- Bundled SQLite (no external sqlite3 required)
+- Linux, macOS, Windows (cross-platform via Rust)
+- No external runtime dependencies for Native backend
+- libsqlite3 dynamically linked for SQLite backend (unless bundled)
+
+**Native Backend (V2):**
+- Pure Rust, no external dependencies
+- Custom binary format with clustered adjacency
+- WAL (Write-Ahead Log) for durability
+
+**SQLite Backend:**
+- Uses bundled libsqlite3 via rusqlite feature
+- Supports WAL mode for concurrent access
+- Standard SQLite file format
 
 ---
 
-*Stack analysis: 2026-01-17*
-*Update after major dependency changes*
+*Stack analysis: 2026-01-20*

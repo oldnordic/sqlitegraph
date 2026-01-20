@@ -1,136 +1,150 @@
 # External Integrations
 
-**Analysis Date:** 2026-01-17
+**Analysis Date:** 2026-01-20
 
 ## APIs & External Services
 
-**Payment Processing:**
-- Not applicable (embedded database, no payment processing)
+**None** - This is an embedded, self-contained database library.
 
-**Email/SMS:**
-- Not applicable (no notification features)
-
-**External APIs:**
-- None - Standalone embedded database with no external API calls
+The project provides database functionality rather than consuming external APIs:
+- No REST API clients
+- No cloud service integrations
+- No third-party API dependencies
 
 ## Data Storage
 
 **Databases:**
-- SQLite (rusqlite 0.31 with bundled sqlite3-sys)
-  - Connection: In-process via rusqlite library
-  - Client: rusqlite crate
-  - Migrations: Handled via native backend upgrade logic
+- **SQLite** (via rusqlite 0.31)
+  - Connection: File path or `:memory:`
+  - Client: rusqlite with bundled libsqlite3
+  - Usage: Default backend for ACID transactions
 
-**Native V2 Storage:**
-- Custom binary format with WAL
-  - Location: sqlitegraph/src/backend/native/v2/
-  - Features: 10-20x performance improvement, 70%+ storage efficiency
-  - Cross-platform atomic operations
+**Native Storage:**
+- **Custom Binary Format** (Native V2 backend)
+  - Files: `*.db`, `*.db-wal`, `*.db-shm`
+  - Format: Clustered adjacency with WAL
+  - Client: Pure Rust implementation (`src/backend/native/`)
 
 **File Storage:**
 - Local filesystem only
-  - No external file storage services
-  - Memory-mapped file I/O via memmap2
+- Memory-mapped I/O via memmap2
+- Atomic file operations for crash safety
 
 **Caching:**
-- In-memory only (no Redis or external cache)
-  - HNSW indexes stored in memory
-  - arc-swap for atomic reference swapping
+- LRU-K adjacency cache (`src/cache.rs`)
+- Query result cache (`src/query_cache.rs`)
+- In-memory only (no external cache)
 
 ## Authentication & Identity
 
 **Auth Provider:**
-- None (embedded database, no authentication)
+- None (embedded database with no network access)
 
-**OAuth Integrations:**
-- Not applicable
+**Implementation:**
+- No authentication layer
+- No user management
+- Direct file-based access control via OS permissions
 
 ## Monitoring & Observability
 
 **Error Tracking:**
-- None (standard Rust error handling with thiserror)
-
-**Analytics:**
-- None
+- None (no external error tracking service)
 
 **Logs:**
-- Basic log support (log 0.4 dependency)
-  - No structured logging framework
-  - Debug prints gated behind feature flags (trace_v2_io)
+- log crate facade (0.4) - structured logging interface
+- Console output via debug commands
+- No log aggregation service
+
+**Introspection:**
+- `GraphIntrospection` trait for stats (`src/introspection.rs`)
+- Cache statistics, edge counts, file sizes
+- Debug CLI commands: `debug-stats`, `debug-dump`, `debug-trace`
+
+**Progress Tracking:**
+- `ProgressCallback` trait (`src/progress.rs`)
+- `ConsoleProgress` for terminal progress bars
+- Algorithm progress reporting (PageRank, Louvain, etc.)
 
 ## CI/CD & Deployment
 
 **Hosting:**
-- Not applicable (library/CLI distribution)
+- crates.io: https://crates.io/crates/sqlitegraph
+- GitHub: https://github.com/oldnordic/sqlitegraph
+- Docs.rs: https://docs.rs/sqlitegraph
 
 **CI Pipeline:**
-- No GitHub Actions detected
-- Manual testing and benchmarking
+- No detected CI configuration (.github, .gitlab-ci.yml, etc.)
+- Manual testing via `cargo test --workspace`
 
-**Distribution:**
-- crates.io for Rust package distribution
-- Binary releases via GitHub (implied)
+**Deployment:**
+- Static binary compilation via `cargo build --release`
+- No containerization detected
+- No cloud deployment configuration
 
 ## Environment Configuration
 
-**Development:**
-- Required env vars: None
-- Configuration: Code-based via GraphConfig
-- No mock/stub services
+**Required env vars:**
+- None for core operation
 
-**Staging:**
-- Not applicable (no staging environment)
+**Optional env vars:**
+- None (configuration via `GraphConfig` struct)
 
-**Production:**
-- Secrets management: Not applicable (no secrets)
-- Configuration: Compile-time feature flags
+**Secrets location:**
+- Not applicable (no authentication/external services)
 
 ## Webhooks & Callbacks
 
 **Incoming:**
-- None
+- None (no HTTP server)
 
 **Outgoing:**
-- None
+- None (no HTTP client)
 
-## Feature Flags
+**Internal Callbacks:**
+- `ProgressCallback` - Long-running algorithm progress
+- `WALManagerMetrics` - WAL operation metrics
+- Cache eviction callbacks
 
-**Development Features:**
-- `sqlite-backend` (default) - SQLite storage backend
-- `native-v2` - High-performance native backend with WAL
-- `bench-ci` - CI benchmarking
-- `trace_v2_io` - Debug features for V2 I/O operations
+## Algorithm Libraries
 
-## Third-Party Libraries Summary
+**Graph Algorithms (Internal):**
+- PageRank - `src/algo.rs`
+- Betweenness Centrality - `src/algo.rs`
+- Label Propagation - `src/algo.rs`
+- Louvain Method - `src/algo.rs`
+- BFS, k-hop, shortest path - `src/bfs.rs`, `src/multi_hop.rs`
 
-**Core Dependencies:**
-| Library | Version | Purpose |
-|---------|---------|---------|
-| rusqlite | 0.31 | SQLite database interface |
-| serde | 1 | Serialization framework |
-| serde_json | 1 | JSON serialization |
-| thiserror | 1 | Error handling |
-| parking_lot | 0.12 | Efficient synchronization primitives |
-| ahash | 0.8 | Fast hashing |
-| memmap2 | 0.9 | Memory-mapped file I/O |
-| binrw | 0.13 | Binary format parsing |
-| bytemuck | 1.13 | Safe byte operations |
-| arc-swap | 1 | Atomic reference swapping |
-| rand | 0.8 | Random number generation |
+**Vector Search (Internal):**
+- HNSW (Hierarchical Navigable Small World) - `src/hnsw/`
+- Distance metrics: Cosine, Euclidean, Dot Product, Manhattan
+- Pluggable vector storage (in-memory or SQLite)
 
-**CLI-Specific:**
-| Library | Version | Purpose |
-|---------|---------|---------|
-| clap | 4 | Command-line interface |
+## Testing Infrastructure
 
-**Testing:**
-| Library | Version | Purpose |
-|---------|---------|---------|
-| criterion | 0.5 | Benchmarking |
-| assert_cmd | 2 | CLI testing |
-| tempfile | 3 | Temporary file handling |
+**Test Framework:**
+- Rust built-in (`cargo test`)
+- Criterion for benchmarks (`cargo bench`)
+
+**Test Utilities:**
+- tempfile - Temporary test databases
+- assert_cmd - CLI testing
+- rand - Test data generation
+
+**Coverage:**
+- No tarpaulin or coverage tool configured
+- Manual test coverage tracking via test modules
+
+## Developer Tools
+
+**Binary Format Tools:**
+- binrw derive macros for serialization
+- bytemuck for unsafe byte casting
+
+**Debugging:**
+- CLI debug commands
+- Introspection API
+- Pattern engine tracing
 
 ---
 
-*Integration audit: 2026-01-17*
-*Update when adding/removing external services*
+*Integration audit: 2026-01-20*
