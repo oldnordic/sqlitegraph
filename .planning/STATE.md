@@ -9,16 +9,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 20 of 22 complete, next: Phase 21 (Test Coverage)
-Status: Phase 20 complete (all 4 plans verified)
-Last activity: 2026-01-20 — Verified Phase 20: Data Management (4/4 must_haves)
+Phase: 21 of 22 complete (3/4 plans)
+Status: Phase 21 in progress (plan 21-04 completed)
+Last activity: 2026-01-20 — Completed Phase 21 Plan 04: HNSW Multi-Layer Tests and Miri Integration
 
-Progress: [████████████████████████████████] 99% (Phase 11-20 complete)
+Progress: [████████████████████████████████░] 99% (Phase 11-20 complete, Phase 21: 3/4 plans)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 60 (33 for v0.2/v1.0, 27 for v1.1)
+- Total plans completed: 64 (33 for v0.2/v1.0, 31 for v1.1)
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -201,8 +201,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 20-04 execution)
-Stopped at: Completed 20-04 - Restore API with RestoreConfig builder and crate-level convenience function
+Last session: 2026-01-20 (plan 21-04 execution)
+Stopped at: Completed 21-04 - HNSW multi-layer tests and Miri integration verification
 Resume file: None
 
 ### Roadmap Evolution
@@ -213,4 +213,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (4/4, v3 file format with migration API, backup API, and restore API)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (4/4, v3 file format with migration API, backup API, and restore API), Phase 21 in progress (3/4: test coverage for HNSW and Miri)
