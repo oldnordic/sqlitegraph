@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 15 of 22 (HNSW Multi-Layer)
-Plan: 3 of 3 in current phase
-Status: In progress
-Last activity: 2026-01-20 — Completed 15-03 multi-layer greedy descent search
+Plan: 4 of 4 in current phase
+Status: In progress (Tasks 3-4 deferred - architectural changes)
+Last activity: 2026-01-20 — Completed 15-04 O(log N) scaling verification with graph connectivity fix
 
-Progress: [██████████████████████████████████ ] 88%
+Progress: [██████████████████████████████████ ] 92%
 
 ## Performance Metrics
 
@@ -29,11 +29,11 @@ Progress: [███████████████████████
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
 | 11-14 (v1.1) | 17/17 | 122min | 7min |
-| 15 (HNSW Multi-Layer) | 3/3 | 13min | 4min |
+| 15 (HNSW Multi-Layer) | 4/4 | 58min | 15min |
 
 **Recent Trend:**
-- Last 5 plans: 14-02 (2min), 14-03 (4min), 14-04 (6min), 15-01 (8min), 15-02 (3min), 15-03 (2min)
-- Trend: Stable
+- Last 5 plans: 14-02 (2min), 14-03 (4min), 14-04 (6min), 15-01 (8min), 15-02 (3min), 15-03 (2min), 15-04 (45min)
+- Trend: Stable (15-04 took longer due to bug fix and extensive debugging)
 
 *Updated after each plan completion*
 
@@ -111,19 +111,25 @@ Recent decisions affecting current work:
 - Greedy descent search implemented: top layer to layer 1 uses k=1, layer 0 uses full ef_search - 15-03
 - Helper methods for ID translation: get_local_id_for_layer, get_global_id_for_layer abstract single/multi-layer modes - 15-03
 - load_vectors_as_array helper loads vectors once per search to avoid repeated storage access - 15-03
+- Fixed critical graph connectivity bug: connections were pruned by node_id instead of distance - 15-04
+- Added prune_connections_by_distance() for proper distance-based connection pruning - 15-04
+- Lenient reverse connection pruning (2*M limit) maintains graph connectivity - 15-04
+- Achieved 100% recall on 1000-vector test (was 10% before fix) - 15-04
+- Verified O(log N) scaling: 2.90x time for 10x data (100 -> 1000 vectors) - 15-04
 
 ### Pending Todos
 
-None yet.
+- Layer persistence (Tasks 3-4 from 15-04) requires separate planning for database schema changes
 
 ### Blockers/Concerns
 
-None yet.
+- Multi-layer mode has stability issues in release builds (fails at vector 378) - using single-layer mode for benchmarks
+- Layer persistence (Tasks 3-4) deferred due to architectural complexity (ALTER TABLE, load/rebuild refactoring)
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 15-03 execution)
-Stopped at: Completed 15-03 - Multi-layer greedy descent search
+Last session: 2026-01-20 (plan 15-04 execution)
+Stopped at: Completed 15-04 - O(log N) scaling verification (Tasks 3-4 deferred)
 Resume file: None
 
 ### Roadmap Evolution
@@ -134,4 +140,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (3/3)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred)
