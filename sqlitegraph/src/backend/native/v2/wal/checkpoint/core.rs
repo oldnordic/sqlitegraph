@@ -681,8 +681,13 @@ impl V2WALCheckpointManager {
                 // Counter exists in WALManagerMetrics but needs to be added to CheckpointManagerState
                 Ok(false)
             }
-            CheckpointStrategy::SizeThreshold(_threshold) => {
-                Ok(false) // TODO: Implement size threshold checking
+            CheckpointStrategy::SizeThreshold(threshold) => {
+                // Read actual WAL file size
+                let wal_size = std::fs::metadata(&self.config.wal_path)
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+
+                Ok(wal_size >= *threshold)
             }
             CheckpointStrategy::Adaptive { .. } => {
                 Ok(false) // TODO: Implement adaptive strategy
