@@ -663,6 +663,9 @@ impl V2TransactionCoordinator {
         // Unregister from isolation manager
         self.isolation_manager.unregister_transaction(tx_id);
 
+        // Clean up from deadlock detector (wait-for graph entries)
+        self.deadlock_detector.remove_transaction(tx_id);
+
         Ok(())
     }
 
