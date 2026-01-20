@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 11 of 22 (ACID Atomicity)
-Plan: 0 of 3 in current phase
-Status: Ready to plan
-Last activity: 2026-01-20 — Roadmap created for v1.1 milestone
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-20 — Completed 11-01: Node deletion before-image capture
 
-Progress: [████████████████████░░░░░░░░░░] 50%
+Progress: [█████████████████████░░░░░░░░░] 52%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 33
+- Total plans completed: 34
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,10 +28,10 @@ Progress: [████████████████████░░░
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
-| 11-22 (v1.1) | 0/45 | TBD | TBD |
+| 11-22 (v1.1) | 1/45 | 7min 38sec | TBD |
 
 **Recent Trend:**
-- Last 5 plans: N/A (v1.1 not started)
+- Last 5 plans: 11-01 (7min 38sec)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -53,6 +53,11 @@ Recent decisions affecting current work:
 - Parallel WAL recovery using rayon (2-3x speedup for large WALs)
 - Lock-free atomic statistics (AtomicU64 counters)
 
+**v1.1 Key Decisions:**
+- Use CompactEdgeRecord binary serialization for edge data in WAL (not JSON) - 11-01
+- Capture edges BEFORE cascade deletion to preserve data for rollback - 11-01
+- Replace serde_json with NodeRecordV2::serialize/deserialize for consistency - 11-01
+
 ### Pending Todos
 
 None yet.
@@ -63,8 +68,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (roadmap creation)
-Stopped at: Roadmap for v1.1 ACID & Reliability created with 12 phases (11-22)
+Last session: 2026-01-20 (plan 11-01 execution)
+Stopped at: Completed 11-01 - Node deletion before-image capture with edge vectors
 Resume file: None
 
 ### Roadmap Evolution
