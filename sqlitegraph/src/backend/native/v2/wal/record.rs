@@ -187,11 +187,15 @@ pub enum V2WALRecord {
         new_data: Vec<u8>,
     },
 
-    /// Node deletion (logical)
+    /// Node deletion (logical) with complete before-image capture
     NodeDelete {
         node_id: i64,
         slot_offset: u64,
         old_data: Vec<u8>,
+        /// Outgoing edges captured before deletion (for rollback)
+        outgoing_edges: Vec<CompactEdgeRecord>,
+        /// Incoming edges captured before deletion (for rollback)
+        incoming_edges: Vec<CompactEdgeRecord>,
     },
 
     /// Edge cluster creation
@@ -418,7 +422,11 @@ impl V2WALRecord {
         match self {
             Self::NodeInsert { node_data, .. } => base_size + 8 + 8 + 4 + node_data.len(),
             Self::NodeUpdate { old_data, new_data, .. } => base_size + 8 + 8 + 4 + old_data.len() + 4 + new_data.len(),
-            Self::NodeDelete { old_data, .. } => base_size + 8 + 8 + 4 + old_data.len(),
+            Self::NodeDelete { old_data, outgoing_edges, incoming_edges, .. } => {
+                let outgoing_size: usize = outgoing_edges.iter().map(|e| e.serialized_size()).sum();
+                let incoming_size: usize = incoming_edges.iter().map(|e| e.serialized_size()).sum();
+                base_size + 8 + 8 + 4 + old_data.len() + 4 + outgoing_size + 4 + incoming_size
+            }
             Self::ClusterCreate { edge_data, .. } => base_size + 8 + 1 + 8 + 4 + edge_data.len(),
             Self::EdgeInsert { edge_record, .. } => base_size + 8 + 1 + edge_record.serialized_size() + 4,
             Self::EdgeUpdate { old_edge, new_edge, .. } => {
@@ -539,11 +547,23 @@ impl V2WALSerializer {
                 buffer.extend_from_slice(new_data);
             }
 
-            V2WALRecord::NodeDelete { node_id, slot_offset, old_data } => {
+            V2WALRecord::NodeDelete { node_id, slot_offset, old_data, outgoing_edges, incoming_edges } => {
                 buffer.extend_from_slice(&node_id.to_le_bytes());
                 buffer.extend_from_slice(&slot_offset.to_le_bytes());
                 buffer.extend_from_slice(&(old_data.len() as u32).to_le_bytes());
                 buffer.extend_from_slice(old_data);
+
+                // Serialize outgoing edges
+                buffer.extend_from_slice(&(outgoing_edges.len() as u32).to_le_bytes());
+                for edge in outgoing_edges {
+                    buffer.extend_from_slice(&edge.serialize());
+                }
+
+                // Serialize incoming edges
+                buffer.extend_from_slice(&(incoming_edges.len() as u32).to_le_bytes());
+                for edge in incoming_edges {
+                    buffer.extend_from_slice(&edge.serialize());
+                }
             }
 
             V2WALRecord::ClusterCreate { node_id, direction, cluster_offset, cluster_size, edge_data } => {
@@ -648,6 +668,115 @@ impl V2WALSerializer {
                 let node_data = record_data[20..20 + data_len].to_vec();
 
                 Ok(V2WALRecord::NodeInsert { node_id, slot_offset, node_data })
+            }
+
+            V2WALRecordType::NodeDelete => {
+                if record_data.len() < 16 {
+                    return Err(NativeBackendError::CorruptStringTable {
+                        reason: "NodeDelete deserialization error - insufficient data for header".to_string(),
+                    });
+                }
+
+                let node_id = i64::from_le_bytes(record_data[0..8].try_into().unwrap());
+                let slot_offset = u64::from_le_bytes(record_data[8..16].try_into().unwrap());
+
+                if record_data.len() < 20 {
+                    return Err(NativeBackendError::CorruptStringTable {
+                        reason: "NodeDelete deserialization error - insufficient data for size field".to_string(),
+                    });
+                }
+
+                let data_len = u32::from_le_bytes(record_data[16..20].try_into().unwrap()) as usize;
+
+                if record_data.len() < 20 + data_len {
+                    return Err(NativeBackendError::CorruptStringTable {
+                        reason: "NodeDelete deserialization error - insufficient data for node data".to_string(),
+                    });
+                }
+
+                let old_data = record_data[20..20 + data_len].to_vec();
+                let mut offset = 20 + data_len;
+
+                // Read outgoing edges
+                if record_data.len() < offset + 4 {
+                    return Err(NativeBackendError::CorruptStringTable {
+                        reason: "NodeDelete deserialization error - insufficient data for outgoing edge count".to_string(),
+                    });
+                }
+                let outgoing_count = u32::from_le_bytes(record_data[offset..offset + 4].try_into().unwrap()) as usize;
+                offset += 4;
+
+                let mut outgoing_edges = Vec::with_capacity(outgoing_count);
+                for _ in 0..outgoing_count {
+                    if record_data.len() < offset + 12 {
+                        return Err(NativeBackendError::CorruptStringTable {
+                            reason: "NodeDelete deserialization error - insufficient data for outgoing edge header".to_string(),
+                        });
+                    }
+
+                    // CompactEdgeRecord layout: neighbor_id (8) + type_offset (2) + data_len (2) = 12 bytes min
+                    let edge_data_len = u16::from_be_bytes(record_data[offset + 10..offset + 12].try_into().unwrap()) as usize;
+                    let edge_total_len = 12 + edge_data_len;
+
+                    if record_data.len() < offset + edge_total_len {
+                        return Err(NativeBackendError::CorruptStringTable {
+                            reason: "NodeDelete deserialization error - insufficient data for outgoing edge".to_string(),
+                        });
+                    }
+
+                    let edge_bytes = &record_data[offset..offset + edge_total_len];
+                    match CompactEdgeRecord::deserialize(edge_bytes) {
+                        Ok(edge) => outgoing_edges.push(edge),
+                        Err(e) => return Err(NativeBackendError::CorruptStringTable {
+                            reason: format!("NodeDelete deserialization error - failed to deserialize outgoing edge: {:?}", e),
+                        }),
+                    }
+                    offset += edge_total_len;
+                }
+
+                // Read incoming edges
+                if record_data.len() < offset + 4 {
+                    return Err(NativeBackendError::CorruptStringTable {
+                        reason: "NodeDelete deserialization error - insufficient data for incoming edge count".to_string(),
+                    });
+                }
+                let incoming_count = u32::from_le_bytes(record_data[offset..offset + 4].try_into().unwrap()) as usize;
+                offset += 4;
+
+                let mut incoming_edges = Vec::with_capacity(incoming_count);
+                for _ in 0..incoming_count {
+                    if record_data.len() < offset + 12 {
+                        return Err(NativeBackendError::CorruptStringTable {
+                            reason: "NodeDelete deserialization error - insufficient data for incoming edge header".to_string(),
+                        });
+                    }
+
+                    let edge_data_len = u16::from_be_bytes(record_data[offset + 10..offset + 12].try_into().unwrap()) as usize;
+                    let edge_total_len = 12 + edge_data_len;
+
+                    if record_data.len() < offset + edge_total_len {
+                        return Err(NativeBackendError::CorruptStringTable {
+                            reason: "NodeDelete deserialization error - insufficient data for incoming edge".to_string(),
+                        });
+                    }
+
+                    let edge_bytes = &record_data[offset..offset + edge_total_len];
+                    match CompactEdgeRecord::deserialize(edge_bytes) {
+                        Ok(edge) => incoming_edges.push(edge),
+                        Err(e) => return Err(NativeBackendError::CorruptStringTable {
+                            reason: format!("NodeDelete deserialization error - failed to deserialize incoming edge: {:?}", e),
+                        }),
+                    }
+                    offset += edge_total_len;
+                }
+
+                Ok(V2WALRecord::NodeDelete {
+                    node_id,
+                    slot_offset,
+                    old_data,
+                    outgoing_edges,
+                    incoming_edges,
+                })
             }
 
             V2WALRecordType::TransactionBegin => {
