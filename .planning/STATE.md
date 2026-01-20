@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 14 of 22 (ACID Durability)
-Plan: 1 of 4 in current phase
-Status: Phase 14 plan 01 complete, plan 02 pending
-Last activity: 2026-01-20 — Completed 14-01 transaction counter foundation
+Plan: 2 of 4 in current phase
+Status: Phase 14 plan 02 complete, plan 03 pending
+Last activity: 2026-01-20 — Completed 14-02 size-based checkpoint trigger
 
-Progress: [█████████████████████████████████░░] 79%
+Progress: [██████████████████████████████████ ] 80%
 
 ## Performance Metrics
 
@@ -83,6 +83,9 @@ Recent decisions affecting current work:
 - Added transactions_since_checkpoint field to WALManagerMetrics as resettable counter - 14-01
 - Counter increments in commit_transaction after committed_transactions increment - 14-01
 - Public accessor get_transactions_since_checkpoint() exposes counter to checkpoint manager - 14-01
+- SizeThreshold checkpoint strategy reads actual WAL file size via std::fs::metadata().len() - 14-02
+- get_wal_size() helper method exposes WAL size for external monitoring - 14-02
+- estimate_wal_size() in manager.rs confirmed correct - uses std::fs::metadata with metrics fallback - 14-02
 
 ### Pending Todos
 
@@ -94,8 +97,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 14-01 execution)
-Stopped at: Completed 14-01 - Transaction counter foundation
+Last session: 2026-01-20 (plan 14-02 execution)
+Stopped at: Completed 14-02 - Size-based checkpoint trigger
 Resume file: None
 
 ### Roadmap Evolution
@@ -106,4 +109,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 in progress (1/4)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 in progress (2/4)
