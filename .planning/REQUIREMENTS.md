@@ -134,13 +134,13 @@ Requirements for safe handling of external data.
 
 Requirements for splitting files exceeding 600 LOC guidelines.
 
-- [ ] **REFAC-01**: rollback.rs (1654 LOC) split into focused submodules by operation type
-- [ ] **REFAC-02**: hnsw/index.rs (1605 LOC) split into modules (index, layer, search, insert)
-- [ ] **REFAC-03**: checkpoint/operations.rs (1594 LOC) split into modules (checkpoint, flush, restore)
-- [ ] **REFAC-04**: algo.rs (1398 LOC) split into modules (centrality, community, utility)
-- [ ] **REFAC-05**: validator.rs (1300 LOC) split into modules (header, cluster, wal)
-- [ ] **REFAC-06**: All split modules maintain test coverage
-- [ ] **REFAC-07**: All split modules maintain documentation
+- [x] **REFAC-01**: rollback.rs (1654 LOC) split into focused submodules by operation type
+- [x] **REFAC-02**: hnsw/index.rs (1605 LOC) split into modules (index, layer, search, insert)
+- [x] **REFAC-03**: checkpoint/operations.rs (1594 LOC) split into modules (checkpoint, flush, restore)
+- [x] **REFAC-04**: algo.rs (1398 LOC) split into modules (centrality, community, utility)
+- [x] **REFAC-05**: validator.rs (1300 LOC) split into modules (header, cluster, wal)
+- [x] **REFAC-06**: All split modules maintain test coverage
+- [x] **REFAC-07**: All split modules maintain documentation
 
 ---
 
@@ -148,9 +148,9 @@ Requirements for splitting files exceeding 600 LOC guidelines.
 
 Requirements for reducing unnecessary clone operations.
 
-- [ ] **CLONE-01**: All 263 clone() calls audited for necessity
-- [ ] **CLONE-02**: Unnecessary clone() calls replaced with references
-- [ ] **CLONE-03**: Clone audit documented with findings
+- [x] **CLONE-01**: All 263 clone() calls audited for necessity
+- [x] **CLONE-02**: Unnecessary clone() calls replaced with references
+- [x] **CLONE-03**: Clone audit documented with findings
 
 ---
 
@@ -388,16 +388,16 @@ Requirements mapped to phases in roadmap.
 | INPUT-02 | Phase 16 | Complete |
 | INPUT-03 | Phase 16 | Complete |
 | INPUT-04 | Phase 16 | Complete |
-| REFAC-01 | Phase 18 | Pending |
-| REFAC-02 | Phase 18 | Pending |
-| REFAC-03 | Phase 18 | Pending |
-| REFAC-04 | Phase 18 | Pending |
-| REFAC-05 | Phase 18 | Pending |
-| REFAC-06 | Phase 18 | Pending |
-| REFAC-07 | Phase 18 | Pending |
-| CLONE-01 | Phase 18 | Pending |
-| CLONE-02 | Phase 18 | Pending |
-| CLONE-03 | Phase 18 | Pending |
+| REFAC-01 | Phase 18 | Complete |
+| REFAC-02 | Phase 18 | Complete |
+| REFAC-03 | Phase 18 | Complete |
+| REFAC-04 | Phase 18 | Complete |
+| REFAC-05 | Phase 18 | Complete |
+| REFAC-06 | Phase 18 | Complete |
+| REFAC-07 | Phase 18 | Complete |
+| CLONE-01 | Phase 18 | Complete |
+| CLONE-02 | Phase 18 | Complete |
+| CLONE-03 | Phase 18 | Complete |
 | POOL-01 | Phase 19 | Pending |
 | POOL-02 | Phase 19 | Pending |
 | POOL-03 | Phase 19 | Pending |

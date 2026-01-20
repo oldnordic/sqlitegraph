@@ -257,10 +257,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 18-01: Split algo.rs (1398 LOC) into centrality, community, structure modules
-- [ ] 18-02: Split hnsw/index.rs (2006 LOC) into API, persistence, internal modules
-- [ ] 18-03: Split rollback.rs (1912 LOC) and validator.rs (1509 LOC) into operation-specific modules
-- [ ] 18-04: Split checkpoint/operations.rs (1657 LOC) and complete clone audit (231 total)
+- [x] 18-01: Split algo.rs (1398 LOC) into centrality, community, structure modules ✅
+- [x] 18-02: Split hnsw/index.rs (2006 LOC) into API, persistence, internal modules ✅
+- [x] 18-03: Split rollback.rs (1912 LOC) and validator.rs (1509 LOC) into operation-specific modules ✅
+- [x] 18-04: Split checkpoint/operations.rs (1657 LOC) and complete clone audit (231 total) ✅
 
 ### Phase 19: Concurrent Features
 **Goal**: Add connection pooling and concurrent write support
@@ -352,7 +352,7 @@ Phases execute in numeric order: 1 → 2 → 3 → ... → 10 → 11 → 12 → 
 | 15. HNSW Multi-Layer | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 16. Memory Safety | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 17. Input Validation | v1.1 | 0/3 | Complete* | 2026-01-20 |
-| 18. Code Structure | v1.1 | 0/4 | Planned | 2026-01-20 |
+| 18. Code Structure | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 19. Concurrent Features | v1.1 | 0/3 | Not started | - |
 | 20. Data Management | v1.1 | 0/4 | Not started | - |
 | 21. Test Coverage | v1.1 | 0/4 | Not started | - |
