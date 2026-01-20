@@ -10,9 +10,9 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 16 of 22 (Memory Safety)
-Plan: 1 of 4 in next phase
-Status: Phase 15 complete
-Last activity: 2026-01-20 — Completed Phase 15 - HNSW Multi-Layer with O(log N) search
+Plan: 1 of 4 in phase
+Status: Plan 16-01 complete
+Last activity: 2026-01-20 — Completed 16-01 - Transmute Site Audit
 
 Progress: [█████████████████████████████████ ] 96%
 
@@ -122,6 +122,12 @@ Recent decisions affecting current work:
 - Achieved 100% recall on 1000-vector test (was 10% before fix) - 15-04
 - Verified O(log N) scaling: 2.90x time for 10x data (100 -> 1000 vectors) - 15-04
 
+**v1.1 Memory Safety (Phase 16):**
+- All 19 transmute sites identified and categorized as "API Redesign Needed" - 16-01
+- NodeStore<'a> and EdgeStore<'a> have lifetime parameters tied to GraphFile requiring API redesign - 16-01
+- Three replacement options identified: (A) Arc<RwLock<GraphFile>> API redesign, (B) Scoped lifetimes, (C) Keep with docs - 16-01
+- Decision deferred: Performance impact analysis required before API redesign commitment - 16-01
+
 ### Pending Todos
 
 - Layer persistence (Tasks 3-4 from 15-04) requires separate planning for database schema changes
@@ -133,8 +139,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 15-04 execution)
-Stopped at: Completed 15-04 - O(log N) scaling verification (Tasks 3-4 deferred)
+Last session: 2026-01-20 (plan 16-01 execution)
+Stopped at: Completed 16-01 - Transmute Site Audit
 Resume file: None
 
 ### Roadmap Evolution
@@ -145,4 +151,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 in progress (1/4)
