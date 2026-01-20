@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 12 of 22 (ACID Consistency)
-Plan: 4 of 5 in current phase
-Status: In progress
-Last activity: 2026-01-20 — Completed 12-04: Post-recovery validation hook
+Plan: 5 of 5 in current phase
+Status: Phase complete
+Last activity: 2026-01-20 — Completed 12-05: Database integrity checks
 
-Progress: [███████████████████████████████░░░░] 68%
+Progress: [███████████████████████████████░░░░] 69%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 38
+- Total plans completed: 39
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,10 +28,10 @@ Progress: [███████████████████████
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
-| 11-12 (v1.1) | 5/45 | 39min | 8min |
+| 11-12 (v1.1) | 6/45 | 46min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 11-02 (7min), 11-03 (14min), 12-01 (10min), 12-02 (15min), 12-03 (11min), 12-04 (5min)
+- Last 5 plans: 11-02 (7min), 11-03 (14min), 12-01 (10min), 12-02 (15min), 12-03 (11min), 12-04 (5min), 12-05 (7min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -69,6 +69,9 @@ Recent decisions affecting current work:
 - Pre-commit validation hook validates transaction constraints before commit - 12-03
 - Post-recovery validation hook uses RecoveryValidator after WAL replay completes - 12-04
 - validate_post_recovery called between replay_transactions and finalize_recovery - 12-04
+- Store graph_file_path in RecoveryValidator for database-level validation - 12-05
+- Only run database integrity checks when perform_consistency_checks is enabled - 12-05
+- Validate node_count consistency against transactions_replayed count - 12-05
 
 ### Pending Todos
 
@@ -80,8 +83,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 12-04 execution)
-Stopped at: Completed 12-04 - Post-recovery validation hook
+Last session: 2026-01-20 (plan 12-05 execution)
+Stopped at: Completed 12-05 - Database integrity checks
 Resume file: None
 
 ### Roadmap Evolution
@@ -92,4 +95,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3 plans), Phase 12 in progress (4/5 plans)
+  - Progress: Phase 11 complete (3/3 plans), Phase 12 complete (5/5 plans)
