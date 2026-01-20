@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 20 of 22 (Data Management), Plan 2 of 3 complete
-Status: Phase 20-02 complete (File format migration API)
-Last activity: 2026-01-20 — Completed Phase 20 Plan 02: File Format Migration API with auto-detection and atomic V2-to-V3 conversion
+Phase: 20 of 22 (Data Management), Plan 3 of 3 complete
+Status: Phase 20-03 complete (Backup API)
+Last activity: 2026-01-20 — Completed Phase 20 Plan 03: Backup API with checkpoint integration and public wrappers
 
-Progress: [████████████████████████████████] 97% (Phase 11-19 complete, 20-01 complete, 20-02 complete)
+Progress: [████████████████████████████████] 98% (Phase 11-19 complete, 20-01, 20-02, 20-03 complete)
 
 ## Performance Metrics
 
@@ -180,11 +180,16 @@ Recent decisions affecting current work:
 - Atomic migration uses temp file + fsync + atomic rename pattern for crash safety - 20-02
 - GraphFile::open triggers auto-migration for V2 files, transparent to caller - 20-02
 - Backup file (.bak) retained after migration for safety, caller can delete - 20-02
+- Backup API with BackupConfig (builder pattern) and BackupResult metadata - 20-03
+- create_backup() wraps SnapshotExporter with optional checkpoint-before-backup via V2WALManager::force_checkpoint - 20-03
+- GraphBackend::backup() method provides unified interface for both Native and SQLite backends - 20-03
+- SQLite backend uses VACUUM INTO for clean backups, Native uses SnapshotExporter - 20-03
+- Multi-level API: crate root create_backup(), database_backup(), backend::native::v2::backup::create_backup() - 20-03
 
 ### Pending Todos
 
 - Layer persistence (Tasks 3-4 from 15-04) requires separate planning for database schema changes
-- Backup/Restore API (Plans 20-03) requires snapshot export/import public wrapper
+- Restore API (20-04) will complete backup/restore functionality
 
 ### Blockers/Concerns
 
@@ -193,8 +198,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 20-02 execution)
-Stopped at: Completed 20-02 - File Format Migration API with auto-detection and atomic V2-to-V3 conversion
+Last session: 2026-01-20 (plan 20-03 execution)
+Stopped at: Completed 20-03 - Backup API with checkpoint integration and public wrappers
 Resume file: None
 
 ### Roadmap Evolution
@@ -205,4 +210,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 Plans 01-02 complete (2/3, v3 file format with migration API)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (3/3, v3 file format with migration API and backup API)
