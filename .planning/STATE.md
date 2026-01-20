@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 16 of 22 (Memory Safety)
-Plan: 1 of 4 in phase
-Status: Plan 16-01 complete
-Last activity: 2026-01-20 — Completed 16-01 - Transmute Site Audit
+Plan: 2 of 4 in phase
+Status: Plan 16-02 complete
+Last activity: 2026-01-20 — Completed 16-02 - Checkpoint/Validator Transmute Consolidation
 
 Progress: [█████████████████████████████████ ] 96%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 52
+- Total plans completed: 54
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -127,6 +127,9 @@ Recent decisions affecting current work:
 - NodeStore<'a> and EdgeStore<'a> have lifetime parameters tied to GraphFile requiring API redesign - 16-01
 - Three replacement options identified: (A) Arc<RwLock<GraphFile>> API redesign, (B) Scoped lifetimes, (C) Keep with docs - 16-01
 - Decision deferred: Performance impact analysis required before API redesign commitment - 16-01
+- Consolidated transmute operations into documented store_helpers modules in checkpoint/operations.rs, checkpoint/record/integrator.rs, and recovery/validator.rs - 16-02
+- Established consistent pattern for remaining replayer transmute sites (rollback.rs, edge_ops.rs, transaction_ops.rs) - 16-02
+- All checkpoint and validation tests pass after transmute consolidation - 16-02
 
 ### Pending Todos
 
@@ -139,8 +142,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 16-01 execution)
-Stopped at: Completed 16-01 - Transmute Site Audit
+Last session: 2026-01-20 (plan 16-02 execution)
+Stopped at: Completed 16-02 - Checkpoint/Validator Transmute Consolidation
 Resume file: None
 
 ### Roadmap Evolution
@@ -151,4 +154,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 in progress (1/4)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 in progress (2/4)
