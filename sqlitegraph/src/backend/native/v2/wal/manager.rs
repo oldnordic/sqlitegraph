@@ -362,6 +362,7 @@ impl V2WALManager {
         {
             let mut metrics = self.metrics.write();
             metrics.committed_transactions += 1;
+            metrics.transactions_since_checkpoint += 1;
             let duration_us = start_time.elapsed().as_micros() as u64;
             let total_tx = metrics.committed_transactions;
             metrics.avg_transaction_duration_us =
