@@ -710,8 +710,23 @@ impl V2WALCheckpointManager {
 
                 Ok(wal_size >= *threshold)
             }
-            CheckpointStrategy::Adaptive { .. } => {
-                Ok(false) // TODO: Implement adaptive strategy
+            CheckpointStrategy::Adaptive { min_interval, max_wal_size, max_transactions } => {
+                // Check minimum time interval
+                let time_ok = state.last_checkpoint
+                    .map(|t| t.elapsed() >= *min_interval)
+                    .unwrap_or(true); // First checkpoint
+
+                // Check WAL size threshold
+                let current_wal_size = std::fs::metadata(&self.config.wal_path)
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+                let size_ok = current_wal_size >= *max_wal_size;
+
+                // Check transaction count
+                let tx_ok = state.transactions_since_checkpoint >= *max_transactions;
+
+                // Trigger if any condition met AND minimum interval passed
+                Ok(time_ok && (size_ok || tx_ok))
             }
         }
     }
