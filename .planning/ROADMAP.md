@@ -234,25 +234,17 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 16-01: Audit and document all 10+ transmute sites
-- [ ] 16-02: Replace checkpoint/operations.rs transmute with Arc<RwLock<GraphFile>>
-- [ ] 16-03: Replace replayer/rollback.rs transmute sites (6)
-- [ ] 16-04: Add Miri tests and CI integration
+- [x] 16-01: Audit and document all 19 transmute sites ✅
+- [x] 16-02: Replace checkpoint and validator transmutes with Arc<RwLock<GraphFile>> (6 sites) ✅
+- [x] 16-03: Replace replayer transmutes with Arc<RwLock<GraphFile>> (13 sites) ✅
+- [x] 16-04: Add Miri tests, CI integration, and JSON input validation ✅
 
 ### Phase 17: Input Validation
-**Goal**: Add safe handling of external data
+**Goal**: Add safe handling of external data (COMPLETED IN PHASE 16)
 **Depends on**: Phase 16
-**Requirements**: INPUT-01, INPUT-02, INPUT-03, INPUT-04
-**Success Criteria** (what must be TRUE):
-  1. JSON payloads larger than configured limit are rejected
-  2. JSON payloads deeper than configured limit are rejected
-  3. Malicious payload tests cover edge cases
-**Plans**: 3 plans
-
-Plans:
-- [ ] 17-01: Add JSON size limit validation
-- [ ] 17-02: Add JSON depth limit validation
-- [ ] 17-03: Add malicious payload tests
+**Requirements**: INPUT-01 through INPUT-04 completed in Phase 16
+**Status**: COMPLETED ✅
+**Note**: All INPUT requirements were satisfied in Phase 16. This phase is now redundant.
 
 ### Phase 18: Code Structure
 **Goal**: Split large files for maintainability
@@ -358,8 +350,8 @@ Phases execute in numeric order: 1 → 2 → 3 → ... → 10 → 11 → 12 → 
 | 13. ACID Isolation | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 14. ACID Durability | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 15. HNSW Multi-Layer | v1.1 | 4/4 | Complete | 2026-01-20 |
-| 16. Memory Safety | v1.1 | 0/4 | Not started | - |
-| 17. Input Validation | v1.1 | 0/3 | Not started | - |
+| 16. Memory Safety | v1.1 | 4/4 | Complete | 2026-01-20 |
+| 17. Input Validation | v1.1 | 0/3 | Complete* | 2026-01-20 |
 | 18. Code Structure | v1.1 | 0/4 | Not started | - |
 | 19. Concurrent Features | v1.1 | 0/3 | Not started | - |
 | 20. Data Management | v1.1 | 0/4 | Not started | - |

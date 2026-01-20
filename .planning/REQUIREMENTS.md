@@ -109,13 +109,13 @@ Requirements for file format consistency.
 
 Requirements for eliminating unsafe lifetime transmutation.
 
-- [ ] **UNSAFE-01**: All 10+ transmute sites documented with lifetime analysis
-- [ ] **UNSAFE-02**: checkpoint/operations.rs transmute replaced with Arc<RwLock<GraphFile>>
-- [ ] **UNSAFE-03**: checkpoint/record/integrator.rs transmute replaced with Arc<RwLock<GraphFile>>
-- [ ] **UNSAFE-04**: recovery/replayer/rollback.rs transmute sites (6) replaced with Arc<RwLock<GraphFile>>
-- [ ] **UNSAFE-05**: No unsafe transmute remains in codebase without documented justification
-- [ ] **UNSAFE-06**: Miri tests validate safety of all former transmute sites
-- [ ] **UNSAFE-07**: CI runs Miri tests on every commit
+- [x] **UNSAFE-01**: All 19 transmute sites documented with lifetime analysis
+- [x] **UNSAFE-02**: checkpoint/operations.rs transmute replaced with Arc<RwLock<GraphFile>>
+- [x] **UNSAFE-03**: checkpoint/record/integrator.rs transmute replaced with Arc<RwLock<GraphFile>>
+- [x] **UNSAFE-04**: replayer transmute sites (13) replaced with Arc<RwLock<GraphFile>>
+- [x] **UNSAFE-05**: No unsafe transmute remains in codebase without documented justification
+- [x] **UNSAFE-06**: Miri tests validate safety of all former transmute sites
+- [x] **UNSAFE-07**: CI runs Miri tests on every commit
 
 ---
 
@@ -123,10 +123,10 @@ Requirements for eliminating unsafe lifetime transmutation.
 
 Requirements for safe handling of external data.
 
-- [ ] **INPUT-01**: JSON payloads limited to 10MB default size
-- [ ] **INPUT-02**: JSON payloads limited to 128 levels depth
-- [ ] **INPUT-03**: Input validation tests cover malicious payloads
-- [ ] **INPUT-04**: Size/depth limits are configurable
+- [x] **INPUT-01**: JSON payloads limited to 10MB default size
+- [x] **INPUT-02**: JSON payloads limited to 128 levels depth
+- [x] **INPUT-03**: Input validation tests cover malicious payloads
+- [x] **INPUT-04**: Size/depth limits are configurable
 
 ---
 
@@ -377,17 +377,17 @@ Requirements mapped to phases in roadmap.
 | SCHEMA-01 | Phase 20 | Pending |
 | SCHEMA-02 | Phase 20 | Pending |
 | SCHEMA-03 | Phase 20 | Pending |
-| UNSAFE-01 | Phase 16 | Pending |
-| UNSAFE-02 | Phase 16 | Pending |
-| UNSAFE-03 | Phase 16 | Pending |
-| UNSAFE-04 | Phase 16 | Pending |
-| UNSAFE-05 | Phase 16 | Pending |
-| UNSAFE-06 | Phase 16 | Pending |
-| UNSAFE-07 | Phase 16 | Pending |
-| INPUT-01 | Phase 16 | Pending |
-| INPUT-02 | Phase 16 | Pending |
-| INPUT-03 | Phase 17 | Pending |
-| INPUT-04 | Phase 17 | Pending |
+| UNSAFE-01 | Phase 16 | Complete |
+| UNSAFE-02 | Phase 16 | Complete |
+| UNSAFE-03 | Phase 16 | Complete |
+| UNSAFE-04 | Phase 16 | Complete |
+| UNSAFE-05 | Phase 16 | Complete |
+| UNSAFE-06 | Phase 16 | Complete |
+| UNSAFE-07 | Phase 16 | Complete |
+| INPUT-01 | Phase 16 | Complete |
+| INPUT-02 | Phase 16 | Complete |
+| INPUT-03 | Phase 16 | Complete |
+| INPUT-04 | Phase 16 | Complete |
 | REFAC-01 | Phase 18 | Pending |
 | REFAC-02 | Phase 18 | Pending |
 | REFAC-03 | Phase 18 | Pending |
