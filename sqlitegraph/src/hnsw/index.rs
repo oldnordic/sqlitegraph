@@ -935,10 +935,16 @@ impl HnswIndex {
     }
 
     /// Determine which layer to insert a vector into using exponential distribution
-    fn determine_insertion_level(&self) -> usize {
-        // For now, only use base layer to avoid multi-layer complexity
-        // TODO: Implement proper multi-layer HNSW with correct node ID management
-        0
+    fn determine_insertion_level(&mut self) -> usize {
+        if self.config.enable_multilayer {
+            if let Some(distributor) = &mut self.level_distributor {
+                distributor.sample_level_internal()
+            } else {
+                0 // Fallback to single-layer if distributor not initialized
+            }
+        } else {
+            0 // Single-layer mode for backward compatibility
+        }
     }
 
     /// Insert a vector into a specific layer
