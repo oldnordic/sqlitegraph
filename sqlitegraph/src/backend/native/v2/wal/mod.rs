@@ -41,7 +41,7 @@ pub use graph_integration::{
     GraphOperationResult, GraphWALIntegrationConfig, NodeRecordV2WALExt, OperationMetrics,
     V2GraphWALIntegrator,
 };
-pub use manager::{TransactionIsolation, V2WALManager, WALManagerMetrics};
+pub use manager::{V2WALManager, WALManagerMetrics};
 pub use metrics::{V2WALMetrics, WALPerformanceCounters};
 pub use performance::{
     AdaptivePerformanceTuner, ClusterAffinityOptimizer, ClusterAffinityStats, CompressionAlgorithm,
@@ -51,7 +51,8 @@ pub use reader::V2WALReader;
 pub use record::{V2WALRecord, V2WALRecordType, WALSerializationError};
 pub use recovery::V2WALRecoveryEngine;
 pub use transaction_coordinator::{
-    IsolationLevel, LockType, ResourceId, TransactionId, TransactionState, V2TransactionCoordinator,
+    IsolationLevel, LockType, ResourceId, TransactionContext, TransactionId, TransactionState,
+    V2TransactionCoordinator,
 };
 pub use v2_integration::{ChangeTracker, V2IntegrationConfig, V2WALIntegrator};
 pub use writer::V2WALWriter;

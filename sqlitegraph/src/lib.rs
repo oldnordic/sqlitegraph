@@ -273,7 +273,7 @@ pub use backend::{EdgeSpec, NativeGraphBackend, NeighborQuery, NodeSpec, SqliteG
 #[cfg(feature = "native-v2")]
 pub use backend::native::v2::wal::{
     V2WALConfig, V2WALManager,
-    TransactionIsolation, WALManagerMetrics,
+    IsolationLevel, WALManagerMetrics,
 };
 
 // Re-export WAL integration for advanced usage

@@ -5,7 +5,7 @@
 //! clustered edge operations with automatic WAL transaction management.
 
 use crate::backend::native::v2::wal::{
-    TransactionIsolation, V2WALConfig, V2WALManager, V2WALRecord,
+    transaction_coordinator::IsolationLevel, V2WALConfig, V2WALManager, V2WALRecord,
 };
 use crate::backend::native::v2::{
     CompactEdgeRecord, Direction, NodeRecordV2,
@@ -56,7 +56,7 @@ struct GraphTransaction {
     wal_tx_id: u64,
 
     /// Transaction isolation level
-    isolation_level: TransactionIsolation,
+    isolation_level: IsolationLevel,
 
     /// Modified nodes in this transaction
     modified_nodes: Vec<i64>,
@@ -135,7 +135,7 @@ impl V2GraphWALIntegrator {
     }
 
     /// Begin a graph operation transaction
-    pub fn begin_transaction(&self, isolation_level: TransactionIsolation) -> NativeResult<u64> {
+    pub fn begin_transaction(&self, isolation_level: IsolationLevel) -> NativeResult<u64> {
         let wal_tx_id = self.wal_manager.begin_transaction(isolation_level)?;
 
         let graph_tx = GraphTransaction {
@@ -542,7 +542,7 @@ mod tests {
 
         // Begin transaction
         let tx_id = integrator
-            .begin_transaction(TransactionIsolation::ReadCommitted)
+            .begin_transaction(IsolationLevel::ReadCommitted)
             .unwrap();
         assert!(tx_id > 0);
         assert_eq!(integrator.get_active_transaction_count(), 1);
@@ -605,7 +605,7 @@ mod tests {
 
         // Begin transaction
         let tx_id = integrator
-            .begin_transaction(TransactionIsolation::Serializable)
+            .begin_transaction(IsolationLevel::Serializable)
             .unwrap();
         assert_eq!(integrator.get_active_transaction_count(), 1);
 

@@ -228,7 +228,7 @@ fn test_bulk_ingest_rollback() -> NativeResult<()> {
 
     // Begin transaction
     let tx_id = manager
-        .begin_transaction(crate::backend::native::v2::wal::TransactionIsolation::ReadCommitted)?;
+        .begin_transaction(crate::backend::native::v2::wal::IsolationLevel::ReadCommitted)?;
 
     // Enable bulk ingest mode
     let bulk_guard = manager.begin_bulk_ingest(BulkIngestConfig::default())?;

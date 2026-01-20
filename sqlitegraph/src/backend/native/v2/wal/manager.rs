@@ -5,8 +5,8 @@
 //! management with advanced group commit and cluster-affinity optimization.
 
 use crate::backend::native::v2::wal::{
-    V2WALCheckpointManager, V2WALConfig, V2WALHeader, V2WALReader, V2WALRecord,
-    V2WALWriter,
+    transaction_coordinator::IsolationLevel, V2WALCheckpointManager, V2WALConfig, V2WALHeader,
+    V2WALReader, V2WALRecord, V2WALWriter,
 };
 use crate::backend::native::{NativeBackendError, NativeResult};
 use parking_lot::{Mutex, RwLock};
@@ -30,23 +30,10 @@ struct ActiveTransaction {
     records: Vec<V2WALRecord>,
 
     /// Transaction isolation level
-    isolation_level: TransactionIsolation,
+    isolation_level: IsolationLevel,
 
     /// Whether transaction is read-only
     read_only: bool,
-}
-
-/// Transaction isolation levels
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TransactionIsolation {
-    /// Read committed isolation
-    ReadCommitted,
-
-    /// Serializable isolation
-    Serializable,
-
-    /// Snapshot isolation
-    Snapshot,
 }
 
 /// WAL performance metrics
@@ -236,7 +223,7 @@ impl V2WALManager {
     }
 
     /// Begin a new transaction
-    pub fn begin_transaction(&self, isolation_level: TransactionIsolation) -> NativeResult<u64> {
+    pub fn begin_transaction(&self, isolation_level: IsolationLevel) -> NativeResult<u64> {
         let start_time = Instant::now();
 
         // Generate unique transaction ID
@@ -728,7 +715,7 @@ mod tests {
 
         // Begin transaction
         let tx_id = manager
-            .begin_transaction(TransactionIsolation::ReadCommitted)
+            .begin_transaction(IsolationLevel::ReadCommitted)
             .unwrap();
         assert!(tx_id > 0);
         assert_eq!(manager.get_active_transaction_count(), 1);
@@ -773,7 +760,7 @@ mod tests {
 
         // Begin transaction
         let tx_id = manager
-            .begin_transaction(TransactionIsolation::Serializable)
+            .begin_transaction(IsolationLevel::Serializable)
             .unwrap();
         assert_eq!(manager.get_active_transaction_count(), 1);
 
@@ -800,16 +787,16 @@ mod tests {
     #[test]
     fn test_isolation_levels() {
         assert_eq!(
-            TransactionIsolation::ReadCommitted,
-            TransactionIsolation::ReadCommitted
+            IsolationLevel::ReadCommitted,
+            IsolationLevel::ReadCommitted
         );
         assert_ne!(
-            TransactionIsolation::ReadCommitted,
-            TransactionIsolation::Serializable
+            IsolationLevel::ReadCommitted,
+            IsolationLevel::Serializable
         );
         assert_ne!(
-            TransactionIsolation::Serializable,
-            TransactionIsolation::Snapshot
+            IsolationLevel::Serializable,
+            IsolationLevel::Snapshot
         );
     }
 
@@ -883,7 +870,7 @@ mod tests {
 
         // Begin a transaction to test cleanup
         let tx_id = manager
-            .begin_transaction(TransactionIsolation::ReadCommitted)
+            .begin_transaction(IsolationLevel::ReadCommitted)
             .unwrap();
         manager
             .write_transaction_record(
@@ -924,7 +911,7 @@ mod tests {
 
         // Begin and commit first transaction
         let tx_id = manager
-            .begin_transaction(TransactionIsolation::ReadCommitted)
+            .begin_transaction(IsolationLevel::ReadCommitted)
             .unwrap();
         manager
             .write_transaction_record(
@@ -940,7 +927,7 @@ mod tests {
 
         // Begin and commit second transaction (should trigger checkpoint)
         let tx_id = manager
-            .begin_transaction(TransactionIsolation::ReadCommitted)
+            .begin_transaction(IsolationLevel::ReadCommitted)
             .unwrap();
         manager
             .write_transaction_record(
@@ -988,7 +975,7 @@ mod tests {
         // Commit multiple transactions
         for i in 0..5 {
             let tx_id = manager
-                .begin_transaction(TransactionIsolation::ReadCommitted)
+                .begin_transaction(IsolationLevel::ReadCommitted)
                 .unwrap();
             manager
                 .write_transaction_record(
@@ -1037,7 +1024,7 @@ mod tests {
         let start = std::time::Instant::now();
 
         let tx_id = manager
-            .begin_transaction(TransactionIsolation::ReadCommitted)
+            .begin_transaction(IsolationLevel::ReadCommitted)
             .unwrap();
         manager
             .write_transaction_record(
@@ -1078,7 +1065,7 @@ mod tests {
 
         // Write some data to create WAL file
         let tx_id = manager
-            .begin_transaction(TransactionIsolation::ReadCommitted)
+            .begin_transaction(IsolationLevel::ReadCommitted)
             .unwrap();
         manager
             .write_transaction_record(

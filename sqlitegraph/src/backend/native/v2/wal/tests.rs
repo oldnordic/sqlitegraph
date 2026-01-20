@@ -9,7 +9,7 @@
 
 use crate::backend::native::{NativeResult, NativeNodeId};
 use crate::backend::native::v2::wal::{
-    V2WALConfig, V2WALManager, TransactionIsolation, WALManagerMetrics,
+    V2WALConfig, V2WALManager, IsolationLevel, WALManagerMetrics,
     V2GraphWALIntegrator, GraphWALIntegrationConfig, GraphOperationResult,
     PerformanceConfig, CompressionAlgorithm, WALRecordCompressor,
     IOBatcher, ClusterAffinityOptimizer,
@@ -61,9 +61,9 @@ mod enhanced_wal_tests {
         let manager = V2WALManager::create(config)?;
 
         // Test different isolation levels
-        let tx_read_committed = manager.begin_transaction(TransactionIsolation::ReadCommitted)?;
-        let tx_serializable = manager.begin_transaction(TransactionIsolation::Serializable)?;
-        let tx_snapshot = manager.begin_transaction(TransactionIsolation::Snapshot)?;
+        let tx_read_committed = manager.begin_transaction(IsolationLevel::ReadCommitted)?;
+        let tx_serializable = manager.begin_transaction(IsolationLevel::Serializable)?;
+        let tx_snapshot = manager.begin_transaction(IsolationLevel::Snapshot)?;
 
         assert!(tx_read_committed > 0);
         assert!(tx_serializable > tx_read_committed);
@@ -105,7 +105,7 @@ mod enhanced_wal_tests {
 
         // Start multiple transactions rapidly
         let tx_ids: Vec<u64> = (0..5)
-            .map(|_| manager.begin_transaction(TransactionIsolation::ReadCommitted).unwrap())
+            .map(|_| manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap())
             .collect();
 
         // All transactions should be active initially
@@ -145,7 +145,7 @@ mod enhanced_wal_tests {
         let integrator = V2GraphWALIntegrator::create(wal_config, integration_config)?;
 
         // Test transaction-based node insertion
-        let tx_id = integrator.begin_transaction(TransactionIsolation::ReadCommitted)?;
+        let tx_id = integrator.begin_transaction(IsolationLevel::ReadCommitted)?;
         assert_eq!(integrator.get_active_transaction_count(), 1);
 
         // Create a dummy node record (simplified for testing)
@@ -291,7 +291,7 @@ mod enhanced_wal_tests {
 
         // Start multiple transactions
         for i in 0..10 {
-            let tx_id = manager.begin_transaction(TransactionIsolation::ReadCommitted)?;
+            let tx_id = manager.begin_transaction(IsolationLevel::ReadCommitted)?;
             tx_ids.push(tx_id);
 
             // Write some records in each transaction
@@ -347,7 +347,7 @@ mod enhanced_wal_tests {
         assert_eq!(manager.get_active_transaction_count(), 0);
 
         // Start and immediately rollback a transaction
-        let tx_id = manager.begin_transaction(TransactionIsolation::ReadCommitted)?;
+        let tx_id = manager.begin_transaction(IsolationLevel::ReadCommitted)?;
         assert_eq!(manager.get_active_transaction_count(), 1);
 
         manager.rollback_transaction(tx_id)?;
@@ -393,7 +393,7 @@ mod performance_benchmarks {
 
         // Perform rapid node insertions
         for i in 0..num_operations {
-            let tx_id = manager.begin_transaction(TransactionIsolation::ReadCommitted)?;
+            let tx_id = manager.begin_transaction(IsolationLevel::ReadCommitted)?;
 
             let node_record = create_test_node_record((i + 1) as i64);
             let wal_record = create_test_wal_record_node_insert((i + 1) as i64, &node_record);
@@ -434,7 +434,7 @@ mod performance_benchmarks {
 
         // Start many transactions quickly to trigger group commits
         let tx_ids: Vec<u64> = (0..num_transactions)
-            .map(|_| manager.begin_transaction(TransactionIsolation::ReadCommitted).unwrap())
+            .map(|_| manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap())
             .collect();
 
         // Commit all transactions rapidly

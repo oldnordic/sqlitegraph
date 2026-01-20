@@ -28,7 +28,7 @@ pub use planner::{ExportPlanner, PlannerDecision, DecisionReason, WalAnalysis};
 pub use string_table::StringTable;
 pub use wal::{
     GraphOperationResult, GraphWALIntegrationConfig, NodeRecordV2WALExt, OperationMetrics,
-    TransactionIsolation, V2GraphWALIntegrator, V2WALConfig, V2WALHeader, V2WALManager,
+    IsolationLevel, V2GraphWALIntegrator, V2WALConfig, V2WALHeader, V2WALManager,
     V2WALRecord, V2WALRecordType, WALManagerMetrics,
 };
 

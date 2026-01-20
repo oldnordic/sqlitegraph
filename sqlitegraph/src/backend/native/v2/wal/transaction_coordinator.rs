@@ -32,6 +32,7 @@ pub enum IsolationLevel {
     ReadCommitted = 1,
     RepeatableRead = 2,
     Serializable = 3,
+    Snapshot = 4,
 }
 
 /// Transaction state machine
@@ -390,6 +391,11 @@ impl IsolationManager {
                 }
                 IsolationLevel::Serializable => {
                     // Serializable would require more complex validation
+                    // For now, allow all accesses
+                    Ok(())
+                }
+                IsolationLevel::Snapshot => {
+                    // Snapshot isolation would track snapshot state
                     // For now, allow all accesses
                     Ok(())
                 }
