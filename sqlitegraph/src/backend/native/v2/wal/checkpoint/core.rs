@@ -104,6 +104,9 @@ pub struct CheckpointManagerState {
 
     /// Checkpoint start time for current operation
     pub checkpoint_start_time: Option<Instant>,
+
+    /// Transactions committed since last checkpoint (resettable counter)
+    pub transactions_since_checkpoint: u64,
 }
 
 impl Default for CheckpointManagerState {
@@ -117,6 +120,7 @@ impl Default for CheckpointManagerState {
             completed_checkpoints: 0,
             failed_attempts: 0,
             checkpoint_start_time: None,
+            transactions_since_checkpoint: 0,
         }
     }
 }
