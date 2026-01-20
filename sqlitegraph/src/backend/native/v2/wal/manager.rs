@@ -486,6 +486,11 @@ impl V2WALManager {
         self.active_transactions.read().len()
     }
 
+    /// Get transaction count since last checkpoint
+    pub fn get_transactions_since_checkpoint(&self) -> u64 {
+        self.metrics.read().transactions_since_checkpoint
+    }
+
     /// Check if WAL requires checkpoint
     pub fn requires_checkpoint(&self) -> bool {
         let header = self.header.read();
