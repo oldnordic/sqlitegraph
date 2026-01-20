@@ -374,9 +374,9 @@ Requirements mapped to phases in roadmap.
 | CPV-03 | Phase 12 | Complete |
 | CPV-04 | Phase 12 | Complete |
 | CPV-05 | Phase 12 | Complete |
-| SCHEMA-01 | Phase 20 | Pending |
-| SCHEMA-02 | Phase 20 | Pending |
-| SCHEMA-03 | Phase 20 | Pending |
+| SCHEMA-01 | Phase 20 | Complete |
+| SCHEMA-02 | Phase 20 | Complete |
+| SCHEMA-03 | Phase 20 | Complete |
 | UNSAFE-01 | Phase 16 | Complete |
 | UNSAFE-02 | Phase 16 | Complete |
 | UNSAFE-03 | Phase 16 | Complete |
