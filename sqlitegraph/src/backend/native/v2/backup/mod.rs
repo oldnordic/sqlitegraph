@@ -6,7 +6,7 @@
 use crate::backend::native::types::{NativeResult, NativeBackendError};
 use crate::backend::native::v2::{
     export::snapshot::{SnapshotExporter, SnapshotExportConfig, SnapshotExportResult},
-    wal::V2WALManager,
+    wal::{V2WALManager, V2WALConfig},
 };
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -204,8 +204,9 @@ fn perform_checkpoint(graph_path: &Path) -> NativeResult<()> {
         return Ok(());
     }
 
-    // Create WAL manager and force checkpoint
-    let mut wal_manager = V2WALManager::for_graph_file(graph_path)?;
+    // Create WAL config and manager, then force checkpoint
+    let wal_config = V2WALConfig::for_graph_file(graph_path);
+    let wal_manager = V2WALManager::create(wal_config)?;
     wal_manager.force_checkpoint()?;
 
     Ok(())

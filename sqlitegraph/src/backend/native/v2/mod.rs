@@ -3,6 +3,7 @@
 //! This module implements the Phase 14 redesign with compact edge records
 //! and clustered adjacency for optimal I/O locality and storage efficiency.
 
+pub mod backup;
 pub mod edge_cluster;
 pub mod export;
 pub mod free_space;
@@ -16,6 +17,7 @@ pub mod string_table;
 pub mod wal;
 
 // Re-export V2 types
+pub use backup::{BackupConfig, BackupResult, backup, create_backup};
 pub use edge_cluster::{CompactEdgeRecord, Direction, EdgeCluster, EdgeRecordCompactExt};
 pub use export::{
     ExportConsistencyReport, ExportFactory, ExportManifest, V2Exporter, V2ExportConfig, ExportResult,
