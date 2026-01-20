@@ -200,10 +200,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 14-01: Wire transaction-count checkpoint trigger
-- [ ] 14-02: Wire size-based checkpoint trigger
-- [ ] 14-03: Add WAL metrics tracking (count and size)
-- [ ] 14-04: Add tests for all checkpoint strategies
+- [ ] 14-01: Add transaction counter to WALManagerMetrics with increment in commit_transaction
+- [ ] 14-02: Wire size-based checkpoint trigger using std::fs::metadata
+- [ ] 14-03: Integrate counter tracking between checkpoint manager and WAL manager with reset logic
+- [ ] 14-04: Add checkpoint configuration to NativeConfig and comprehensive tests
 
 ### Phase 15: HNSW Multi-Layer
 **Goal**: Implement O(log N) HNSW search with multi-layer graph
@@ -356,7 +356,7 @@ Phases execute in numeric order: 1 → 2 → 3 → ... → 10 → 11 → 12 → 
 | 11. ACID Atomicity | v1.1 | 3/3 | Complete | 2026-01-20 |
 | 12. ACID Consistency | v1.1 | 5/5 | Complete | 2026-01-20 |
 | 13. ACID Isolation | v1.1 | 4/4 | Complete | 2026-01-20 |
-| 14. ACID Durability | v1.1 | 0/4 | Not started | - |
+| 14. ACID Durability | v1.1 | 0/4 | Pending | - |
 | 15. HNSW Multi-Layer | v1.1 | 0/4 | Not started | - |
 | 16. Memory Safety | v1.1 | 0/4 | Not started | - |
 | 17. Input Validation | v1.1 | 0/3 | Not started | - |
