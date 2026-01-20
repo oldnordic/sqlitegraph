@@ -4,9 +4,9 @@
 //! Focuses on recovery orchestration, state management, and phase coordination.
 
 use super::{constants::*, errors::RecoveryError};
-use super::validator::RecoveryValidator;
+use super::validator::{RecoveryValidator, ValidationResult};
 use crate::backend::native::v2::wal::{V2WALConfig, V2WALRecord};
-use crate::backend::native::{NativeBackendError, NativeResult};
+use crate::backend::native::{NativeBackendError, NativeResult, GraphFile};
 use crate::debug::{info_log, debug_log, warn_log, error_log};
 use parking_lot::{Condvar, Mutex};
 use std::collections::HashMap;
@@ -590,7 +590,8 @@ impl V2WALRecoveryEngine {
     ///
     /// This method validates the integrity of the recovered database to ensure
     /// no corruption occurred during recovery. It uses the RecoveryValidator to
-    /// validate the replayed transaction sequence.
+    /// validate the replayed transaction sequence and perform database-level
+    /// integrity checks on the graph file.
     ///
     /// # Arguments
     /// * `transactions` - The list of transactions that were replayed
@@ -601,27 +602,148 @@ impl V2WALRecoveryEngine {
     fn validate_post_recovery(&self, transactions: &[TransactionState]) -> Result<Vec<String>, RecoveryError> {
         debug_log!("Starting post-recovery validation for {} transactions", transactions.len());
 
+        let mut all_warnings = Vec::new();
+
         // Create validator with database path
         let mut validator = RecoveryValidator::new(self.database_path.clone())
             .map_err(|e| RecoveryError::validation(format!("Failed to create recovery validator: {}", e)))?;
 
-        // Validate the recovery sequence
-        let (_stats, warnings) = validator
+        // Validate the recovery sequence (transaction-level validation)
+        let (_stats, tx_warnings) = validator
             .validate_recovery_sequence(transactions)
             .map_err(|e| {
-                error_log!("Post-recovery validation failed: {}", e);
+                error_log!("Post-recovery transaction validation failed: {}", e);
                 e
             })?;
+        all_warnings.extend(tx_warnings);
+
+        // Perform database-level integrity checks if enabled
+        if self.options.perform_consistency_checks {
+            debug_log!("Performing database integrity checks");
+
+            // Calculate number of transactions replayed (committed only)
+            let transactions_replayed = transactions.iter()
+                .filter(|tx| tx.committed)
+                .count() as u64;
+
+            // Open graph file to verify basic integrity
+            let graph_integrity_result = self.validate_graph_file_integrity(transactions_replayed);
+            match graph_integrity_result {
+                Ok(integrity_warnings) => {
+                    all_warnings.extend(integrity_warnings);
+                }
+                Err(e) => {
+                    // Database integrity errors are critical
+                    error_log!("Database integrity check failed: {}", e);
+                    return Err(e);
+                }
+            }
+
+            // If perform_consistency_checks is enabled, also call the comprehensive validator
+            let integrity_result = validator.validate_database_integrity()
+                .map_err(|e| {
+                    error_log!("Database integrity validation failed: {}", e);
+                    e
+                })?;
+
+            match integrity_result {
+                ValidationResult::Valid => {
+                    debug_log!("Database integrity validation passed");
+                }
+                ValidationResult::Recoverable { issues, .. } => {
+                    warn_log!("Database integrity validation passed with {} warnings", issues.len());
+                    all_warnings.extend(issues);
+                }
+                ValidationResult::Invalid { errors, critical_error } => {
+                    error_log!("Database integrity validation failed: {}", critical_error);
+                    for error in &errors {
+                        debug_log!("Integrity error: {}", error);
+                    }
+                    return Err(RecoveryError::validation(format!(
+                        "Database integrity check failed: {}",
+                        critical_error
+                    )));
+                }
+            }
+        }
 
         // Log validation results
-        if warnings.is_empty() {
+        if all_warnings.is_empty() {
             info_log!("Post-recovery validation passed with no warnings");
         } else {
-            warn_log!("Post-recovery validation passed with {} warnings", warnings.len());
-            for warning in &warnings {
+            warn_log!("Post-recovery validation passed with {} warnings", all_warnings.len());
+            for warning in &all_warnings {
                 debug_log!("Validation warning: {}", warning);
             }
         }
+
+        Ok(all_warnings)
+    }
+
+    /// Validate graph file integrity after recovery
+    ///
+    /// Performs basic graph file integrity checks including node count consistency
+    /// and file size validation.
+    ///
+    /// # Arguments
+    /// * `transactions_replayed` - Number of committed transactions that were replayed
+    ///
+    /// # Returns
+    /// * `Ok(Vec<String>)` - List of warnings (non-critical issues)
+    /// * `Err(RecoveryError)` - Critical integrity error
+    fn validate_graph_file_integrity(&self, transactions_replayed: u64) -> Result<Vec<String>, RecoveryError> {
+        let mut warnings = Vec::new();
+
+        // Open the graph file
+        let mut graph_file = GraphFile::open(&self.database_path)
+            .map_err(|e| RecoveryError::validation(format!("Cannot open graph file for integrity check: {}", e)))?;
+
+        // Get persistent header
+        let header = graph_file.persistent_header();
+
+        // Check node count consistency
+        // If transactions were replayed, we expect the database to have content
+        if transactions_replayed > 0 && header.node_count == 0 {
+            warnings.push(
+                "Transactions were replayed but node_count is 0 - possible data loss".to_string()
+            );
+        }
+
+        // Check file size is reasonable (not truncated)
+        let file_size = graph_file.file_size()
+            .map_err(|e| RecoveryError::validation(format!("Cannot get file size: {}", e)))?;
+
+        // File should at minimum contain the header
+        let min_expected_size = crate::backend::native::constants::HEADER_SIZE as u64;
+        if file_size < min_expected_size {
+            return Err(RecoveryError::validation(format!(
+                "Graph file appears truncated: size {} bytes is less than minimum {} bytes",
+                file_size, min_expected_size
+            )));
+        }
+
+        // Check that the file size matches what the header describes
+        let max_offset = header.free_space_offset
+            .max(header.incoming_cluster_offset)
+            .max(header.outgoing_cluster_offset)
+            .max(header.edge_data_offset)
+            .max(header.node_data_offset);
+
+        if file_size < max_offset {
+            warnings.push(format!(
+                "File size {} bytes is less than expected max offset {} bytes - possible truncation",
+                file_size, max_offset
+            ));
+        }
+
+        // Validate persistent header structure
+        header.validate()
+            .map_err(|e| RecoveryError::validation(format!("Persistent header validation failed: {}", e)))?;
+
+        debug_log!(
+            "Graph file integrity check passed: node_count={}, edge_count={}, file_size={}",
+            header.node_count, header.edge_count, file_size
+        );
 
         Ok(warnings)
     }
