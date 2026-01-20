@@ -329,17 +329,6 @@ impl HnswIndex {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn search(&self, query: &[f32], k: usize) -> Result<Vec<(u64, f32)>, HnswError> {
-        println!(
-            "search: Starting with query length {}, k={}",
-            query.len(),
-            k
-        );
-        println!(
-            "search: vector_count={}, layers.len()={}",
-            self.vector_count,
-            self.layers.len()
-        );
-
         // Validate query vector dimension
         if query.len() != self.config.dimension {
             return Err(HnswError::Index(HnswIndexError::VectorDimensionMismatch {
@@ -352,74 +341,53 @@ impl HnswIndex {
             return Ok(Vec::new());
         }
 
-        // Search from top layer down, refining candidates at each level
-        for level in (0..self.layers.len()).rev() {
-            // Skip empty layers
+        // Load vectors once for all layers
+        let vectors_array = self.load_vectors_as_array()?;
+
+        // Start from top layer entry point
+        let mut entry_point = *self.entry_points.last()
+            .ok_or(HnswError::Index(HnswIndexError::IndexNotInitialized))?;
+
+        // Greedy descent through higher layers (k=1 for greedy)
+        // Start from the top layer and go down to layer 1
+        for level in (1..self.layers.len()).rev() {
             if self.layers[level].node_count() == 0 {
                 continue;
             }
 
-            let layer_entry_points = if level == self.layers.len() - 1 {
-                self.entry_points.clone()
-            } else {
-                // Find entry points for this level
-                self.get_layer_entry_points(level)
-            };
-
-            if layer_entry_points.is_empty() {
-                continue;
-            }
-
-            // Get all vectors from storage and create 0-based indexed array
-            let vector_ids = self.storage.list_vectors()?;
-            let max_vector_id = vector_ids.iter().copied().max().unwrap_or(0);
-
-            // Create 0-indexed vectors array (vectors[node_id] = vector_data)
-            let mut vectors_array = vec![vec![]; max_vector_id as usize + 1];
-            for vector_id in vector_ids {
-                if let Ok(Some(vector)) = self.storage.get_vector(vector_id) {
-                    let node_id = (vector_id - 1) as usize; // Convert 1-based to 0-based
-                    if node_id < vectors_array.len() {
-                        vectors_array[node_id] = vector;
-                    }
-                }
-            }
-
-            // Convert entry points from 1-based vector IDs to 0-based node IDs
-            let entry_node_ids: Vec<u64> = layer_entry_points
-                .iter()
-                .map(|&vector_id| vector_id - 1) // Convert to 0-based
-                .collect();
-
-            // Search in this layer
-            let ef = if level == 0 { k } else { self.config.ef_search };
-            let search_result = self.search_engine.search_layer(
+            let local_id = self.get_local_id_for_layer(entry_point, level)?;
+            let result = self.search_engine.search_layer(
                 &self.layers[level],
                 query,
                 &vectors_array,
-                &entry_node_ids,
-                ef,
+                &[local_id],
+                1, // k=1 for greedy descent
             )?;
 
-            if level == 0 {
-                // Base layer: return final results
-                let neighbors = search_result.neighbors();
-                let distances = search_result.distances();
-                let mut results = Vec::with_capacity(neighbors.len().min(k));
-
-                for i in 0..neighbors.len().min(k) {
-                    // Convert 0-based node IDs back to 1-based vector IDs
-                    let vector_id = neighbors[i] + 1;
-                    results.push((vector_id, distances[i]));
-                }
-
-                return Ok(results);
+            if !result.neighbors().is_empty() {
+                entry_point = self.get_global_id_for_layer(level, result.neighbors()[0])?;
             }
-            // Higher layers fall through to continue search in lower layers
         }
 
-        // If we reach here, there were no entry points in any layer
-        Ok(Vec::new())
+        // Layer 0: Full ef-search
+        let local_entry = self.get_local_id_for_layer(entry_point, 0)?;
+        let result = self.search_engine.search_layer(
+            &self.layers[0],
+            query,
+            &vectors_array,
+            &[local_entry],
+            self.config.ef_search.max(k),
+        )?;
+
+        // Convert results to 1-based vector IDs
+        let results: Vec<(u64, f32)> = result.neighbors()
+            .iter()
+            .zip(result.distances().iter())
+            .map(|(&local_id, &dist)| (local_id + 1, dist))
+            .take(k)
+            .collect();
+
+        Ok(results)
     }
 
     /// Get vector data and metadata by ID
@@ -1060,6 +1028,77 @@ impl HnswIndex {
                 Vec::new()
             }
         }
+    }
+
+    /// Get local ID for a global vector ID in a specific layer
+    ///
+    /// In multi-layer mode, uses LayerMappings for ID translation.
+    /// In single-layer mode, uses direct 1-based to 0-based conversion.
+    ///
+    /// # Arguments
+    ///
+    /// * `vector_id` - Global vector ID (1-based)
+    /// * `layer_id` - Layer ID (0-based)
+    ///
+    /// # Returns
+    ///
+    /// Local node ID for the layer
+    fn get_local_id_for_layer(&self, vector_id: u64, layer_id: usize) -> Result<u64, HnswError> {
+        if let Some(manager) = &self.multi_layer_manager {
+            manager.get_local_id(vector_id, layer_id)
+                .ok_or_else(|| HnswError::Index(HnswIndexError::NodeNotFound(vector_id)))
+        } else {
+            // Single-layer mode: direct conversion
+            Ok(vector_id - 1)
+        }
+    }
+
+    /// Get global ID for a local node ID in a specific layer
+    ///
+    /// In multi-layer mode, uses LayerMappings for ID translation.
+    /// In single-layer mode, uses direct 0-based to 1-based conversion.
+    ///
+    /// # Arguments
+    ///
+    /// * `layer_id` - Layer ID (0-based)
+    /// * `local_id` - Local node ID (0-based)
+    ///
+    /// # Returns
+    ///
+    /// Global vector ID (1-based)
+    fn get_global_id_for_layer(&self, layer_id: usize, local_id: u64) -> Result<u64, HnswError> {
+        if let Some(manager) = &self.multi_layer_manager {
+            manager.get_global_id(layer_id, local_id)
+                .ok_or_else(|| HnswError::Index(HnswIndexError::InvalidNodeId(local_id)))
+        } else {
+            // Single-layer mode: direct conversion
+            Ok(local_id + 1)
+        }
+    }
+
+    /// Load all vectors as a 0-indexed array for layer operations
+    ///
+    /// Creates a vectors array where vectors[node_id] = vector_data,
+    /// allowing efficient lookup by layer-local node IDs.
+    ///
+    /// # Returns
+    ///
+    /// Vectors array indexed by 0-based node IDs
+    fn load_vectors_as_array(&self) -> Result<Vec<Vec<f32>>, HnswError> {
+        let vector_ids = self.storage.list_vectors()?;
+        let max_vector_id = vector_ids.iter().copied().max().unwrap_or(0);
+
+        let mut vectors_array = vec![vec![]; max_vector_id as usize + 1];
+        for vector_id in vector_ids {
+            if let Ok(Some(vector)) = self.storage.get_vector(vector_id) {
+                let node_id = (vector_id - 1) as usize;
+                if node_id < vectors_array.len() {
+                    vectors_array[node_id] = vector;
+                }
+            }
+        }
+
+        Ok(vectors_array)
     }
 }
 
