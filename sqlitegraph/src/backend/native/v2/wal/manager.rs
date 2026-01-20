@@ -1131,4 +1131,68 @@ mod tests {
             .len();
         assert!(wal_size > 0);
     }
+
+    #[test]
+    fn test_transaction_count_checkpoint_trigger() {
+        let temp_dir = tempdir().unwrap();
+        let v2_graph_path = temp_dir.path().join("test.v2");
+
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create V2 graph file for test");
+
+        let config = V2WALConfig {
+            graph_path: v2_graph_path.clone(),
+            wal_path: temp_dir.path().join("test.wal"),
+            checkpoint_path: temp_dir.path().join("test.checkpoint"),
+            max_wal_size: 1024 * 1024 * 1024, // 1GB
+            checkpoint_interval: 3, // Trigger after 3 transactions
+            auto_checkpoint: false, // Manual control for test
+            ..Default::default()
+        };
+
+        let manager = V2WALManager::create(config).unwrap();
+
+        // Commit 2 transactions - should NOT trigger checkpoint
+        for i in 0..2 {
+            let tx_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+            manager.write_transaction_record(
+                tx_id,
+                V2WALRecord::NodeInsert {
+                    node_id: i,
+                    slot_offset: ((i + 1) * 1024) as u64,
+                    node_data: vec![i as u8],
+                },
+            ).unwrap();
+            manager.commit_transaction(tx_id).unwrap();
+        }
+
+        let metrics = manager.get_metrics();
+        assert_eq!(metrics.transactions_since_checkpoint, 2);
+        assert_eq!(metrics.checkpoint_count, 0);
+
+        // Commit 3rd transaction - should trigger checkpoint (if auto enabled)
+        let tx_id = manager.begin_transaction(IsolationLevel::ReadCommitted).unwrap();
+        manager.write_transaction_record(
+            tx_id,
+            V2WALRecord::NodeInsert {
+                node_id: 3,
+                slot_offset: 4096,
+                node_data: vec![3],
+            },
+        ).unwrap();
+        manager.commit_transaction(tx_id).unwrap();
+
+        let metrics = manager.get_metrics();
+        assert_eq!(metrics.transactions_since_checkpoint, 3);
+
+        // Manually trigger checkpoint callback to simulate checkpoint completion
+        // This tests the counter reset behavior without full checkpoint execution
+        let checkpointed_lsn = manager.get_header().committed_lsn;
+        manager.on_checkpoint_completed(checkpointed_lsn).unwrap();
+
+        // Verify counter was reset after checkpoint callback
+        let metrics = manager.get_metrics();
+        assert_eq!(metrics.transactions_since_checkpoint, 0, "Counter should reset after checkpoint");
+        assert_eq!(metrics.checkpoint_count, 1, "Checkpoint count should increment");
+    }
 }
