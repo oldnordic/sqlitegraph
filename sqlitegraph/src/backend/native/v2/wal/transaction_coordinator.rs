@@ -534,17 +534,6 @@ impl V2TransactionCoordinator {
         resource_id: ResourceId,
         lock_type: LockType,
     ) -> NativeResult<()> {
-        // Check for deadlock before attempting lock
-        if self
-            .deadlock_detector
-            .would_cause_deadlock(tx_id, resource_id)?
-        {
-            return Err(NativeBackendError::DeadlockDetected {
-                tx_id,
-                conflicting_resources: vec![],
-            });
-        }
-
         // Attempt to acquire lock
         let acquired = self
             .lock_manager
@@ -573,7 +562,16 @@ impl V2TransactionCoordinator {
             self.isolation_manager
                 .validate_access(tx_id, resource_id, lock_type)?;
         } else {
-            // Add to wait queue and potentially wait
+            // Check for deadlock before adding to wait queue
+            // (wait edges were added by V2LockManager::acquire_lock)
+            if self.deadlock_detector.detect_cycle(tx_id)? {
+                return Err(NativeBackendError::DeadlockDetected {
+                    tx_id,
+                    conflicting_resources: vec![],
+                });
+            }
+
+            // Add to wait queue
             let request = LockRequest {
                 transaction_id: tx_id,
                 resource_id,
