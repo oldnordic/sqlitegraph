@@ -9,17 +9,17 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 22 (Scaling & Dependencies) - Plan 2 of 4 complete
-Status: Phase 22 in progress (2/4 plans executed)
-Last activity: 2026-01-20 — Completed 22-02: Dirty Block Overflow Strategy
+Phase: 22 (Scaling & Dependencies) - Plan 1 of 4 complete
+Status: Phase 22 in progress (1/4 plans executed)
+Last activity: 2026-01-20 — Completed 22-01: Multi-File Checkpointing
 
-Progress: [████████████████████████████████░] 95% (Phase 11-21 complete, 22-02 complete)
+Progress: [████████████████████████████████░] 95% (Phase 11-21 complete, 22-01 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 67 (33 for v0.2/v1.0, 34 for v1.1)
-- Average duration: 8min (last 5 plans: 6min, 5min, 5min, 5min, 5min)
+- Total plans completed: 68 (33 for v0.2/v1.0, 35 for v1.1)
+- Average duration: 8min (last 5 plans: 12min, 5min, 5min, 5min, 5min)
 - Total execution time: TBD
 
 **By Phase:**
@@ -205,10 +205,20 @@ Recent decisions affecting current work:
 - Checkpoint executor bug fix: LSN must be >= 1 validation handled - 21-03
 
 **v1.1 Scaling & Dependencies (Phase 22):**
-- Multi-file checkpoint module with segment writer/reader and parallel I/O support - 22-01
-- SegmentWriter writes sequential checkpoint data to segment files with configurable size limits - 22-01
-- SegmentReader reads and validates segment files with CRC checksums and index-based access - 22-01
-- CheckpointSegments manages multiple segments with parallel write/read capabilities - 22-01
+- Segment file naming: {base}.ckpt.{index:03d} for predictable ordering - 22-01
+- Manifest file with atomic write pattern (temp file + fsync + atomic rename) for crash-safe recovery - 22-01
+- LSN continuity validation across segments to prevent data loss - 22-01
+- Checksum per segment (multiply-by-31 rolling hash) for faster validation - 22-01
+- SegmentWriter::rotate_segment auto-finalizes existing segment before rotation - 22-01
+- Segment file magic: SGMT, Manifest file magic: MNFT - 22-01
+- Default segment size 512MB, max segments 16 = 8GB max checkpoint (configurable) - 22-01
+- MultiFileCheckpointConfig with builder pattern (with_max_segment_size, with_max_segments) - 22-01
+- CheckpointManifest stores segment_count, segments vector, total_lsn_range, total_block_count, checksum, timestamp - 22-01
+- MultiFileRecovery provides discover_checkpoints(), load_manifest(), validate_checkpoint(), recover_checkpoint() - 22-01
+- RecoveredCheckpoint provides lsn_range(), block_count(), timestamp(), segment_count(), into_iterator(), iterator() - 22-01
+- V2WALCheckpointManager::with_multi_file() builder method for multi-file checkpoint creation - 22-01
+- execute_multi_file_checkpoint() routes checkpoint execution to multi-file path when enabled - 22-01
+- 6 large checkpoint integration tests verify segment rotation, recovery, and LSN continuity - 22-01
 - DirtyBlockOverflowStrategy enum with 4 variants: Reject, ForceCheckpoint, SpillToDisk, HierarchicalPromotion - 22-02
 - Default overflow strategy is Reject to maintain backward compatibility - 22-02
 - DiskOverflowStore tracks spilled blocks with timestamp metadata for later recovery - 22-02
@@ -230,8 +240,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 22-02 execution)
-Stopped at: Completed 22-02 - Dirty Block Overflow Strategy
+Last session: 2026-01-20 (plan 22-01 execution)
+Stopped at: Completed 22-01 - Multi-File Checkpointing
 Resume file: None
 
 ### Roadmap Evolution
@@ -241,6 +251,5 @@ Resume file: None
 - **v1.1 ACID & Reliability** (2026-01-20): In Progress
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
-  - Total: 67 plans completed
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (4/4, v3 file format with migration API, backup API, and restore API), Phase 21 complete (4/4: test coverage for WAL recovery, node deletion rollback, HNSW multi-layer, Miri integration)
-  - Phase 22 in progress: 2/4 (22-01 multi-file checkpoint, 22-02 dirty block overflow)
+  - Total: 68 plans completed
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (4/4, v3 file format with migration API, backup API, and restore API), Phase 21 complete (4/4: test coverage for WAL recovery, node deletion rollback, HNSW multi-layer, Miri integration), Phase 22 in progress (1/4: multi-file checkpointing complete)
