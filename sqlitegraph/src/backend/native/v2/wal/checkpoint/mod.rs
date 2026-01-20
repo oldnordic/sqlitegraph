@@ -29,7 +29,7 @@
 //! - Cluster-aware dirty block tracking
 
 pub use self::core::{
-    CheckpointProgress, CheckpointState, DirtyBlockTracker, V2WALCheckpointManager,
+    CheckpointManagerState, CheckpointProgress, CheckpointState, DirtyBlockTracker, V2WALCheckpointManager,
 };
 // Re-export from the new modularized structure
 pub use self::coordinator::CheckpointExecutor;

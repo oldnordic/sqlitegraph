@@ -958,6 +958,255 @@ impl TwoPhaseCommitCoordinator {
 
         Ok(())
     }
+
+    /// Validate WAL records before commit (pre-commit validation)
+    ///
+    /// This method performs lightweight constraint validation on all WAL records
+    /// in a transaction before they are persisted to the WAL. This prevents
+    /// invalid or corrupt data from being committed.
+    async fn validate_pre_commit(&self, tx_id: TransactionId) -> NativeResult<()> {
+        // Get transaction context and extract WAL records
+        let wal_records = {
+            let active = self.transactions.read();
+            let context = active
+                .get(&tx_id)
+                .ok_or_else(|| NativeBackendError::TransactionNotFound { tx_id })?;
+            context.wal_records.clone()
+        };
+
+        // Validate each WAL record for basic constraint compliance
+        for (i, record) in wal_records.iter().enumerate() {
+            self.validate_record_constraints(record, i)?;
+        }
+
+        Ok(())
+    }
+
+    /// Validate a single WAL record for constraint compliance
+    fn validate_record_constraints(&self, record: &V2WALRecord, index: usize) -> NativeResult<()> {
+        match record {
+            V2WALRecord::NodeInsert { node_id, node_data, .. } => {
+                if *node_id <= 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: NodeInsert record {} has invalid node_id {} (must be > 0)",
+                            index, node_id
+                        ),
+                        source: None,
+                    });
+                }
+                if node_data.is_empty() {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: NodeInsert record {} has empty node_data",
+                            index
+                        ),
+                        source: None,
+                    });
+                }
+            }
+
+            V2WALRecord::NodeUpdate { node_id, old_data, new_data, .. } => {
+                if *node_id <= 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: NodeUpdate record {} has invalid node_id {} (must be > 0)",
+                            index, node_id
+                        ),
+                        source: None,
+                    });
+                }
+                if old_data.is_empty() || new_data.is_empty() {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: NodeUpdate record {} has empty data (old_data.len={}, new_data.len={})",
+                            index,
+                            old_data.len(),
+                            new_data.len()
+                        ),
+                        source: None,
+                    });
+                }
+            }
+
+            V2WALRecord::ClusterCreate { node_id, cluster_offset, cluster_size, edge_data, .. } => {
+                if *node_id <= 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: ClusterCreate record {} has invalid node_id {} (must be > 0)",
+                            index, node_id
+                        ),
+                        source: None,
+                    });
+                }
+                if *cluster_size == 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: ClusterCreate record {} has invalid cluster_size {} (must be > 0)",
+                            index, cluster_size
+                        ),
+                        source: None,
+                    });
+                }
+                // Check cluster alignment
+                const CLUSTER_ALIGNMENT: u64 = 64 * 1024; // 64KB alignment
+                if *cluster_offset % CLUSTER_ALIGNMENT != 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: ClusterCreate record {} has misaligned cluster_offset {} (not aligned to {} bytes)",
+                            index, cluster_offset, CLUSTER_ALIGNMENT
+                        ),
+                        source: None,
+                    });
+                }
+                if edge_data.is_empty() {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: ClusterCreate record {} has empty edge_data",
+                            index
+                        ),
+                        source: None,
+                    });
+                }
+            }
+
+            V2WALRecord::EdgeInsert { edge_record, .. } => {
+                if edge_record.neighbor_id <= 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: EdgeInsert record {} has invalid neighbor_id {} (must be > 0)",
+                            index, edge_record.neighbor_id
+                        ),
+                        source: None,
+                    });
+                }
+            }
+
+            V2WALRecord::EdgeUpdate { old_edge, new_edge, .. } => {
+                if old_edge.neighbor_id <= 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: EdgeUpdate record {} has invalid old_edge.neighbor_id {} (must be > 0)",
+                            index, old_edge.neighbor_id
+                        ),
+                        source: None,
+                    });
+                }
+                if new_edge.neighbor_id <= 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: EdgeUpdate record {} has invalid new_edge.neighbor_id {} (must be > 0)",
+                            index, new_edge.neighbor_id
+                        ),
+                        source: None,
+                    });
+                }
+            }
+
+            V2WALRecord::EdgeDelete { old_edge, .. } => {
+                if old_edge.neighbor_id <= 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: EdgeDelete record {} has invalid old_edge.neighbor_id {} (must be > 0)",
+                            index, old_edge.neighbor_id
+                        ),
+                        source: None,
+                    });
+                }
+            }
+
+            V2WALRecord::FreeSpaceAllocate { block_offset, block_size, .. } => {
+                if *block_size == 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: FreeSpaceAllocate record {} has invalid block_size {} (must be > 0)",
+                            index, block_size
+                        ),
+                        source: None,
+                    });
+                }
+                // Check block alignment
+                const BLOCK_ALIGNMENT: u64 = 4096; // 4KB alignment
+                if *block_offset % BLOCK_ALIGNMENT != 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: FreeSpaceAllocate record {} has misaligned block_offset {} (not aligned to {} bytes)",
+                            index, block_offset, BLOCK_ALIGNMENT
+                        ),
+                        source: None,
+                    });
+                }
+            }
+
+            V2WALRecord::FreeSpaceDeallocate { block_offset, block_size, .. } => {
+                if *block_size == 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: FreeSpaceDeallocate record {} has invalid block_size {} (must be > 0)",
+                            index, block_size
+                        ),
+                        source: None,
+                    });
+                }
+                // Check block alignment
+                const BLOCK_ALIGNMENT: u64 = 4096; // 4KB alignment
+                if *block_offset % BLOCK_ALIGNMENT != 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: FreeSpaceDeallocate record {} has misaligned block_offset {} (not aligned to {} bytes)",
+                            index, block_offset, BLOCK_ALIGNMENT
+                        ),
+                        source: None,
+                    });
+                }
+            }
+
+            V2WALRecord::StringInsert { string_id, string_value, .. } => {
+                if *string_id == 0 {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: StringInsert record {} has invalid string_id {} (must be > 0)",
+                            index, string_id
+                        ),
+                        source: None,
+                    });
+                }
+                if string_value.is_empty() {
+                    return Err(NativeBackendError::InvalidParameter {
+                        context: format!(
+                            "Pre-commit validation failed: StringInsert record {} has empty string_value",
+                            index
+                        ),
+                        source: None,
+                    });
+                }
+            }
+
+            // Transaction control and other records don't need validation
+            V2WALRecord::TransactionBegin { .. }
+            | V2WALRecord::TransactionCommit { .. }
+            | V2WALRecord::TransactionRollback { .. }
+            | V2WALRecord::TransactionPrepare { .. }
+            | V2WALRecord::TransactionAbort { .. }
+            | V2WALRecord::SavepointCreate { .. }
+            | V2WALRecord::SavepointRollback { .. }
+            | V2WALRecord::SavepointRelease { .. }
+            | V2WALRecord::BackupCreate { .. }
+            | V2WALRecord::BackupRestore { .. }
+            | V2WALRecord::LockAcquire { .. }
+            | V2WALRecord::LockRelease { .. }
+            | V2WALRecord::IndexUpdate { .. }
+            | V2WALRecord::StatisticsUpdate { .. }
+            | V2WALRecord::Checkpoint { .. }
+            | V2WALRecord::HeaderUpdate { .. }
+            | V2WALRecord::SegmentEnd { .. }
+            | V2WALRecord::NodeDelete { .. } => {
+                // NodeDelete and other control records are valid as-is
+            }
+        }
+
+        Ok(())
+    }
 }
 
 // Additional implementations for lock manager, deadlock detector, etc. would follow...
