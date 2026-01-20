@@ -6,7 +6,9 @@
 
 use crate::backend::native::v2::wal::V2WALConfig;
 use crate::backend::native::v2::wal::checkpoint::constants::*;
-use crate::backend::native::v2::wal::checkpoint::core::{CheckpointState, DirtyBlockTracker};
+use crate::backend::native::v2::wal::checkpoint::core::{
+    CheckpointManagerState, CheckpointState, DirtyBlockTracker,
+};
 use crate::backend::native::v2::wal::checkpoint::errors::{CheckpointError, CheckpointResult};
 use std::fs;
 use std::time::SystemTime;
@@ -226,9 +228,14 @@ impl V2InvariantValidator {
     }
 
     /// Validate V2 checkpoint state invariants
+    ///
+    /// Validates checkpoint state machine transitions and metadata consistency.
+    /// Takes both the CheckpointState enum and CheckpointManagerState struct
+    /// to properly validate state transitions and associated metadata.
     pub fn validate_checkpoint_state_invariants(
         &self,
-        _state: &CheckpointState,
+        state: &CheckpointState,
+        manager_state: &CheckpointManagerState,
     ) -> CheckpointResult<V2InvariantResult> {
         let mut violations = Vec::new();
         let start_time = SystemTime::now();
@@ -396,11 +403,15 @@ impl V2InvariantValidator {
     }
 
     /// Perform comprehensive V2 invariant validation
+    ///
+    /// This method orchestrates all V2 invariant checks including metadata validation,
+    /// cluster alignment, checkpoint state invariants, and format compatibility.
     pub fn validate_comprehensive_v2_invariants(
         &self,
         checkpoint_path: &std::path::Path,
         dirty_blocks: &DirtyBlockTracker,
         checkpoint_state: &CheckpointState,
+        manager_state: &CheckpointManagerState,
     ) -> CheckpointResult<V2InvariantResult> {
         let mut all_violations = Vec::new();
         let mut v2_version = None;
@@ -414,8 +425,9 @@ impl V2InvariantValidator {
         let alignment_result = self.validate_cluster_alignment_invariants(dirty_blocks)?;
         all_violations.extend(alignment_result.violations);
 
-        // Validate checkpoint state invariants
-        let state_result = self.validate_checkpoint_state_invariants(checkpoint_state)?;
+        // Validate checkpoint state invariants (now with manager_state)
+        let state_result = self
+            .validate_checkpoint_state_invariants(checkpoint_state, manager_state)?;
         all_violations.extend(state_result.violations);
 
         // Validate format compatibility

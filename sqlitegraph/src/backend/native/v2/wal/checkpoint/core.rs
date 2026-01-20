@@ -75,31 +75,35 @@ pub struct V2WALCheckpointManager {
 }
 
 /// Internal state management for checkpoint manager
+///
+/// This struct contains the checkpoint manager's state including the current
+/// state machine position, LSN tracking, and checkpoint statistics. It is made
+/// public to allow validation modules to verify checkpoint state invariants.
 #[derive(Debug)]
-struct CheckpointManagerState {
+pub struct CheckpointManagerState {
     /// Current state in the checkpoint state machine
-    current_state: CheckpointState,
+    pub current_state: CheckpointState,
 
     /// Last checkpointed LSN (Log Sequence Number)
-    checkpointed_lsn: u64,
+    pub checkpointed_lsn: u64,
 
     /// Checkpoint currently in progress flag
-    in_progress: bool,
+    pub in_progress: bool,
 
     /// Last successful checkpoint timestamp
-    last_checkpoint: Option<Instant>,
+    pub last_checkpoint: Option<Instant>,
 
     /// Current checkpoint operation ID
-    current_operation_id: u64,
+    pub current_operation_id: u64,
 
     /// Total checkpoints completed since creation
-    completed_checkpoints: u64,
+    pub completed_checkpoints: u64,
 
     /// Failed checkpoint attempts
-    failed_attempts: u64,
+    pub failed_attempts: u64,
 
     /// Checkpoint start time for current operation
-    checkpoint_start_time: Option<Instant>,
+    pub checkpoint_start_time: Option<Instant>,
 }
 
 impl Default for CheckpointManagerState {
