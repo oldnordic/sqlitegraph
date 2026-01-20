@@ -34,6 +34,10 @@ pub use self::core::{
 // Re-export from the new modularized structure
 pub use self::coordinator::CheckpointExecutor;
 pub use self::io::BlockFlusher;
+pub use self::io::multi_file::{
+    CheckpointManifest, CheckpointSegment, CheckpointSegmentMeta, MultiFileCheckpointConfig,
+    MultiFileRecovery, SegmentReader, SegmentWriter,
+};
 pub use self::record::V2GraphIntegrator;
 pub use self::strategies::{
     CheckpointStrategy, CheckpointTrigger, StrategyEvaluator, StrategyMetrics, StrategyValidator,

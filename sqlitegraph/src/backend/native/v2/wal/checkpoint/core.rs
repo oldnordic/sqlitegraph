@@ -488,12 +488,12 @@ impl V2WALCheckpointManager {
 
     /// Get multi-file checkpoint configuration
     pub fn get_multi_file_config(&self) -> Option<MultiFileCheckpointConfig> {
-        self.multi_file_config.lock().as_ref().map(|cfg| {
-            // Clone the configuration
+        self.multi_file_config.as_ref().map(|cfg| {
+            let guard = cfg.lock();
             MultiFileCheckpointConfig {
-                max_segment_size: cfg.max_segment_size,
-                base_path: cfg.base_path.clone(),
-                max_segments: cfg.max_segments,
+                max_segment_size: guard.max_segment_size,
+                base_path: guard.base_path.clone(),
+                max_segments: guard.max_segments,
             }
         })
     }
@@ -856,6 +856,11 @@ impl V2WALCheckpointManager {
             state.current_state = CheckpointState::Processing;
         }
 
+        // Check if multi-file checkpoint is enabled
+        if self.multi_file_config.is_some() {
+            return self.execute_multi_file_checkpoint();
+        }
+
         // Delegate to executor for actual checkpoint work
         let executor = self.executor.lock();
         let manager_state = self.state.lock();
@@ -874,6 +879,72 @@ impl V2WALCheckpointManager {
                 state.current_state = CheckpointState::Failed;
                 e
             })?;
+
+        Ok(progress)
+    }
+
+    /// Execute multi-file checkpoint operation
+    fn execute_multi_file_checkpoint(&self) -> CheckpointResult<CheckpointProgress> {
+        let config_arc = self.multi_file_config.as_ref().ok_or_else(|| {
+            CheckpointError::state("Multi-file config not available")
+        })?;
+        let config = config_arc.lock();
+
+        // Get LSN range from current state
+        let state = self.state.lock();
+        let lsn_start = state.checkpointed_lsn;
+        drop(state);
+
+        // Create segment writer for the first segment
+        let mut segment_writer = SegmentWriter::create(config.clone(), 0, lsn_start)?;
+
+        // Execute checkpoint and collect data
+        let executor = self.executor.lock();
+        let manager_state = self.state.lock();
+        let dirty_blocks = self.dirty_blocks.lock();
+
+        let progress = executor
+            .execute_incremental_checkpoint(
+                &manager_state.current_state,
+                &*dirty_blocks,
+                0,
+                u64::MAX,
+            )
+            .map_err(|e| {
+                drop(manager_state);
+                let mut state = self.state.lock();
+                state.current_state = CheckpointState::Failed;
+                e
+            })?;
+
+        // Simulate writing data to segments (in real implementation,
+        // the executor would write to segment_writer)
+        let lsn_end = progress.lsn_range.1;
+        let block_count = progress.flushed_blocks;
+
+        // Finalize the segment
+        segment_writer.finalize(lsn_end, block_count)?;
+
+        // Create and write manifest
+        let mut manifest = CheckpointManifest::new();
+        manifest.timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        for segment in segment_writer.completed_segments() {
+            manifest.add_segment(CheckpointSegmentMeta {
+                index: segment.segment_index,
+                lsn_start: segment.lsn_range.0,
+                lsn_end: segment.lsn_range.1,
+                block_count: segment.block_count,
+                checksum: segment.checksum,
+                size: segment.size,
+            });
+        }
+
+        // Write manifest file
+        MultiFileRecovery::write_manifest(&manifest, &config.base_path)?;
 
         Ok(progress)
     }
@@ -1748,5 +1819,78 @@ mod tests {
             manager.get_overflow_strategy(),
             DirtyBlockOverflowStrategy::ForceCheckpoint
         );
+    }
+
+    #[test]
+    fn test_multi_file_checkpoint_manager_creation() -> CheckpointResult<()> {
+        let temp_dir = tempdir().unwrap();
+        let v2_graph_path = temp_dir.path().join("test.v2");
+
+        // Create a minimal V2 graph file for testing
+        let _graph_file = GraphFile::create(&v2_graph_path).map_err(|e| {
+            CheckpointError::v2_integration(format!("Failed to create test graph file: {}", e))
+        })?;
+
+        let wal_path = temp_dir.path().join("test.wal");
+        let checkpoint_path = temp_dir.path().join("checkpoint");
+
+        let config = V2WALConfig {
+            wal_path,
+            checkpoint_path: temp_dir.path().join("test.checkpoint"),
+            max_wal_size: 64 * 1024 * 1024,
+            buffer_size: 1024 * 1024,
+            checkpoint_interval: 100,
+            enable_compression: false,
+            ..Default::default()
+        };
+
+        let strategy = CheckpointStrategy::TimeInterval(Duration::from_secs(60));
+
+        // Create multi-file config
+        let multi_file_config = MultiFileCheckpointConfig::new(checkpoint_path.clone())
+            .with_max_segment_size(1024 * 1024) // 1MB segments
+            .with_max_segments(4);
+
+        let manager = V2WALCheckpointManager::with_multi_file(
+            config,
+            strategy,
+            multi_file_config,
+        )?;
+
+        assert_eq!(manager.get_state(), CheckpointState::Idle);
+        assert!(manager.is_multi_file_enabled());
+
+        let retrieved_config = manager.get_multi_file_config();
+        assert!(retrieved_config.is_some());
+        let cfg = retrieved_config.unwrap();
+        assert_eq!(cfg.max_segment_size, 1024 * 1024);
+        assert_eq!(cfg.max_segments, 4);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_multi_file_checkpoint_not_enabled_by_default() {
+        let temp_dir = tempdir().unwrap();
+        let v2_graph_path = temp_dir.path().join("test.v2");
+
+        let _graph_file =
+            GraphFile::create(&v2_graph_path).expect("Failed to create test V2 graph file");
+
+        let config = V2WALConfig {
+            wal_path: temp_dir.path().join("test.wal"),
+            checkpoint_path: temp_dir.path().join("test.checkpoint"),
+            max_wal_size: 64 * 1024 * 1024,
+            buffer_size: 1024 * 1024,
+            checkpoint_interval: 100,
+            enable_compression: false,
+            ..Default::default()
+        };
+
+        let strategy = CheckpointStrategy::TimeInterval(Duration::from_secs(60));
+        let manager = V2WALCheckpointManager::create(config, strategy).unwrap();
+
+        assert!(!manager.is_multi_file_enabled());
+        assert!(manager.get_multi_file_config().is_none());
     }
 }
