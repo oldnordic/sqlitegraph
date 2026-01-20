@@ -103,31 +103,36 @@ mod miri_tests {
         let _header = guard.header();
     }
 
-    /// Miri test: Multiple stores from same Arc<RwLock<>>
+    /// Miri test: Store lifetime is bounded by lock scope
     #[test]
-    fn miri_test_multiple_stores_same_graphfile() {
+    fn miri_test_store_lifetime_bounded() {
         let temp_dir = tempfile::tempdir().unwrap();
         let graph_path = temp_dir.path().join("test.v2");
         let graph_file = GraphFile::create(&graph_path).unwrap();
 
         let graph_file = Arc::new(RwLock::new(graph_file));
 
-        // Create multiple stores
-        let node_store = unsafe {
-            let mut guard = graph_file.write();
-            create_node_store(&mut guard)
-        };
+        // Create a store, use it, then drop it
+        {
+            let mut node_store = unsafe {
+                let mut guard = graph_file.write();
+                create_node_store(&mut guard)
+            };
+            // Store is valid within this scope - allocate a node to prove it works
+            let _node_id = node_store.allocate_node_id().unwrap();
+        } // Store dropped here
 
-        let edge_store = unsafe {
-            let mut guard = graph_file.write();
-            create_edge_store(&mut guard)
-        };
+        // Create a different store type - safe because previous store was dropped
+        {
+            let mut edge_store = unsafe {
+                let mut guard = graph_file.write();
+                create_edge_store(&mut guard)
+            };
+            // Store is valid within this scope - get max edge id to prove it works
+            let _max_id = edge_store.max_edge_id();
+        } // Store dropped here
 
-        // Both stores valid, no use-after-free
-        drop(node_store);
-        drop(edge_store);
-
-        // GraphFile still accessible
+        // GraphFile still accessible after both stores dropped
         let guard = graph_file.read();
         let _header = guard.header();
     }

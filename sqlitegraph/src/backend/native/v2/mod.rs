@@ -10,6 +10,7 @@ pub mod import;
 pub mod node_record_v2;
 pub mod planner;
 pub mod snapshot;
+pub mod storage;
 pub mod string_table;
 pub mod wal;
 
@@ -25,6 +26,7 @@ pub use import::{
 };
 pub use node_record_v2::{NodeRecordV2, NodeRecordV2Ext};
 pub use planner::{ExportPlanner, PlannerDecision, DecisionReason, WalAnalysis};
+pub use storage::{JsonLimits, JsonValidationError, parse_and_validate_json, parse_and_validate_json_str};
 pub use string_table::StringTable;
 pub use wal::{
     GraphOperationResult, GraphWALIntegrationConfig, NodeRecordV2WALExt, OperationMetrics,
