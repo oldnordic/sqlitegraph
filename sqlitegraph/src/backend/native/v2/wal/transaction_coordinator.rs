@@ -851,6 +851,10 @@ impl TwoPhaseCommitCoordinator {
             }
         };
 
+        // Pre-commit validation: verify all WAL records satisfy constraints
+        // This must happen before writing to WAL to prevent invalid data from being persisted
+        self.validate_pre_commit(tx_id).await?;
+
         // Write prepare record to WAL
         let prepare_record = V2WALRecord::TransactionPrepare {
             tx_id,
