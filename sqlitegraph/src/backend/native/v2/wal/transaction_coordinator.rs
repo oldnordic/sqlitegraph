@@ -1217,7 +1217,7 @@ impl TwoPhaseCommitCoordinator {
 
 #[cfg(test)]
 mod tests {
-    
+
     #[ignore] // Disabled: requires tokio runtime which is not available
     #[test]
     fn test_transaction_coordinator_basic() {
@@ -1231,6 +1231,42 @@ mod tests {
     fn test_savepoint_rollback() {
         // Note: This test requires tokio runtime which is not available in current build configuration
         // To enable this test, add tokio dependency and restore #[tokio::test] attribute
+        println!("Test disabled: requires tokio runtime");
+    }
+
+    #[ignore] // Disabled: requires tokio runtime which is not available
+    #[test]
+    fn test_pre_commit_rejects_invalid_node_id() {
+        // Note: This test requires tokio runtime which is not available in current build configuration
+        // To enable this test, add tokio dependency and restore #[tokio::test] attribute
+        //
+        // Test that pre-commit validation rejects transactions with invalid node IDs
+        // - Create transaction with NodeInsert where node_id <= 0
+        // - Verify commit fails with InvalidParameter error
+        println!("Test disabled: requires tokio runtime");
+    }
+
+    #[ignore] // Disabled: requires tokio runtime which is not available
+    #[test]
+    fn test_pre_commit_rejects_invalid_cluster_offset() {
+        // Note: This test requires tokio runtime which is not available in current build configuration
+        // To enable this test, add tokio dependency and restore #[tokio::test] attribute
+        //
+        // Test that pre-commit validation rejects transactions with invalid cluster offsets
+        // - Create transaction with ClusterCreate where offset is not aligned to 64KB
+        // - Verify commit fails with InvalidParameter error
+        println!("Test disabled: requires tokio runtime");
+    }
+
+    #[ignore] // Disabled: requires tokio runtime which is not available
+    #[test]
+    fn test_pre_commit_accepts_valid_records() {
+        // Note: This test requires tokio runtime which is not available in current build configuration
+        // To enable this test, add tokio dependency and restore #[tokio::test] attribute
+        //
+        // Test that pre-commit validation accepts valid transactions
+        // - Create transaction with valid records (node_id > 0, aligned offsets, non-empty data)
+        // - Verify commit succeeds
         println!("Test disabled: requires tokio runtime");
     }
 }
