@@ -6,7 +6,14 @@
 //! strategy decisions to the strategies module and execution details to the operations module.
 
 use crate::backend::native::v2::wal::checkpoint::{
-    constants::*, errors::*, operations::CheckpointExecutor, strategies::CheckpointStrategy,
+    constants::*,
+    errors::*,
+    io::multi_file::{
+        CheckpointManifest, CheckpointSegmentMeta, MultiFileCheckpointConfig, MultiFileRecovery,
+        SegmentWriter,
+    },
+    operations::CheckpointExecutor,
+    strategies::CheckpointStrategy,
 };
 use crate::backend::native::v2::wal::V2WALConfig;
 use parking_lot::{Condvar, Mutex};
@@ -73,6 +80,9 @@ pub struct V2WALCheckpointManager {
 
     /// Shutdown flag for graceful termination
     shutdown_flag: Arc<Mutex<bool>>,
+
+    /// Multi-file checkpoint configuration (optional)
+    multi_file_config: Option<Arc<Mutex<MultiFileCheckpointConfig>>>,
 }
 
 /// Internal state management for checkpoint manager
@@ -385,6 +395,49 @@ impl V2WALCheckpointManager {
             executor: Arc::new(Mutex::new(executor)),
             checkpoint_cv: Arc::new(Condvar::new()),
             shutdown_flag: Arc::new(Mutex::new(false)),
+            multi_file_config: None,
+        })
+    }
+
+    /// Create checkpoint manager with multi-file checkpoint support
+    pub fn with_multi_file(
+        config: V2WALConfig,
+        strategy: CheckpointStrategy,
+        multi_file_config: MultiFileCheckpointConfig,
+    ) -> CheckpointResult<Self> {
+        // Validate multi-file configuration
+        multi_file_config.validate()?;
+
+        // Validate base configuration
+        Self::validate_configuration(&config)?;
+
+        // Create checkpoint directory structure
+        Self::ensure_checkpoint_directory(&config)?;
+
+        // Initialize checkpoint file
+        let checkpoint_file = Self::create_checkpoint_file(&config)?;
+
+        // Initialize checkpoint state
+        let state = CheckpointManagerState::default();
+        let strategy_arc = Arc::new(Mutex::new(strategy));
+        let dirty_blocks = Arc::new(Mutex::new(DirtyBlockTracker::new(
+            MAX_DIRTY_BLOCKS_PER_CLUSTER,
+            MAX_GLOBAL_DIRTY_BLOCKS,
+        )));
+
+        // Create checkpoint executor
+        let executor = CheckpointExecutor::new(config.clone())?;
+
+        Ok(Self {
+            config,
+            checkpoint_file: Arc::new(Mutex::new(BufWriter::new(checkpoint_file))),
+            state: Arc::new(Mutex::new(state)),
+            strategy: strategy_arc,
+            dirty_blocks,
+            executor: Arc::new(Mutex::new(executor)),
+            checkpoint_cv: Arc::new(Condvar::new()),
+            shutdown_flag: Arc::new(Mutex::new(false)),
+            multi_file_config: Some(Arc::new(Mutex::new(multi_file_config))),
         })
     }
 
@@ -426,6 +479,23 @@ impl V2WALCheckpointManager {
     pub fn get_overflow_strategy(&self) -> DirtyBlockOverflowStrategy {
         let dirty_blocks = self.dirty_blocks.lock();
         dirty_blocks.get_overflow_strategy()
+    }
+
+    /// Check if multi-file checkpoint is enabled
+    pub fn is_multi_file_enabled(&self) -> bool {
+        self.multi_file_config.is_some()
+    }
+
+    /// Get multi-file checkpoint configuration
+    pub fn get_multi_file_config(&self) -> Option<MultiFileCheckpointConfig> {
+        self.multi_file_config.lock().as_ref().map(|cfg| {
+            // Clone the configuration
+            MultiFileCheckpointConfig {
+                max_segment_size: cfg.max_segment_size,
+                base_path: cfg.base_path.clone(),
+                max_segments: cfg.max_segments,
+            }
+        })
     }
 
     /// Mark a block as dirty for checkpointing
