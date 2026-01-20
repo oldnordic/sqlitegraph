@@ -8,7 +8,7 @@ use crate::backend::native::{
     adjacency::Direction,
 };
 use crate::backend::native::v2::{
-    NodeRecordV2,
+    NodeRecordV2, EdgeCluster,
     free_space::AllocationStrategy, FreeSpaceManager,
 };
 use crate::backend::native::v2::wal::recovery::errors::RecoveryError;
@@ -147,8 +147,8 @@ impl super::DefaultReplayOperations {
 
         // Step 2: Parse existing node data if provided, or retrieve from storage
         let node_record = if let Some(data) = old_data {
-            // Deserialize NodeRecordV2 from provided old_data
-            serde_json::from_slice::<NodeRecordV2>(data)
+            // Deserialize NodeRecordV2 from provided old_data using binary deserialization
+            NodeRecordV2::deserialize(data)
                 .map_err(|e| RecoveryError::replay_failure(
                     format!("Failed to deserialize NodeRecordV2 data: {}", e)
                 ))?
@@ -163,25 +163,55 @@ impl super::DefaultReplayOperations {
             )
         };
 
-        // Step 3: Add rollback operation BEFORE deletion (critical for transaction integrity)
-        // Serialize the node_record to old_data so rollback can restore the deleted node
-        let old_data = serde_json::to_vec(&node_record)
-            .map_err(|e| RecoveryError::replay_failure(
-                format!("Failed to serialize node data for rollback: {}", e)
-            ))?;
+        // Step 3: Serialize the node_record to old_data for rollback
+        // Use binary serialization (not JSON) for consistency with V2 format
+        let old_data = node_record.serialize();
 
         let old_data_len = old_data.len();
 
-        rollback_data.push(RollbackOperation::NodeDelete {
-            node_id: node_id as NativeNodeId,
-            slot_offset,
-            old_data,
-        });
+        // Step 4: CAPTURE EDGES BEFORE DELETION (critical for rollback)
+        // This must happen inside the graph_file lock since we need to read cluster data
+        let mut captured_outgoing_edges = Vec::new();
+        let mut captured_incoming_edges = Vec::new();
 
         // Create NodeStore and FreeSpaceManager for this operation following proper SME methodology
         {
             let mut graph_file = self.graph_file.write()
                 .map_err(|e| RecoveryError::io_error(format!("Failed to lock graph file: {}", e)))?;
+
+            // Step 4.5: CAPTURE OUTGOING EDGES BEFORE DELETION
+            if node_record.outgoing_edge_count > 0 {
+                debug_log!("Capturing {} outgoing edges before deletion", node_record.outgoing_edge_count);
+                // Read cluster data and deserialize to get edge records
+                if node_record.outgoing_cluster_offset != 0 && node_record.outgoing_cluster_size > 0 {
+                    let mut cluster_buffer = vec![0u8; node_record.outgoing_cluster_size as usize];
+                    graph_file.read_bytes(node_record.outgoing_cluster_offset, &mut cluster_buffer)
+                        .map_err(|e| RecoveryError::io_error(format!("Failed to read outgoing cluster: {}", e)))?;
+
+                    let cluster = EdgeCluster::deserialize(&cluster_buffer)
+                        .map_err(|e| RecoveryError::io_error(format!("Failed to deserialize outgoing cluster: {}", e)))?;
+
+                    captured_outgoing_edges = cluster.edges().to_vec();
+                    debug_log!("Captured {} outgoing edge records", captured_outgoing_edges.len());
+                }
+            }
+
+            // Step 4.6: CAPTURE INCOMING EDGES BEFORE DELETION
+            if node_record.incoming_edge_count > 0 {
+                debug_log!("Capturing {} incoming edges before deletion", node_record.incoming_edge_count);
+                // Read cluster data and deserialize to get edge records
+                if node_record.incoming_cluster_offset != 0 && node_record.incoming_cluster_size > 0 {
+                    let mut cluster_buffer = vec![0u8; node_record.incoming_cluster_size as usize];
+                    graph_file.read_bytes(node_record.incoming_cluster_offset, &mut cluster_buffer)
+                        .map_err(|e| RecoveryError::io_error(format!("Failed to read incoming cluster: {}", e)))?;
+
+                    let cluster = EdgeCluster::deserialize(&cluster_buffer)
+                        .map_err(|e| RecoveryError::io_error(format!("Failed to deserialize incoming cluster: {}", e)))?;
+
+                    captured_incoming_edges = cluster.edges().to_vec();
+                    debug_log!("Captured {} incoming edge records", captured_incoming_edges.len());
+                }
+            }
 
             // Step 5: Handle edge cascade cleanup (if node has cluster references)
             // Do this BEFORE creating NodeStore to avoid borrow conflicts
@@ -287,6 +317,16 @@ impl super::DefaultReplayOperations {
                     format!("Failed to delete node {} from NodeStore: {}", node_id, e)
                 ))?;
         } // graph_file lock, node_store, and free_space_manager are released here
+
+        // Step 8.5: Add rollback operation AFTER edge capture but AFTER lock release
+        // This ensures we have the captured edges available for rollback
+        rollback_data.push(RollbackOperation::NodeDelete {
+            node_id: node_id as NativeNodeId,
+            slot_offset,
+            old_data,
+            outgoing_edges: captured_outgoing_edges,
+            incoming_edges: captured_incoming_edges,
+        });
 
         // Step 9: Update statistics (lock-free)
         self.statistics.record_node_operation();
