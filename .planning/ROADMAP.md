@@ -200,10 +200,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 14-01: Add transaction counter to WALManagerMetrics with increment in commit_transaction
-- [ ] 14-02: Wire size-based checkpoint trigger using std::fs::metadata
-- [ ] 14-03: Integrate counter tracking between checkpoint manager and WAL manager with reset logic
-- [ ] 14-04: Add checkpoint configuration to NativeConfig and comprehensive tests
+- [x] 14-01: Add transaction counter to WALManagerMetrics with increment in commit_transaction ✅
+- [x] 14-02: Wire size-based checkpoint trigger using std::fs::metadata ✅
+- [x] 14-03: Integrate counter tracking between checkpoint manager and WAL manager with reset logic ✅
+- [x] 14-04: Add checkpoint configuration to NativeConfig and comprehensive tests ✅
 
 ### Phase 15: HNSW Multi-Layer
 **Goal**: Implement O(log N) HNSW search with multi-layer graph
@@ -253,14 +253,14 @@ Plans:
 **Success Criteria** (what must be TRUE):
   1. All files over 600 LOC are split into focused submodules
   2. All split modules maintain test coverage
-  3. Unnecessary clone() calls are replaced with references
+  3. Unnecessary clone() calls are documented with findings
 **Plans**: 4 plans
 
 Plans:
-- [ ] 18-01: Split rollback.rs (1654 LOC) into submodules
-- [ ] 18-02: Split hnsw/index.rs (1605 LOC) into modules
-- [ ] 18-03: Split checkpoint/operations.rs (1594 LOC) and algo.rs (1398 LOC)
-- [ ] 18-04: Audit and reduce clone() calls (263 total)
+- [ ] 18-01: Split algo.rs (1398 LOC) into centrality, community, structure modules
+- [ ] 18-02: Split hnsw/index.rs (2006 LOC) into API, persistence, internal modules
+- [ ] 18-03: Split rollback.rs (1912 LOC) and validator.rs (1509 LOC) into operation-specific modules
+- [ ] 18-04: Split checkpoint/operations.rs (1657 LOC) and complete clone audit (231 total)
 
 ### Phase 19: Concurrent Features
 **Goal**: Add connection pooling and concurrent write support
@@ -352,7 +352,7 @@ Phases execute in numeric order: 1 → 2 → 3 → ... → 10 → 11 → 12 → 
 | 15. HNSW Multi-Layer | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 16. Memory Safety | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 17. Input Validation | v1.1 | 0/3 | Complete* | 2026-01-20 |
-| 18. Code Structure | v1.1 | 0/4 | Not started | - |
+| 18. Code Structure | v1.1 | 0/4 | Planned | 2026-01-20 |
 | 19. Concurrent Features | v1.1 | 0/3 | Not started | - |
 | 20. Data Management | v1.1 | 0/4 | Not started | - |
 | 21. Test Coverage | v1.1 | 0/4 | Not started | - |
