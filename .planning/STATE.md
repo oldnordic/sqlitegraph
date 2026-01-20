@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 18 of 22 (Code Structure)
-Plan: 2 of 4 in phase
+Plan: 3 of 4 in phase
 Status: Phase 16 complete, Phase 17 redundant (completed in Phase 16)
-Last activity: 2026-01-20 — Completed 18-02: Split index.rs into focused module files
+Last activity: 2026-01-20 — Completed 18-03: Split rollback.rs and validator.rs into operation-specific modules
 
-Progress: [████████████████████████████████░░░░] 86% (Phase 11-16 complete, 18-02 complete)
+Progress: [██████████████████████████████████░░░] 88% (Phase 11-16 complete, 18-03 complete)
 
 ## Performance Metrics
 
@@ -147,6 +147,11 @@ Recent decisions affecting current work:
 - Module files use full crate paths for types since included in parent scope - 18-02
 - Module header comments use // instead of //! to avoid doc comment errors with include! - 18-02
 - Split index.rs from 2006 LOC into 4 focused files: index.rs (701), index_api.rs (602), index_internal.rs (300), index_persist.rs (482) - 18-02
+- Used delegation pattern where RollbackSystem/TransactionValidator delegate to operation-specific functions in submodules - 18-03
+- Split rollback.rs (1912 LOC) into 7 operation-specific modules totaling 1537 LOC - 18-03
+- Split validator.rs (1509 LOC) into 7 validation-specific modules totaling 1408 LOC - 18-03
+- Created rollback/ subdirectory with node_ops, edge_ops, cluster_ops, string_ops, header_ops, free_space_ops - 18-03
+- Created validator/ subdirectory with node_validation, edge_validation, cluster_validation, string_validation, free_space_validation, cross_record - 18-03
 
 ### Pending Todos
 
@@ -159,8 +164,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 18-02 execution)
-Stopped at: Completed 18-02 - Split index.rs into focused module files
+Last session: 2026-01-20 (plan 18-03 execution)
+Stopped at: Completed 18-03 - Split rollback.rs and validator.rs into operation-specific modules
 Resume file: None
 
 ### Roadmap Evolution
@@ -171,4 +176,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 in progress (2/4 complete)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 in progress (3/4 complete)
