@@ -217,10 +217,10 @@ Plans:
 **Plans**: 4 plans
 
 Plans:
-- [ ] 15-01: Wire exponential level distribution into insertion path with LevelDistributor
-- [ ] 15-02: Add multi-layer graph structure with LayerMappings integration
-- [ ] 15-03: Update search for greedy descent through higher layers
-- [ ] 15-04: Add O(log N) benchmarks and layer assignment persistence
+- [x] 15-01: Wire exponential level distribution into insertion path with LevelDistributor ✅
+- [x] 15-02: Add multi-layer graph structure with LayerMappings integration ✅
+- [x] 15-03: Update search for greedy descent through higher layers ✅
+- [x] 15-04: Add O(log N) benchmarks and layer assignment persistence ✅
 
 ### Phase 16: Memory Safety
 **Goal**: Eliminate unsafe transmute and add input validation
@@ -356,8 +356,8 @@ Phases execute in numeric order: 1 → 2 → 3 → ... → 10 → 11 → 12 → 
 | 11. ACID Atomicity | v1.1 | 3/3 | Complete | 2026-01-20 |
 | 12. ACID Consistency | v1.1 | 5/5 | Complete | 2026-01-20 |
 | 13. ACID Isolation | v1.1 | 4/4 | Complete | 2026-01-20 |
-| 14. ACID Durability | v1.1 | 0/4 | Pending | - |
-| 15. HNSW Multi-Layer | v1.1 | 0/4 | Not started | - |
+| 14. ACID Durability | v1.1 | 4/4 | Complete | 2026-01-20 |
+| 15. HNSW Multi-Layer | v1.1 | 4/4 | Complete | 2026-01-20 |
 | 16. Memory Safety | v1.1 | 0/4 | Not started | - |
 | 17. Input Validation | v1.1 | 0/3 | Not started | - |
 | 18. Code Structure | v1.1 | 0/4 | Not started | - |

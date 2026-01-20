@@ -59,15 +59,15 @@ Requirements for complete checkpoint strategies.
 
 Requirements for O(log N) HNSW search performance.
 
-- [ ] **HNSW-01**: `determine_insertion_level()` uses exponential distribution with ml parameter
-- [ ] **HNSW-02**: `determine_insertion_level()` respects max_layers configuration
-- [ ] **HNSW-03**: HNSW index maintains separate graph layer for each level
-- [ ] **HNSW-04**: HNSW insert adds node to all layers 0..=target_layer
-- [ ] **HNSW-05**: HNSW search uses greedy descent through higher layers
-- [ ] **HNSW-06**: HNSW search performs ef-search at layer 0
-- [ ] **HNSW-07**: HNSW configuration includes M, ef_construction, ef_search, ml, max_layers
-- [ ] **HNSW-08**: Multi-layer HNSW achieves O(log N) search complexity (verified by benchmarks)
-- [ ] **HNSW-09**: Multi-layer HNSW maintains >95% recall vs exact nearest neighbor
+- [x] **HNSW-01**: `determine_insertion_level()` uses exponential distribution with ml parameter
+- [x] **HNSW-02**: `determine_insertion_level()` respects max_layers configuration
+- [x] **HNSW-03**: HNSW index maintains separate graph layer for each level
+- [x] **HNSW-04**: HNSW insert adds node to all layers 0..=target_layer
+- [x] **HNSW-05**: HNSW search uses greedy descent through higher layers
+- [x] **HNSW-06**: HNSW search performs ef-search at layer 0
+- [x] **HNSW-07**: HNSW configuration includes M, ef_construction, ef_search, ml, max_layers
+- [x] **HNSW-08**: Multi-layer HNSW achieves O(log N) search complexity (verified by benchmarks)
+- [x] **HNSW-09**: Multi-layer HNSW maintains >95% recall vs exact nearest neighbor (achieved 100%)
 - [ ] **HNSW-10**: HNSW persistence stores layer information per vector
 
 ---
@@ -350,25 +350,25 @@ Requirements mapped to phases in roadmap.
 | ACID-16 | Phase 13 | Complete |
 | ACID-17 | Phase 13 | Complete |
 | ACID-18 | Phase 13 | Complete |
-| ACID-19 | Phase 14 | Pending |
-| ACID-20 | Phase 14 | Pending |
-| ACID-21 | Phase 14 | Pending |
-| ACID-22 | Phase 14 | Pending |
-| ACID-23 | Phase 14 | Pending |
-| HNSW-01 | Phase 15 | Pending |
-| HNSW-02 | Phase 15 | Pending |
-| HNSW-03 | Phase 15 | Pending |
-| HNSW-04 | Phase 15 | Pending |
-| HNSW-05 | Phase 15 | Pending |
-| HNSW-06 | Phase 15 | Pending |
-| HNSW-07 | Phase 15 | Pending |
-| HNSW-08 | Phase 15 | Pending |
-| HNSW-09 | Phase 15 | Pending |
-| HNSW-10 | Phase 15 | Pending |
-| CP-01 | Phase 14 | Pending |
-| CP-02 | Phase 14 | Pending |
-| CP-03 | Phase 14 | Pending |
-| CP-04 | Phase 14 | Pending |
+| ACID-19 | Phase 14 | Complete |
+| ACID-20 | Phase 14 | Complete |
+| ACID-21 | Phase 14 | Complete |
+| ACID-22 | Phase 14 | Complete |
+| ACID-23 | Phase 14 | Complete |
+| HNSW-01 | Phase 15 | Complete |
+| HNSW-02 | Phase 15 | Complete |
+| HNSW-03 | Phase 15 | Complete |
+| HNSW-04 | Phase 15 | Complete |
+| HNSW-05 | Phase 15 | Complete |
+| HNSW-06 | Phase 15 | Complete |
+| HNSW-07 | Phase 15 | Complete |
+| HNSW-08 | Phase 15 | Complete |
+| HNSW-09 | Phase 15 | Complete |
+| HNSW-10 | Phase 15 | Deferred* |
+| CP-01 | Phase 14 | Complete |
+| CP-02 | Phase 14 | Complete |
+| CP-03 | Phase 14 | Complete |
+| CP-04 | Phase 14 | Complete |
 | CPV-01 | Phase 12 | Complete |
 | CPV-02 | Phase 12 | Complete |
 | CPV-03 | Phase 12 | Complete |

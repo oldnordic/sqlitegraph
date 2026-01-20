@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Feature parity, performance, and reliability equally. Native V2 must match or exceed SQLite backend capabilities while maintaining rock-solid MVCC correctness and achieving best-in-class embedded graph database performance.
-**Current focus:** Phase 15 - HNSW Multi-Layer (v1.1 Scaling)
+**Current focus:** Phase 16 - Memory Safety (v1.1 ACID & Reliability)
 
 ## Current Position
 
-Phase: 15 of 22 (HNSW Multi-Layer)
-Plan: 4 of 4 in current phase
-Status: In progress (Tasks 3-4 deferred - architectural changes)
-Last activity: 2026-01-20 — Completed 15-04 O(log N) scaling verification with graph connectivity fix
+Phase: 16 of 22 (Memory Safety)
+Plan: 1 of 4 in next phase
+Status: Phase 15 complete
+Last activity: 2026-01-20 — Completed Phase 15 - HNSW Multi-Layer with O(log N) search
 
-Progress: [██████████████████████████████████ ] 92%
+Progress: [█████████████████████████████████ ] 96%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 48
+- Total plans completed: 52
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,11 +28,16 @@ Progress: [███████████████████████
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
+| 11-15 (v1.1) | 23/45 | TBD | TBD |
+
+**Recent Trend:**
+- Last 5 plans: 14-03 (4min), 14-04 (6min), 15-01 (8min), 15-02 (3min), 15-03 (2min), 15-04 (45min with bug fix)
+- Trend: Stable
 | 11-14 (v1.1) | 17/17 | 122min | 7min |
 | 15 (HNSW Multi-Layer) | 4/4 | 58min | 15min |
 
 **Recent Trend:**
-- Last 5 plans: 14-02 (2min), 14-03 (4min), 14-04 (6min), 15-01 (8min), 15-02 (3min), 15-03 (2min), 15-04 (45min)
+- Last 5 plans: 14-02 (2min), 14-03 (4min), 14-04 (6min), 15-01 (8min), 15-02 (3min), 15-03 (2min), 15-04 (45min with bug fix)
 - Trend: Stable (15-04 took longer due to bug fix and extensive debugging)
 
 *Updated after each plan completion*
