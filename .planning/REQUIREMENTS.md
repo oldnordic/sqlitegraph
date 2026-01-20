@@ -252,9 +252,9 @@ Requirements for unsafe block validation.
 
 Requirements for large database checkpoint handling.
 
-- [ ] **SCALE-CP-01**: Checkpoint supports files larger than 1GB
-- [ ] **SCALE-CP-02**: Multi-file checkpointing or streaming checkpoint implemented
-- [ ] **SCALE-CP-03**: Large checkpoint tests verify correctness
+- [x] **SCALE-CP-01**: Checkpoint supports files larger than 1GB
+- [x] **SCALE-CP-02**: Multi-file checkpointing or streaming checkpoint implemented
+- [x] **SCALE-CP-03**: Large checkpoint tests verify correctness
 
 ---
 
@@ -262,9 +262,9 @@ Requirements for large database checkpoint handling.
 
 Requirements for tracking overflow handling.
 
-- [ ] **SCALE-DB-01**: Dirty block tracking overflow strategy implemented
-- [ ] **SCALE-DB-02**: Hierarchical tracking supports >50,000 global dirty blocks
-- [ ] **SCALE-DB-03**: Overflow handling tests verify correctness
+- [x] **SCALE-DB-01**: Dirty block tracking overflow strategy implemented
+- [x] **SCALE-DB-02**: Hierarchical tracking supports >50,000 global dirty blocks
+- [x] **SCALE-DB-03**: Overflow handling tests verify correctness
 
 ---
 
@@ -272,9 +272,9 @@ Requirements for tracking overflow handling.
 
 Requirements for unbounded growth prevention.
 
-- [ ] **SCALE-TX-01**: Transaction ID bounds are enforced
-- [ ] **SCALE-TX-02**: Deadlock detection wait-for graph has cleanup
-- [ ] **SCALE-TX-03**: Transaction coordinator tests verify cleanup
+- [x] **SCALE-TX-01**: Transaction ID bounds are enforced
+- [x] **SCALE-TX-02**: Deadlock detection wait-for graph has cleanup
+- [x] **SCALE-TX-03**: Transaction coordinator tests verify cleanup
 
 ---
 
@@ -282,8 +282,8 @@ Requirements for unbounded growth prevention.
 
 Requirements for memory-limited HNSW indexes.
 
-- [ ] **SCALE-HNSW-01**: Disk-based HNSW option for indexes larger than RAM
-- [ ] **SCALE-HNSW-02**: HNSW can spill to disk when memory threshold reached
+- [x] **SCALE-HNSW-01**: Disk-based HNSW option for indexes larger than RAM
+- [x] **SCALE-HNSW-02**: HNSW can spill to disk when memory threshold reached
 
 ---
 
@@ -291,8 +291,8 @@ Requirements for memory-limited HNSW indexes.
 
 Requirements for SQLite dependency management.
 
-- [ ] **DEP-RUST-01**: rusqlite 0.31 monitored for security updates
-- [ ] **DEP-RUST-02**: System SQLite option evaluated for security patches
+- [x] **DEP-RUST-01**: rusqlite 0.31 monitored for security updates
+- [x] **DEP-RUST-02**: System SQLite option evaluated for security patches
 
 ---
 
@@ -300,8 +300,8 @@ Requirements for SQLite dependency management.
 
 Requirements for serialization upgrade planning.
 
-- [ ] **DEP-BIN-01**: bincode 2.0 migration plan documented
-- [ ] **DEP-BIN-02**: bincode 2.0 migration preserves existing data (format version bump)
+- [x] **DEP-BIN-01**: bincode 2.0 migration plan documented
+- [x] **DEP-BIN-02**: bincode 2.0 migration preserves existing data (format version bump)
 
 ---
 
@@ -429,21 +429,21 @@ Requirements mapped to phases in roadmap.
 | TEST-MIRI-02 | Phase 21 | Complete |
 | TEST-MIRI-03 | Phase 21 | Complete |
 | TEST-MIRI-04 | Phase 21 | Complete |
-| SCALE-CP-01 | Phase 22 | Pending |
-| SCALE-CP-02 | Phase 22 | Pending |
-| SCALE-CP-03 | Phase 22 | Pending |
-| SCALE-DB-01 | Phase 22 | Pending |
-| SCALE-DB-02 | Phase 22 | Pending |
-| SCALE-DB-03 | Phase 22 | Pending |
-| SCALE-TX-01 | Phase 22 | Pending |
-| SCALE-TX-02 | Phase 22 | Pending |
-| SCALE-TX-03 | Phase 22 | Pending |
-| SCALE-HNSW-01 | Phase 22 | Pending |
-| SCALE-HNSW-02 | Phase 22 | Pending |
-| DEP-RUST-01 | Phase 22 | Pending |
-| DEP-RUST-02 | Phase 22 | Pending |
-| DEP-BIN-01 | Phase 22 | Pending |
-| DEP-BIN-02 | Phase 22 | Pending |
+| SCALE-CP-01 | Phase 22 | Complete |
+| SCALE-CP-02 | Phase 22 | Complete |
+| SCALE-CP-03 | Phase 22 | Complete |
+| SCALE-DB-01 | Phase 22 | Complete |
+| SCALE-DB-02 | Phase 22 | Complete |
+| SCALE-DB-03 | Phase 22 | Complete |
+| SCALE-TX-01 | Phase 22 | Complete |
+| SCALE-TX-02 | Phase 22 | Complete |
+| SCALE-TX-03 | Phase 22 | Complete |
+| SCALE-HNSW-01 | Phase 22 | Complete |
+| SCALE-HNSW-02 | Phase 22 | Complete |
+| DEP-RUST-01 | Phase 22 | Complete |
+| DEP-RUST-02 | Phase 22 | Complete |
+| DEP-BIN-01 | Phase 22 | Complete |
+| DEP-BIN-02 | Phase 22 | Complete |
 
 **Summary:**
 - v1.1 requirements: 78 total
