@@ -59,7 +59,7 @@ use crate::{
         errors::{HnswError, HnswIndexError},
         hnsw_config,
         layer::HnswLayer,
-        multilayer::LevelDistributor,
+        multilayer::{LevelDistributor, MultiLayerNodeManager},
         neighborhood::NeighborhoodSearch,
         storage::{InMemoryVectorStorage, VectorStorage, VectorStorageStats},
     },
@@ -102,6 +102,10 @@ pub struct HnswIndex {
     /// Level distributor for exponential level assignment in multi-layer mode
     /// Only initialized when enable_multilayer == true
     level_distributor: Option<LevelDistributor>,
+
+    /// Multi-layer node manager for tracking layer assignments and ID translation
+    /// Only initialized when enable_multilayer == true
+    multi_layer_manager: Option<MultiLayerNodeManager>,
 }
 
 impl HnswIndex {
@@ -209,6 +213,13 @@ impl HnswIndex {
             None
         };
 
+        // Initialize multi-layer manager for tracking layer assignments
+        let multi_layer_manager = if config.enable_multilayer {
+            Some(MultiLayerNodeManager::new(config.clone()).ok())
+        } else {
+            None
+        }.flatten();
+
         Ok(Self {
             name: name.to_string(),
             config,
@@ -218,6 +229,7 @@ impl HnswIndex {
             vector_count: 0,
             search_engine,
             level_distributor,
+            multi_layer_manager,
         })
     }
 
@@ -644,6 +656,9 @@ impl HnswIndex {
         // No level distributor for loaded indexes (enable_multilayer=false)
         let level_distributor = None;
 
+        // No multi-layer manager for loaded indexes (enable_multilayer=false)
+        let multi_layer_manager = None;
+
         Ok(Self {
             name: name.to_string(),
             config,
@@ -653,6 +668,7 @@ impl HnswIndex {
             vector_count,
             search_engine,
             level_distributor,
+            multi_layer_manager,
         })
     }
 
