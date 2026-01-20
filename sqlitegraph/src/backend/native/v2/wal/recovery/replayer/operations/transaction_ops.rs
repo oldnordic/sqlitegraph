@@ -135,7 +135,7 @@ impl super::DefaultReplayOperations {
                 // Use documented-safe store_helpers pattern
                 *node_store_guard = Some(unsafe {
                     store_helpers::create_node_store(&mut *graph_file)
-                }));
+                });
             }
 
             let node_store = node_store_guard.as_mut()

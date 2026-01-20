@@ -12,7 +12,6 @@ use crate::backend::native::v2::{
 };
 use crate::backend::native::v2::wal::recovery::errors::RecoveryError;
 use crate::backend::native::v2::wal::recovery::replayer::types::RollbackOperation;
-use crate::backend::native::v2::wal::recovery::store_helpers;
 use crate::debug::{debug_log, warn_log};
 
 impl super::DefaultReplayOperations {
@@ -165,10 +164,10 @@ impl super::DefaultReplayOperations {
                         format!("Failed to lock graph file: {}", e)
                     ))?;
 
-                // Use documented-safe store_helpers pattern
-                *node_store_guard = Some(unsafe {
-                    store_helpers::create_node_store(&mut *graph_file)
-                });
+                // Use unsafe static lifetime pattern following established approach in operations.rs
+                *node_store_guard = Some(crate::backend::native::NodeStore::new(unsafe {
+                    std::mem::transmute::<&mut _, &'static mut _>(&mut *graph_file)
+                }));
             }
 
             let node_store = node_store_guard.as_mut()
@@ -286,9 +285,9 @@ impl super::DefaultReplayOperations {
                         format!("Failed to lock graph file: {}", e)
                     ))?;
 
-                // Use documented-safe store_helpers pattern
-                *node_store_guard = Some(unsafe {
-                    store_helpers::create_node_store(&mut *graph_file)
+                // Use unsafe static lifetime pattern following established approach in operations.rs
+                *node_store_guard = Some(crate::backend::native::NodeStore::new(unsafe {
+                    std::mem::transmute::<&mut _, &'static mut _>(&mut *graph_file)
                 }));
             }
 
@@ -594,9 +593,9 @@ impl super::DefaultReplayOperations {
                         format!("Failed to lock graph file: {}", e)
                     ))?;
 
-                // Use documented-safe store_helpers pattern
-                *node_store_guard = Some(unsafe {
-                    store_helpers::create_node_store(&mut *graph_file)
+                // Use unsafe static lifetime pattern following established approach in operations.rs
+                *node_store_guard = Some(crate::backend::native::NodeStore::new(unsafe {
+                    std::mem::transmute::<&mut _, &'static mut _>(&mut *graph_file)
                 }));
             }
 
