@@ -476,6 +476,9 @@ impl V2WALCheckpointManager {
                 state.current_state = CheckpointState::Complete;
                 state.last_checkpoint = Some(start_time);
                 state.completed_checkpoints += 1;
+                state.checkpointed_lsn = self.get_last_checkpointed_lsn(); // Update checkpointed LSN
+                state.transactions_since_checkpoint = 0; // Reset transaction counter
+                state.checkpointed_wal_size = self.get_wal_size().unwrap_or(0); // Reset WAL size tracking
             } else {
                 state.current_state = CheckpointState::Failed;
                 state.failed_attempts += 1;
