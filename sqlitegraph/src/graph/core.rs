@@ -8,6 +8,7 @@ use rusqlite::Connection;
 
 use crate::{
     cache::{AdjacencyCache, CacheStats},
+    config::SqliteConfig,
     errors::SqliteGraphError,
     introspection::{GraphIntrospection, EdgeCount, IntrospectError},
     mvcc::SnapshotManager,
@@ -63,20 +64,47 @@ pub fn is_in_memory_connection(conn: &Connection) -> bool {
 }
 
 impl SqliteGraph {
-    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, SqliteGraphError> {
-        let mut pool = PoolManager::new(path)
+    /// Open a graph database with custom configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the SQLite database file
+    /// * `cfg` - Configuration options (pool size, cache size, PRAGMAs, etc.)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sqlitegraph::{SqliteGraph, SqliteConfig};
+    ///
+    /// let cfg = SqliteConfig::new()
+    ///     .with_pool_size(10)
+    ///     .with_wal_mode();
+    /// let graph = SqliteGraph::open_with_config("my_graph.db", &cfg)?;
+    /// ```
+    pub fn open_with_config<P: AsRef<Path>>(path: P, cfg: &SqliteConfig) -> Result<Self, SqliteGraphError> {
+        // Get pool size from config (default: 5)
+        let pool_size = cfg.pool_size.unwrap_or(5) as u32;
+
+        let mut pool = PoolManager::with_max_size(path, pool_size)
             .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
 
         // Initialize schema using first connection from pool
         {
             let conn = pool.get()
                 .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-            ensure_schema(&conn)?;
+
+            if cfg.without_migrations {
+                crate::schema::ensure_schema_without_migrations(&conn)?;
+            } else {
+                ensure_schema(&conn)?;
+            }
         }
 
         // Configure pool with WAL mode and performance optimizations
         pool.configure_pool(|conn| {
-            conn.set_prepared_statement_cache_capacity(128);
+            // Set prepared statement cache size from config
+            let cache_size = cfg.cache_size.unwrap_or(128);
+            conn.set_prepared_statement_cache_capacity(cache_size);
 
             // Enable WAL mode for better concurrency
             let result = conn.pragma_update(None, "journal_mode", "WAL");
@@ -91,6 +119,11 @@ impl SqliteGraph {
             let _ = conn.pragma_update(None, "temp_store", "MEMORY"); // Store temp tables in memory
             let _ = conn.pragma_update(None, "mmap_size", "268435456"); // 256MB memory-mapped I/O
 
+            // Apply custom PRAGMA settings from config
+            for (key, value) in &cfg.pragma_settings {
+                let _ = conn.pragma_update(None, key, value.as_str());
+            }
+
             Ok(())
         })?;
 
@@ -113,42 +146,62 @@ impl SqliteGraph {
         })
     }
 
+    pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, SqliteGraphError> {
+        Self::open_with_config(path, &SqliteConfig::default())
+    }
+
     pub fn open_without_migrations<P: AsRef<Path>>(path: P) -> Result<Self, SqliteGraphError> {
-        let mut pool = PoolManager::new(path)
+        let cfg = SqliteConfig::new().with_migrations_disabled(true);
+        Self::open_with_config(path, &cfg)
+    }
+
+    /// Open an in-memory database with custom configuration.
+    ///
+    /// Note: Pool size is ignored for in-memory databases since they use
+    /// a single direct connection (each connection would have isolated data).
+    ///
+    /// # Arguments
+    ///
+    /// * `cfg` - Configuration options (cache size, PRAGMAs, etc.)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use sqlitegraph::{SqliteGraph, SqliteConfig};
+    ///
+    /// let cfg = SqliteConfig::new()
+    ///     .with_cache_size(256)
+    ///     .with_performance_mode();
+    /// let graph = SqliteGraph::open_in_memory_with_config(&cfg)?;
+    /// ```
+    pub fn open_in_memory_with_config(cfg: &SqliteConfig) -> Result<Self, SqliteGraphError> {
+        let mut pool = PoolManager::in_memory()
             .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
 
-        // Initialize schema without migrations using first connection from pool
-        {
-            let conn = pool.get()
-                .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-            crate::schema::ensure_schema_without_migrations(&conn)?;
-        }
+        // Set prepared statement cache size from config
+        let cache_size = cfg.cache_size.unwrap_or(128);
 
-        // Configure pool with WAL mode and performance optimizations
-        pool.configure_pool(|conn| {
-            conn.set_prepared_statement_cache_capacity(128);
+        // For in-memory databases, configure directly
+        pool.configure_direct(|conn| {
+            if cfg.without_migrations {
+                crate::schema::ensure_schema_without_migrations(conn).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            } else {
+                ensure_schema(conn).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            }
+            conn.set_prepared_statement_cache_capacity(cache_size);
 
-            // Enable WAL mode for better concurrency
-            let result = conn.pragma_update(None, "journal_mode", "WAL");
-            if result.is_err() {
-                let _ = conn.pragma_update(None, "journal_mode", "DELETE");
+            // Apply custom PRAGMA settings from config
+            for (key, value) in &cfg.pragma_settings {
+                let _ = conn.pragma_update(None, key, value.as_str());
             }
 
-            // Performance optimizations
-            let _ = conn.pragma_update(None, "synchronous", "NORMAL");
-            let _ = conn.pragma_update(None, "cache_size", "-64000");
-            let _ = conn.pragma_update(None, "temp_store", "MEMORY");
-            let _ = conn.pragma_update(None, "mmap_size", "268435456");
-
             Ok(())
-        })?;
+        }).map_err(|e| SqliteGraphError::connection(e.to_string()))?;
 
-        // Load existing HNSW indexes from database
-        let hnsw_indexes = {
-            let conn = pool.get()
-                .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-            Self::load_hnsw_indexes(&conn).unwrap_or_default()
-        };
+        // Load HNSW indexes (will be empty for fresh in-memory database)
+        let hnsw_indexes = pool.direct_connection()
+            .map(|conn| Self::load_hnsw_indexes(conn).unwrap_or_default())
+            .unwrap_or_default();
 
         Ok(Self {
             pool,
@@ -163,59 +216,12 @@ impl SqliteGraph {
     }
 
     pub fn open_in_memory() -> Result<Self, SqliteGraphError> {
-        let mut pool = PoolManager::in_memory()
-            .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-
-        // For in-memory databases, configure directly
-        pool.configure_direct(|conn| {
-            ensure_schema(conn).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-            conn.set_prepared_statement_cache_capacity(128);
-            Ok(())
-        }).map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-
-        // Load HNSW indexes (will be empty for fresh in-memory database)
-        let hnsw_indexes = pool.direct_connection()
-            .map(|conn| Self::load_hnsw_indexes(conn).unwrap_or_default())
-            .unwrap_or_default();
-
-        Ok(Self {
-            pool,
-            outgoing_cache: AdjacencyCache::new(),
-            incoming_cache: AdjacencyCache::new(),
-            query_cache: QueryCache::new(),
-            metrics: Arc::new(GraphMetrics::default()),
-            statement_tracker: Arc::new(StatementTracker::default()),
-            snapshot_manager: SnapshotManager::new(),
-            hnsw_indexes: RwLock::new(hnsw_indexes),
-        })
+        Self::open_in_memory_with_config(&SqliteConfig::default())
     }
 
     pub fn open_in_memory_without_migrations() -> Result<Self, SqliteGraphError> {
-        let mut pool = PoolManager::in_memory()
-            .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-
-        // For in-memory databases, configure directly
-        pool.configure_direct(|conn| {
-            crate::schema::ensure_schema_without_migrations(conn).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-            conn.set_prepared_statement_cache_capacity(128);
-            Ok(())
-        }).map_err(|e| SqliteGraphError::connection(e.to_string()))?;
-
-        // Load HNSW indexes (will be empty for fresh in-memory database)
-        let hnsw_indexes = pool.direct_connection()
-            .map(|conn| Self::load_hnsw_indexes(conn).unwrap_or_default())
-            .unwrap_or_default();
-
-        Ok(Self {
-            pool,
-            outgoing_cache: AdjacencyCache::new(),
-            incoming_cache: AdjacencyCache::new(),
-            query_cache: QueryCache::new(),
-            metrics: Arc::new(GraphMetrics::default()),
-            statement_tracker: Arc::new(StatementTracker::default()),
-            snapshot_manager: SnapshotManager::new(),
-            hnsw_indexes: RwLock::new(hnsw_indexes),
-        })
+        let cfg = SqliteConfig::new().with_migrations_disabled(true);
+        Self::open_in_memory_with_config(&cfg)
     }
 
     /// Create a SqliteGraph from an existing connection.
