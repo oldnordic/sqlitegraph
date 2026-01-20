@@ -273,6 +273,10 @@ pub use backend::{BackupResult, EdgeSpec, NativeGraphBackend, NeighborQuery, Nod
 #[cfg(feature = "native-v2")]
 pub use backend::native::v2::backup::{BackupConfig, create_backup as database_backup};
 
+// Re-export restore API for convenience
+#[cfg(feature = "native-v2")]
+pub use backend::native::v2::restore::{RestoreConfig, RestoreResult, restore_backup as database_restore};
+
 // Re-export WAL functionality for native backend
 #[cfg(feature = "native-v2")]
 pub use backend::native::v2::wal::{
@@ -380,4 +384,38 @@ pub fn create_backup(
         timestamp: native_result.timestamp,
         checkpoint_performed: native_result.checkpoint_performed,
     })
+}
+
+/// Restore a SQLiteGraph Native V2 database from a backup
+///
+/// This is a convenience function for restoring database backups.
+/// For more control over restore options, use `database_restore` with `RestoreConfig`.
+///
+/// # Arguments
+/// * `backup_dir` - Directory containing backup files (snapshot + manifest)
+/// * `target_path` - Path where database will be restored
+/// * `overwrite` - Whether to overwrite existing file (default: false)
+///
+/// # Example
+/// ```no_run
+/// use sqlitegraph;
+/// use std::path::Path;
+///
+/// let result = sqlitegraph::restore_from_backup(
+///     Path::new("backups/backup_123456"),
+///     Path::new("restored.v2"),
+///     true  // overwrite if exists
+/// );
+/// # Ok::<(), sqlitegraph::SqliteGraphError>(())
+/// ```
+#[cfg(feature = "native-v2")]
+pub fn restore_from_backup(
+    backup_dir: &std::path::Path,
+    target_path: &std::path::Path,
+    overwrite: bool,
+) -> Result<RestoreResult, SqliteGraphError> {
+    let config = RestoreConfig::new(backup_dir, target_path)
+        .with_overwrite(overwrite);
+    database_restore(config)
+        .map_err(|e| SqliteGraphError::connection(e.to_string()))
 }
