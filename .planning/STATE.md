@@ -10,16 +10,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 18 of 22 (Code Structure)
-Plan: 1 of 4 in next phase
+Plan: 1 of 4 in phase
 Status: Phase 16 complete, Phase 17 redundant (completed in Phase 16)
-Last activity: 2026-01-20 — Completed Phase 16 - Memory Safety
+Last activity: 2026-01-20 — Completed 18-01: Split algo.rs into modular structure
 
-Progress: [████████████████████████████████████] 100% (Phase 11-16 complete)
+Progress: [████████████████████████████████░░░░] 85% (Phase 11-16 complete, 18-01 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 54
+- Total plans completed: 55
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -139,6 +139,11 @@ Recent decisions affecting current work:
 - All 5 Miri tests pass (store_helpers), all 20 JSON validation tests pass (malicious payloads) - 16-04
 - Requirements UNSAFE-06, UNSAFE-07, INPUT-01, INPUT-02, INPUT-03, INPUT-04 satisfied - 16-04
 
+**v1.1 Code Structure (Phase 18):**
+- Used pub use re-exports in mod.rs to maintain public API surface during file splits - 18-01
+- Categorized algorithms by function: centrality (pagerank, betweenness), community (louvain, label_prop), structure (components, cycles, degrees) - 18-01
+- Module splitting pattern: mod.rs with pub use re-exports for clean API - 18-01
+
 ### Pending Todos
 
 - Layer persistence (Tasks 3-4 from 15-04) requires separate planning for database schema changes
@@ -150,8 +155,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 16-04 execution)
-Stopped at: Completed 16-04 - Miri Tests and JSON Input Validation
+Last session: 2026-01-20 (plan 18-01 execution)
+Stopped at: Completed 18-01 - Split algo.rs into modular structure
 Resume file: None
 
 ### Roadmap Evolution
@@ -162,4 +167,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 in progress (1/4 complete)
