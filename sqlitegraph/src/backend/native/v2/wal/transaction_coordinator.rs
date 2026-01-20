@@ -368,11 +368,11 @@ impl DeadlockDetector {
     ) -> Option<TransactionId> {
         cycle
             .iter()
-            .min_by_key(|&&tx_id| {
+            .max_by_key(|&&tx_id| {
                 contexts
                     .get(&tx_id)
-                    .map(|c| (c.start_time, u64::MAX - tx_id))
-                    .unwrap_or((Instant::now(), u64::MAX))
+                    .map(|c| (c.start_time, tx_id))
+                    .unwrap_or((Instant::now(), tx_id))
             })
             .copied()
     }
@@ -1579,5 +1579,124 @@ mod tests {
             }
             _ => Ok(()), // Not a ClusterCreate record
         }
+    }
+
+    #[test]
+    fn test_deadlock_detector_select_victim() {
+        // Test that select_victim chooses the youngest transaction
+        let detector = DeadlockDetector::new();
+        let mut contexts = HashMap::new();
+
+        // Create three transaction contexts with different start times
+        let now = Instant::now();
+
+        let tx1_context = TransactionContext {
+            tx_id: 1,
+            start_time: now,
+            isolation_level: IsolationLevel::Serializable,
+            locked_resources: HashSet::new(),
+            wal_records: Vec::new(),
+            state: TransactionState::Active,
+            dependencies: HashSet::new(),
+            savepoints: Vec::new(),
+            read_set: HashSet::new(),
+            write_set: HashSet::new(),
+        };
+
+        let tx2_context = TransactionContext {
+            tx_id: 2,
+            start_time: now + Duration::from_millis(10), // Younger
+            isolation_level: IsolationLevel::Serializable,
+            locked_resources: HashSet::new(),
+            wal_records: Vec::new(),
+            state: TransactionState::Active,
+            dependencies: HashSet::new(),
+            savepoints: Vec::new(),
+            read_set: HashSet::new(),
+            write_set: HashSet::new(),
+        };
+
+        let tx3_context = TransactionContext {
+            tx_id: 3,
+            start_time: now + Duration::from_millis(5), // Middle
+            isolation_level: IsolationLevel::Serializable,
+            locked_resources: HashSet::new(),
+            wal_records: Vec::new(),
+            state: TransactionState::Active,
+            dependencies: HashSet::new(),
+            savepoints: Vec::new(),
+            read_set: HashSet::new(),
+            write_set: HashSet::new(),
+        };
+
+        contexts.insert(1, tx1_context);
+        contexts.insert(2, tx2_context);
+        contexts.insert(3, tx3_context);
+
+        // Cycle with all three transactions
+        let cycle = vec![1, 2, 3];
+
+        // tx2 should be selected as victim (youngest)
+        let victim = detector.select_victim(&cycle, &contexts);
+        assert_eq!(victim, Some(2), "Should select youngest transaction (tx2)");
+    }
+
+    #[test]
+    fn test_deadlock_detector_get_cycle() {
+        // Test that get_cycle returns the cycle path
+        let detector = DeadlockDetector::new();
+
+        // Create a cycle: 1 -> 2 -> 3 -> 1
+        detector.add_wait_edge(1, 2);
+        detector.add_wait_edge(2, 3);
+        detector.add_wait_edge(3, 1);
+
+        // Get the cycle starting from transaction 1
+        let cycle = detector.get_cycle(1).unwrap();
+
+        // Cycle should be non-empty and contain the starting transaction
+        assert!(!cycle.is_empty(), "Cycle should not be empty");
+        assert!(cycle.contains(&1), "Cycle should contain the starting transaction (1)");
+
+        // For a simple 3-node cycle, we should find at least some nodes
+        // The exact path depends on DFS traversal order
+        assert!(cycle.len() >= 1, "Cycle should contain at least one transaction");
+    }
+
+    #[test]
+    fn test_deadlock_detector_no_cycle() {
+        // Test that get_cycle returns empty when there's no cycle
+        let detector = DeadlockDetector::new();
+
+        // Create a wait-for graph without cycle: 1 -> 2 -> 3
+        detector.add_wait_edge(1, 2);
+        detector.add_wait_edge(2, 3);
+
+        // No cycle should be detected
+        let has_cycle = detector.detect_cycle(1).unwrap();
+        assert!(!has_cycle, "Should not detect cycle in acyclic graph");
+
+        // get_cycle should return empty vec
+        let cycle = detector.get_cycle(1).unwrap();
+        assert!(cycle.is_empty(), "get_cycle should return empty when no cycle");
+    }
+
+    #[test]
+    fn test_deadlock_detector_detect_cycle() {
+        // Test that detect_cycle correctly identifies cycles
+        let detector = DeadlockDetector::new();
+
+        // No edges - no cycle
+        assert!(!detector.detect_cycle(1).unwrap());
+
+        // Create a simple cycle: 1 -> 1 (self-wait)
+        detector.add_wait_edge(1, 1);
+        assert!(detector.detect_cycle(1).unwrap());
+
+        // Clear and create a longer cycle: 2 -> 3 -> 2
+        let detector2 = DeadlockDetector::new();
+        detector2.add_wait_edge(2, 3);
+        detector2.add_wait_edge(3, 2);
+        assert!(detector2.detect_cycle(2).unwrap());
     }
 }
