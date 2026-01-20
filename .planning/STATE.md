@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Feature parity, performance, and reliability equally. Native V2 must match or exceed SQLite backend capabilities while maintaining rock-solid MVCC correctness and achieving best-in-class embedded graph database performance.
-**Current focus:** Phase 14 - ACID Durability (v1.1 ACID & Reliability)
+**Current focus:** Phase 15 - HNSW Multi-Layer (v1.1 Scaling)
 
 ## Current Position
 
-Phase: 14 of 22 (ACID Durability)
-Plan: 4 of 4 in current phase
-Status: Phase 14 complete
-Last activity: 2026-01-20 — Completed 14-04 checkpoint configuration
+Phase: 15 of 22 (HNSW Multi-Layer)
+Plan: 1 of 3 in current phase
+Status: In progress
+Last activity: 2026-01-20 — Completed 15-01 exponential level distribution
 
-Progress: [██████████████████████████████████ ] 84%
+Progress: [██████████████████████████████████ ] 86%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 46
+- Total plans completed: 47
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,10 +28,11 @@ Progress: [███████████████████████
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
-| 11-14 (v1.1) | 17/45 | 122min | 7min |
+| 11-14 (v1.1) | 17/17 | 122min | 7min |
+| 15 (HNSW Multi-Layer) | 1/3 | 8min | 8min |
 
 **Recent Trend:**
-- Last 5 plans: 13-02 (3min), 13-03 (6min), 13-04 (3min), 14-01 (2min), 14-02 (2min), 14-03 (4min), 14-04 (6min)
+- Last 5 plans: 14-01 (2min), 14-02 (2min), 14-03 (4min), 14-04 (6min), 15-01 (8min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -96,6 +97,14 @@ Recent decisions affecting current work:
 - Builder methods provide convenient API: with_checkpoint_strategy, with_transaction_checkpoint, with_size_checkpoint, with_time_checkpoint - 14-04
 - Tests verify all checkpoint strategies (transaction-count, size-based) and counter reset behavior - 14-04
 
+**v1.1 Scaling (Phase 15):**
+- LevelDistributor field added to HnswIndex for exponential level assignment - 15-01
+- determine_insertion_level() uses P(level) = m^(-level) distribution via LevelDistributor::sample_level_internal() - 15-01
+- LevelDistributor only initialized when enable_multilayer=true to avoid RNG overhead in single-layer mode - 15-01
+- Deterministic seeding with default seed of 42 for reproducible behavior, configurable via multilayer_deterministic_seed - 15-01
+- Base M parameter uses multilayer_level_distribution_base if set, otherwise falls back to config.m - 15-01
+- determine_insertion_level signature changed from &self to &mut self for mutable RNG access - 15-01
+
 ### Pending Todos
 
 None yet.
@@ -106,8 +115,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 14-04 execution)
-Stopped at: Completed 14-04 - Checkpoint configuration
+Last session: 2026-01-20 (plan 15-01 execution)
+Stopped at: Completed 15-01 - Exponential level distribution
 Resume file: None
 
 ### Roadmap Evolution
@@ -118,4 +127,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 in progress (1/3)
