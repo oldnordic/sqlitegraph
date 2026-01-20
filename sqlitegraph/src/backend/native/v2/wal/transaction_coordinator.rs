@@ -606,8 +606,8 @@ pub struct V2TransactionCoordinator {
     /// Transaction isolation manager
     isolation_manager: Arc<IsolationManager>,
 
-    /// Transaction ID generator
-    next_transaction_id: Arc<Mutex<u64>>,
+    /// Transaction ID manager with wraparound protection
+    tx_id_manager: Arc<TransactionIdManager>,
 }
 
 impl V2TransactionCoordinator {
@@ -626,7 +626,7 @@ impl V2TransactionCoordinator {
                 transactions,
             )),
             isolation_manager: Arc::new(IsolationManager::new()),
-            next_transaction_id: Arc::new(Mutex::new(1)),
+            tx_id_manager: Arc::new(TransactionIdManager::new()),
         }
     }
 
@@ -635,12 +635,7 @@ impl V2TransactionCoordinator {
         &self,
         isolation_level: IsolationLevel,
     ) -> NativeResult<TransactionId> {
-        let tx_id = {
-            let mut next_id = self.next_transaction_id.lock();
-            let id = *next_id;
-            *next_id = next_id.wrapping_add(1);
-            id
-        };
+        let tx_id = self.tx_id_manager.allocate()?;
 
         let context = TransactionContext {
             tx_id,
@@ -974,6 +969,11 @@ impl V2TransactionCoordinator {
     pub fn list_active_transactions(&self) -> Vec<TransactionId> {
         let active = self.active_transactions.read();
         active.keys().copied().collect()
+    }
+
+    /// Get the transaction ID manager (for monitoring)
+    pub fn tx_id_manager(&self) -> &Arc<TransactionIdManager> {
+        &self.tx_id_manager
     }
 
     /// Force cleanup of abandoned transactions
