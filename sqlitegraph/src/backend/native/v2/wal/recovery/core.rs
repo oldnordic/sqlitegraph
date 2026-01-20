@@ -4,6 +4,7 @@
 //! Focuses on recovery orchestration, state management, and phase coordination.
 
 use super::{constants::*, errors::RecoveryError};
+use super::validator::RecoveryValidator;
 use crate::backend::native::v2::wal::{V2WALConfig, V2WALRecord};
 use crate::backend::native::{NativeBackendError, NativeResult};
 use crate::debug::{info_log, debug_log, warn_log, error_log};
@@ -576,6 +577,46 @@ impl V2WALRecoveryEngine {
 
         if let Err(e) = std::fs::metadata(&self.database_path) {
             warnings.push(format!("Database validation issue: {:?}", e));
+        }
+
+        Ok(warnings)
+    }
+
+    /// Post-recovery validation hook called after WAL replay completes.
+    ///
+    /// This method validates the integrity of the recovered database to ensure
+    /// no corruption occurred during recovery. It uses the RecoveryValidator to
+    /// validate the replayed transaction sequence.
+    ///
+    /// # Arguments
+    /// * `transactions` - The list of transactions that were replayed
+    ///
+    /// # Returns
+    /// * `Ok(Vec<String>)` - List of validation warnings (non-critical issues)
+    /// * `Err(RecoveryError)` - Critical validation error preventing recovery completion
+    fn validate_post_recovery(&self, transactions: &[TransactionState]) -> Result<Vec<String>, RecoveryError> {
+        debug_log!("Starting post-recovery validation for {} transactions", transactions.len());
+
+        // Create validator with database path
+        let mut validator = RecoveryValidator::new(self.database_path.clone())
+            .map_err(|e| RecoveryError::validation(format!("Failed to create recovery validator: {}", e)))?;
+
+        // Validate the recovery sequence
+        let (_stats, warnings) = validator
+            .validate_recovery_sequence(transactions)
+            .map_err(|e| {
+                error_log!("Post-recovery validation failed: {}", e);
+                e
+            })?;
+
+        // Log validation results
+        if warnings.is_empty() {
+            info_log!("Post-recovery validation passed with no warnings");
+        } else {
+            warn_log!("Post-recovery validation passed with {} warnings", warnings.len());
+            for warning in &warnings {
+                debug_log!("Validation warning: {}", warning);
+            }
         }
 
         Ok(warnings)
