@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 20 of 22 (Data Management), Plan 3 of 3 complete
-Status: Phase 20-03 complete (Backup API)
-Last activity: 2026-01-20 — Completed Phase 20 Plan 03: Backup API with checkpoint integration and public wrappers
+Phase: 20 of 22 (Data Management), Plan 4 of 3 complete
+Status: Phase 20-04 complete (Restore API)
+Last activity: 2026-01-20 — Completed Phase 20 Plan 04: Restore API with RestoreConfig builder and crate-level convenience function
 
-Progress: [████████████████████████████████] 98% (Phase 11-19 complete, 20-01, 20-02, 20-03 complete)
+Progress: [████████████████████████████████] 99% (Phase 11-19 complete, 20-01, 20-02, 20-03, 20-04 complete)
 
 ## Performance Metrics
 
@@ -185,11 +185,14 @@ Recent decisions affecting current work:
 - GraphBackend::backup() method provides unified interface for both Native and SQLite backends - 20-03
 - SQLite backend uses VACUUM INTO for clean backups, Native uses SnapshotExporter - 20-03
 - Multi-level API: crate root create_backup(), database_backup(), backend::native::v2::backup::create_backup() - 20-03
+- RestoreConfig with builder pattern (with_overwrite, with_validation, with_checksum_verification) - 20-04
+- restore_backup() wraps SnapshotImporter with manifest validation and checksum verification - 20-04
+- Crate-level restore_from_backup() provides convenient restore API matching create_backup() pattern - 20-04
+- Multi-level restore API: crate root restore_from_backup(), database_restore(), backend::native::v2::restore_backup() - 20-04
 
 ### Pending Todos
 
 - Layer persistence (Tasks 3-4 from 15-04) requires separate planning for database schema changes
-- Restore API (20-04) will complete backup/restore functionality
 
 ### Blockers/Concerns
 
@@ -198,8 +201,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 20-03 execution)
-Stopped at: Completed 20-03 - Backup API with checkpoint integration and public wrappers
+Last session: 2026-01-20 (plan 20-04 execution)
+Stopped at: Completed 20-04 - Restore API with RestoreConfig builder and crate-level convenience function
 Resume file: None
 
 ### Roadmap Evolution
@@ -210,4 +213,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (3/3, v3 file format with migration API and backup API)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (4/4, v3 file format with migration API, backup API, and restore API)
