@@ -436,6 +436,46 @@ impl DeadlockDetector {
         path.pop();
         false
     }
+
+    /// Periodic cleanup to prevent unbounded growth
+    ///
+    /// Removes entries for transactions that are no longer active.
+    /// Should be called periodically (e.g., after every 1000 transactions).
+    pub fn cleanup_stale_transactions(
+        &self,
+        active_ids: &HashSet<TransactionId>,
+    ) -> usize {
+        let mut wait_for_graph = self.wait_for_graph.write();
+        let initial_size = wait_for_graph.len();
+
+        // Remove entries for non-active transactions
+        wait_for_graph.retain(|tx_id, _waiting_for| {
+            active_ids.contains(tx_id)
+        });
+
+        // Also clean up references to non-active transactions
+        for waiting_set in wait_for_graph.values_mut() {
+            waiting_set.retain(|tx_id| active_ids.contains(tx_id));
+        }
+
+        let cleaned = initial_size - wait_for_graph.len();
+        if cleaned > 0 {
+            log::debug!("Cleaned {} stale deadlock detector entries", cleaned);
+        }
+
+        *self.last_detection.lock() = Instant::now();
+        cleaned
+    }
+
+    /// Get size of wait-for graph (for monitoring)
+    pub fn graph_size(&self) -> usize {
+        self.wait_for_graph.read().len()
+    }
+
+    /// Check if cleanup is needed based on graph size
+    pub fn needs_cleanup(&self, threshold: usize) -> bool {
+        self.graph_size() > threshold
+    }
 }
 
 /// Transaction ID manager with wraparound protection
@@ -1014,6 +1054,15 @@ impl V2TransactionCoordinator {
 
         // Clean up from deadlock detector
         self.deadlock_detector.remove_transaction(tx_id);
+
+        // Trigger cleanup if graph is large (prevent unbounded growth)
+        if self.deadlock_detector.needs_cleanup(1000) {
+            let active_ids: HashSet<_> = self.active_transactions.read()
+                .keys()
+                .copied()
+                .collect();
+            self.deadlock_detector.cleanup_stale_transactions(&active_ids);
+        }
 
         Ok(())
     }
