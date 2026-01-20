@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 16 of 22 (Memory Safety)
-Plan: 2 of 4 in phase
-Status: Plan 16-02 complete
-Last activity: 2026-01-20 — Completed 16-02 - Checkpoint/Validator Transmute Consolidation
+Plan: 3 of 4 in phase
+Status: Plan 16-03 complete
+Last activity: 2026-01-20 — Completed 16-03 - Replayer Transmute Consolidation
 
-Progress: [█████████████████████████████████ ] 96%
+Progress: [█████████████████████████████████ ] 97%
 
 ## Performance Metrics
 
@@ -130,6 +130,9 @@ Recent decisions affecting current work:
 - Consolidated transmute operations into documented store_helpers modules in checkpoint/operations.rs, checkpoint/record/integrator.rs, and recovery/validator.rs - 16-02
 - Established consistent pattern for remaining replayer transmute sites (rollback.rs, edge_ops.rs, transaction_ops.rs) - 16-02
 - All checkpoint and validation tests pass after transmute consolidation - 16-02
+- Created centralized store_helpers.rs module with create_node_store() and create_edge_store() documented-safe functions - 16-03
+- Replaced all 13 replayer transmute sites (rollback.rs: 7, edge_ops.rs: 3, transaction_ops.rs: 1, operations_with_problematic_tests.rs: 2) - 16-03
+- Zero inline transmutes remain in WAL recovery replayer code - 16-03
 
 ### Pending Todos
 
@@ -142,8 +145,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 16-02 execution)
-Stopped at: Completed 16-02 - Checkpoint/Validator Transmute Consolidation
+Last session: 2026-01-20 (plan 16-03 execution)
+Stopped at: Completed 16-03 - Replayer Transmute Consolidation
 Resume file: None
 
 ### Roadmap Evolution
@@ -154,4 +157,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 in progress (2/4)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 in progress (3/4)
