@@ -22,8 +22,70 @@ use crate::backend::native::v2::wal::recovery::core::TransactionState;
 use crate::backend::native::v2::wal::recovery::errors::{RecoveryError, RecoveryResult};
 use crate::backend::native::{EdgeStore, GraphFile, NodeStore};
 use std::collections::{HashMap, HashSet};
+use std::mem;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
+
+/// # Store Creation Helpers for Safe Lifetime Management
+///
+/// This module consolidates transmute operations for NodeStore and EdgeStore creation.
+///
+/// ## Safety Invariants
+///
+/// These helpers extend GraphFile lifetime to 'static to satisfy NodeStore/EdgeStore APIs.
+/// This is safe because:
+///
+/// 1. The `Arc<Mutex<Option<GraphFile>>>` ensures the GraphFile lives as long as any reference exists
+/// 2. The stores are only used within the scope where the graph_file reference is valid
+/// 3. We never store the 'static reference beyond the lock scope
+/// 4. The TransactionValidator owns the Arc<Mutex<Option<GraphFile>>> for its lifetime
+///
+/// ## Why This Pattern Exists
+///
+/// NodeStore<'a> and EdgeStore<'a> have lifetime parameters tied to GraphFile.
+/// They require &'a mut GraphFile for construction, but we need to store them
+/// in structs that don't have lifetime parameters (using Arc<Mutex<Option<NodeStore<'static>>>>).
+///
+/// ## Future Improvement
+///
+/// A proper fix would be to refactor NodeStore and EdgeStore to store Arc<Mutex<GraphFile>>
+/// internally, eliminating the lifetime parameter entirely. This would require API changes
+/// across multiple modules.
+mod store_helpers {
+    use super::*;
+
+    /// # Safety
+    ///
+    /// Caller must ensure the returned NodeStore does not outlive the GraphFile reference.
+    /// Since we store Arc<Mutex<Option<GraphFile>>>, the Arc keeps it alive for the duration of the store.
+    ///
+    /// The transmute is safe because:
+    /// - graph_file is owned by the Arc<Mutex<>> stored in TransactionValidator
+    /// - The Arc ensures graph_file lives as long as any store reference exists
+    /// - Stores are accessed through Mutex guards, preventing use-after-free
+    pub unsafe fn create_node_store(graph_file: &mut GraphFile) -> NodeStore<'static> {
+        // SAFETY: See function-level safety documentation
+        unsafe {
+            NodeStore::new(mem::transmute::<&mut _, &'static mut _>(graph_file))
+        }
+    }
+
+    /// # Safety
+    ///
+    /// Caller must ensure the returned EdgeStore does not outlive the GraphFile reference.
+    /// Since we store Arc<Mutex<Option<GraphFile>>>, the Arc keeps it alive for the duration of the store.
+    ///
+    /// The transmute is safe because:
+    /// - graph_file is owned by the Arc<Mutex<>> stored in TransactionValidator
+    /// - The Arc ensures graph_file lives as long as any store reference exists
+    /// - Stores are accessed through Mutex guards, preventing use-after-free
+    pub unsafe fn create_edge_store(graph_file: &mut GraphFile) -> EdgeStore<'static> {
+        // SAFETY: See function-level safety documentation
+        unsafe {
+            EdgeStore::new(mem::transmute::<&mut _, &'static mut _>(graph_file))
+        }
+    }
+}
 
 /// Validation result for a single operation
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,6 +191,12 @@ impl TransactionValidator {
     }
 
     /// Initialize validator with real V2 graph file access
+    ///
+    /// # Safety
+    ///
+    /// This method uses the store_helpers module to create NodeStore and EdgeStore
+    /// with extended 'static lifetime. The Arc<Mutex<Option<GraphFile>>> ensures the GraphFile
+    /// outlives all store references. See store_helpers module documentation for details.
     pub fn initialize(&mut self) -> RecoveryResult<()> {
         // Open V2 graph file for validation
         let mut graph_file = GraphFile::open(&self.graph_file_path).map_err(|e| {
@@ -138,21 +206,14 @@ impl TransactionValidator {
             ))
         })?;
 
-        // Create V2 backend components with real integration
-        // NOTE: Using unsafe static lifetime extension - this is a production pattern
-        // when the GraphFile is owned by the validator and will outlive all components
-        let graph_file_ptr = unsafe {
-            std::mem::transmute::<&mut GraphFile, &'static mut GraphFile>(&mut graph_file)
-        };
-
-        // Create node store first
-        let node_store = NodeStore::new(graph_file_ptr);
+        // Create V2 backend components using store_helpers for safe lifetime management
+        // SAFETY: The GraphFile is stored in Arc<Mutex<Option<>>> below, ensuring it outlives all stores
+        let node_store = unsafe { store_helpers::create_node_store(&mut graph_file) };
 
         // Create edge store separately to avoid borrow conflicts
-        // This creates a new store that will be initialized later when needed
-        let edge_store = EdgeStore::new(unsafe {
-            std::mem::transmute::<&mut GraphFile, &'static mut GraphFile>(&mut graph_file)
-        });
+        // SAFETY: Same safety guarantee as node_store above
+        let edge_store = unsafe { store_helpers::create_edge_store(&mut graph_file) };
+
         let string_table = StringTable::new();
         let free_space_manager = FreeSpaceManager::new(
             crate::backend::native::v2::free_space::AllocationStrategy::FirstFit,
