@@ -9,6 +9,7 @@
 //! A future refactor could remove the need for transmute by changing those APIs.
 
 use std::mem;
+use std::sync::Arc;
 use crate::backend::native::{NodeStore, EdgeStore, GraphFile};
 
 /// # Safety
@@ -33,4 +34,119 @@ pub unsafe fn create_node_store(graph_file: &mut GraphFile) -> NodeStore<'static
 /// - Stores are accessed through Mutex/RwLock guards, preventing use-after-free
 pub unsafe fn create_edge_store(graph_file: &mut GraphFile) -> EdgeStore<'static> {
     EdgeStore::new(mem::transmute::<&mut _, &'static mut _>(graph_file))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_create_node_store() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let graph_path = temp_dir.path().join("test.v2");
+        let graph_file = GraphFile::create(&graph_path).unwrap();
+        let mut graph_file = graph_file;
+
+        // Create NodeStore using our helper
+        let _node_store = unsafe {
+            create_node_store(&mut graph_file)
+        };
+        // node_store goes out of scope here
+    }
+
+    #[test]
+    fn test_create_edge_store() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let graph_path = temp_dir.path().join("test.v2");
+        let graph_file = GraphFile::create(&graph_path).unwrap();
+        let mut graph_file = graph_file;
+
+        // Create EdgeStore using our helper
+        let _edge_store = unsafe {
+            create_edge_store(&mut graph_file)
+        };
+        // edge_store goes out of scope here
+    }
+}
+
+/// Miri-specific tests for undefined behavior detection
+#[cfg(all(miri, test))]
+mod miri_tests {
+    use super::*;
+    use parking_lot::RwLock;
+
+    /// Miri test: Verify Arc<RwLock<>> pattern keeps GraphFile alive
+    #[test]
+    fn miri_test_arc_rwlock_graphfile_lifetime() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let graph_path = temp_dir.path().join("test.v2");
+        let graph_file = GraphFile::create(&graph_path).unwrap();
+
+        // Wrap in Arc<RwLock<>>
+        let graph_file = Arc::new(RwLock::new(graph_file));
+
+        // Clone Arc (cheap reference count increment)
+        let graph_file_clone = Arc::clone(&graph_file);
+
+        // Create NodeStore using our helper
+        {
+            let mut guard = graph_file.write();
+            let _node_store = unsafe {
+                create_node_store(&mut guard)
+            };
+            // node_store goes out of scope here
+            // graph_file should still be valid
+        }
+
+        // Original Arc still valid - Miri will catch use-after-free
+        let guard = graph_file_clone.read();
+        let _header = guard.header();
+    }
+
+    /// Miri test: Multiple stores from same Arc<RwLock<>>
+    #[test]
+    fn miri_test_multiple_stores_same_graphfile() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let graph_path = temp_dir.path().join("test.v2");
+        let graph_file = GraphFile::create(&graph_path).unwrap();
+
+        let graph_file = Arc::new(RwLock::new(graph_file));
+
+        // Create multiple stores
+        let node_store = unsafe {
+            let mut guard = graph_file.write();
+            create_node_store(&mut guard)
+        };
+
+        let edge_store = unsafe {
+            let mut guard = graph_file.write();
+            create_edge_store(&mut guard)
+        };
+
+        // Both stores valid, no use-after-free
+        drop(node_store);
+        drop(edge_store);
+
+        // GraphFile still accessible
+        let guard = graph_file.read();
+        let _header = guard.header();
+    }
+
+    /// Miri test: Drop order doesn't cause use-after-free
+    #[test]
+    fn miri_test_drop_order() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let graph_path = temp_dir.path().join("test.v2");
+        let graph_file = GraphFile::create(&graph_path).unwrap();
+
+        let graph_file = Arc::new(RwLock::new(graph_file));
+        let arc_clone = Arc::clone(&graph_file);
+
+        // Drop original Arc first
+        drop(graph_file);
+
+        // Clone should still work
+        let guard = arc_clone.read();
+        let _header = guard.header();
+    }
 }
