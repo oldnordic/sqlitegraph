@@ -376,6 +376,58 @@ impl DeadlockDetector {
             })
             .copied()
     }
+
+    /// Detect and return the cycle path starting from the given transaction
+    pub fn get_cycle(&self, start_tx: TransactionId) -> NativeResult<Vec<TransactionId>> {
+        let wait_for_graph = self.wait_for_graph.read();
+        let mut visited = HashSet::new();
+        let mut path = Vec::new();
+        let mut recursion_stack = HashSet::new();
+
+        if self.find_cycle_path(start_tx, &mut visited, &mut recursion_stack, &mut path, &wait_for_graph) {
+            Ok(path)
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
+    /// Helper to find the actual cycle path
+    fn find_cycle_path(
+        &self,
+        tx_id: TransactionId,
+        visited: &mut HashSet<TransactionId>,
+        recursion_stack: &mut HashSet<TransactionId>,
+        path: &mut Vec<TransactionId>,
+        wait_for_graph: &HashMap<TransactionId, HashSet<TransactionId>>,
+    ) -> bool {
+        if recursion_stack.contains(&tx_id) {
+            // Found the cycle - return path from this transaction
+            if let Some(pos) = path.iter().position(|&x| x == tx_id) {
+                path.truncate(pos + 1);
+            }
+            return true;
+        }
+
+        if visited.contains(&tx_id) {
+            return false;
+        }
+
+        visited.insert(tx_id);
+        recursion_stack.insert(tx_id);
+        path.push(tx_id);
+
+        if let Some(waiting_for) = wait_for_graph.get(&tx_id) {
+            for &waiting_tx in waiting_for {
+                if self.find_cycle_path(waiting_tx, visited, recursion_stack, path, wait_for_graph) {
+                    return true;
+                }
+            }
+        }
+
+        recursion_stack.remove(&tx_id);
+        path.pop();
+        false
+    }
 }
 
 /// Isolation level manager
