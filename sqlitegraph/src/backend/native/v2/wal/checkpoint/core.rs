@@ -410,6 +410,18 @@ impl V2WALCheckpointManager {
         )
     }
 
+    /// Set the overflow strategy for dirty block tracking
+    pub fn set_overflow_strategy(&self, strategy: DirtyBlockOverflowStrategy) {
+        let mut dirty_blocks = self.dirty_blocks.lock();
+        dirty_blocks.set_overflow_strategy(strategy);
+    }
+
+    /// Get the current overflow strategy
+    pub fn get_overflow_strategy(&self) -> DirtyBlockOverflowStrategy {
+        let dirty_blocks = self.dirty_blocks.lock();
+        dirty_blocks.get_overflow_strategy()
+    }
+
     /// Mark a block as dirty for checkpointing
     ///
     /// # Arguments
@@ -447,12 +459,30 @@ impl V2WALCheckpointManager {
         // Add to appropriate tracking structure
         if let Some(key) = cluster_key {
             dirty_blocks.mark_cluster_block_dirty(key, block_offset, timestamp)?;
+            // Update access statistics for cluster blocks
+            dirty_blocks.update_block_access(block_offset, timestamp);
         } else {
-            dirty_blocks.mark_global_block_dirty(block_offset, timestamp)?;
-        }
+            match dirty_blocks.mark_global_block_dirty(block_offset, timestamp) {
+                Err(e) if e.message.contains("checkpoint required") => {
+                    // ForceCheckpoint overflow strategy - trigger checkpoint automatically
+                    drop(dirty_blocks);
 
-        // Update access statistics
-        dirty_blocks.update_block_access(block_offset, timestamp);
+                    // Trigger checkpoint and ignore errors (best-effort)
+                    let _ = self.force_checkpoint();
+
+                    // Retry marking block dirty after checkpoint
+                    dirty_blocks = self.dirty_blocks.lock();
+                    dirty_blocks.mark_global_block_dirty(block_offset, timestamp)?;
+                    // Update access statistics after re-lock
+                    dirty_blocks.update_block_access(block_offset, timestamp);
+                }
+                Err(e) => return Err(e),
+                Ok(()) => {
+                    // Update access statistics for global blocks on success
+                    dirty_blocks.update_block_access(block_offset, timestamp);
+                }
+            }
+        }
 
         Ok(())
     }
