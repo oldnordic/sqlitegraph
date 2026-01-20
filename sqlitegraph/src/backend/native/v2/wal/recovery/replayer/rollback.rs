@@ -6,6 +6,7 @@
 use crate::backend::native::{GraphFile, NodeStore, NativeNodeId, NodeRecordV2};
 use crate::backend::native::v2::{StringTable, FreeSpaceManager};
 use super::types::RollbackOperation;
+use crate::backend::native::v2::wal::recovery::store_helpers;
 use crate::debug::{debug_log, warn_log, error_log};
 use std::sync::{Arc, Mutex, RwLock};
 
@@ -146,9 +147,9 @@ impl RollbackSystem {
             if node_store_guard.is_none() {
                 let mut graph_file = self.graph_file.write()
                     .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(format!("Failed to lock graph file: {}", e)))?;
-                *node_store_guard = Some(NodeStore::new(unsafe {
-                    std::mem::transmute(&mut *graph_file)
-                }));
+                *node_store_guard = Some(unsafe {
+                    store_helpers::create_node_store(&mut *graph_file)
+                });
             }
         }
 
@@ -183,9 +184,9 @@ impl RollbackSystem {
             if node_store_guard.is_none() {
                 let mut graph_file = self.graph_file.write()
                     .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(format!("Failed to lock graph file: {}", e)))?;
-                *node_store_guard = Some(NodeStore::new(unsafe {
-                    std::mem::transmute(&mut *graph_file)
-                }));
+                *node_store_guard = Some(unsafe {
+                    store_helpers::create_node_store(&mut *graph_file)
+                });
             }
         }
 
@@ -234,9 +235,9 @@ impl RollbackSystem {
                     .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
                         format!("Failed to lock graph file: {}", e)
                     ))?;
-                *node_store_guard = Some(NodeStore::new(unsafe {
-                    std::mem::transmute(&mut *graph_file)
-                }));
+                *node_store_guard = Some(unsafe {
+                    store_helpers::create_node_store(&mut *graph_file)
+                });
             }
         }
 
@@ -774,9 +775,9 @@ impl RollbackSystem {
                     .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
                         format!("Failed to lock graph file: {}", e)
                     ))?;
-                *node_store_guard = Some(NodeStore::new(unsafe {
-                    std::mem::transmute(&mut *graph_file)
-                }));
+                *node_store_guard = Some(unsafe {
+                    store_helpers::create_node_store(&mut *graph_file)
+                });
             }
         }
 
@@ -879,9 +880,9 @@ impl RollbackSystem {
                     .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
                         format!("Failed to lock graph file: {}", e)
                     ))?;
-                *node_store_guard = Some(NodeStore::new(unsafe {
-                    std::mem::transmute(&mut *graph_file)
-                }));
+                *node_store_guard = Some(unsafe {
+                    store_helpers::create_node_store(&mut *graph_file)
+                });
             }
         }
 
@@ -966,9 +967,9 @@ impl RollbackSystem {
                         format!("Failed to lock graph file: {}", e)
                     ))?;
 
-                *node_store_guard = Some(crate::backend::native::NodeStore::new(unsafe {
-                    std::mem::transmute::<&mut _, &'static mut _>(&mut *graph_file)
-                }));
+                *node_store_guard = Some(unsafe {
+                    store_helpers::create_node_store(&mut *graph_file)
+                });
             }
 
             let node_store = node_store_guard.as_mut()
@@ -1140,9 +1141,9 @@ impl RollbackSystem {
                         format!("Failed to lock graph file: {}", e)
                     ))?;
 
-                *node_store_guard = Some(crate::backend::native::NodeStore::new(unsafe {
-                    std::mem::transmute::<&mut _, &'static mut _>(&mut *graph_file)
-                }));
+                *node_store_guard = Some(unsafe {
+                    store_helpers::create_node_store(&mut *graph_file)
+                });
             }
 
             let node_store = node_store_guard.as_mut()
