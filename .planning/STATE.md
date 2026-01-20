@@ -9,16 +9,16 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 
 ## Current Position
 
-Phase: 21 of 22 complete (3/4 plans)
-Status: Phase 21 in progress (plan 21-04 completed)
-Last activity: 2026-01-20 — Completed Phase 21 Plan 04: HNSW Multi-Layer Tests and Miri Integration
+Phase: 21 of 22 complete (4/4 plans)
+Status: Phase 21 complete (all plans verified)
+Last activity: 2026-01-20 — Completed Phase 21 Plan 01: Node Deletion Rollback Tests
 
-Progress: [████████████████████████████████░] 99% (Phase 11-20 complete, Phase 21: 3/4 plans)
+Progress: [████████████████████████████████] 100% (Phase 11-21 complete)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 64 (33 for v0.2/v1.0, 31 for v1.1)
+- Total plans completed: 65 (33 for v0.2/v1.0, 32 for v1.1)
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -190,6 +190,12 @@ Recent decisions affecting current work:
 - Crate-level restore_from_backup() provides convenient restore API matching create_backup() pattern - 20-04
 - Multi-level restore API: crate root restore_from_backup(), database_restore(), backend::native::v2::restore_backup() - 20-04
 
+**v1.1 Test Coverage (Phase 21):**
+- Node deletion rollback tests use real handle_node_delete implementation from operations/node_ops.rs - 21-01
+- Full delete/rollback cycle test validates complete rollback flow (create, delete, rollback, verify) - 21-01
+- Tests added to operations/node_ops.rs instead of operations_with_problematic_tests.rs (file not in module tree) - 21-01
+- All 9 node deletion tests pass (8 node delete tests + 1 full cycle test) - 21-01
+
 ### Pending Todos
 
 - Layer persistence (Tasks 3-4 from 15-04) requires separate planning for database schema changes
@@ -201,16 +207,16 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 21-04 execution)
-Stopped at: Completed 21-04 - HNSW multi-layer tests and Miri integration verification
+Last session: 2026-01-20 (plan 21-01 execution)
+Stopped at: Completed 21-01 - Node deletion rollback tests with real implementation
 Resume file: None
 
 ### Roadmap Evolution
 
 - **v0.2 Foundation** (2026-01-17): Phases 1-7 complete
 - **v1.0 Production** (2026-01-17): Phases 8-10 complete
-- **v1.1 ACID & Reliability** (2026-01-20): IN PROGRESS
+- **v1.1 ACID & Reliability** (2026-01-20): COMPLETE
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
-  - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (4/4, v3 file format with migration API, backup API, and restore API), Phase 21 in progress (3/4: test coverage for HNSW and Miri)
+  - Total: 64 plans completed (all v1.1 plans)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4), Phase 18 complete (4/4), Phase 19 complete (3/3), Phase 20 complete (4/4, v3 file format with migration API, backup API, and restore API), Phase 21 complete (4/4: test coverage for WAL recovery, node deletion rollback, HNSW multi-layer, Miri integration)
