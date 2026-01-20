@@ -215,6 +215,14 @@ impl CheckpointError {
         Self::new(CheckpointErrorKind::Unknown, message)
     }
 
+    /// Create checkpoint required error (for overflow handling)
+    pub fn checkpoint_required(message: impl Into<String>) -> Self {
+        Self::new(CheckpointErrorKind::Resource, message)
+            .with_recovery(RecoverySuggestion::Custom(
+                "Checkpoint required to free dirty blocks".to_string(),
+            ))
+    }
+
     /// Get error severity level
     pub fn severity(&self) -> ErrorSeverity {
         match self.kind {

@@ -13,6 +13,7 @@ use parking_lot::{Condvar, Mutex};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufWriter, Write};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -129,11 +130,95 @@ impl Default for CheckpointManagerState {
     }
 }
 
+/// Overflow strategy for dirty block tracking
+///
+/// Defines behavior when dirty block capacity limits are exceeded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DirtyBlockOverflowStrategy {
+    /// Reject writes when overflow would occur (current behavior)
+    Reject,
+    /// Force immediate checkpoint to free dirty blocks
+    ForceCheckpoint,
+    /// Spill oldest blocks to secondary storage
+    SpillToDisk,
+    /// Promote to higher-level tracking (hierarchical)
+    HierarchicalPromotion,
+}
+
+impl Default for DirtyBlockOverflowStrategy {
+    fn default() -> Self {
+        Self::Reject // Maintain backward compatibility
+    }
+}
+
+/// Disk overflow store for spilled dirty blocks
+///
+/// Stores blocks that have been spilled to secondary storage when
+/// in-memory capacity is exceeded.
+#[derive(Debug)]
+pub struct DiskOverflowStore {
+    /// Directory path for spill files
+    spill_path: PathBuf,
+    /// Spilled blocks: block_offset -> (timestamp, spill_time)
+    spilled_blocks: HashMap<u64, (u64, SystemTime)>,
+    /// Maximum number of spilled blocks to track
+    max_spilled_blocks: usize,
+}
+
+impl DiskOverflowStore {
+    /// Create a new disk overflow store
+    pub fn new(spill_path: PathBuf, max_spilled_blocks: usize) -> Self {
+        Self {
+            spill_path,
+            spilled_blocks: HashMap::new(),
+            max_spilled_blocks,
+        }
+    }
+
+    /// Add a block to the overflow store
+    pub fn add_spilled_block(&mut self, block_offset: u64, timestamp: u64) -> CheckpointResult<()> {
+        if self.spilled_blocks.len() >= self.max_spilled_blocks {
+            return Err(CheckpointError::resource(
+                "Disk overflow store capacity exceeded",
+            ));
+        }
+
+        let spill_time = SystemTime::now();
+        self.spilled_blocks.insert(block_offset, (timestamp, spill_time));
+        Ok(())
+    }
+
+    /// Get all spilled blocks
+    pub fn get_spilled_blocks(&self) -> &HashMap<u64, (u64, SystemTime)> {
+        &self.spilled_blocks
+    }
+
+    /// Remove a block from the overflow store
+    pub fn remove_spilled_block(&mut self, block_offset: u64) -> bool {
+        self.spilled_blocks.remove(&block_offset).is_some()
+    }
+
+    /// Clear all spilled blocks
+    pub fn clear(&mut self) {
+        self.spilled_blocks.clear();
+    }
+
+    /// Get the count of spilled blocks
+    pub fn len(&self) -> usize {
+        self.spilled_blocks.len()
+    }
+
+    /// Check if the store is empty
+    pub fn is_empty(&self) -> bool {
+        self.spilled_blocks.is_empty()
+    }
+}
+
 /// Dirty block tracker for V2 clustered edge format
 ///
 /// Tracks modified blocks by cluster affinity to optimize I/O patterns
 /// for V2's clustered edge storage architecture.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct DirtyBlockTracker {
     /// Dirty blocks organized by cluster key (node_id for V2 clustering)
     cluster_dirty_blocks: HashMap<i64, HashSet<u64>>,
@@ -155,6 +240,12 @@ pub struct DirtyBlockTracker {
 
     /// Maximum global dirty blocks allowed
     max_global_blocks: usize,
+
+    /// Overflow strategy when capacity is exceeded
+    overflow_strategy: DirtyBlockOverflowStrategy,
+
+    /// Optional overflow store for spilled blocks
+    overflow_store: Option<DiskOverflowStore>,
 }
 
 /// V2-specific block metadata for optimization
@@ -733,7 +824,7 @@ impl V2WALCheckpointManager {
 }
 
 impl DirtyBlockTracker {
-    /// Create new dirty block tracker with capacity limits
+    /// Create new dirty block tracker with capacity limits (default: Reject overflow)
     pub fn new(max_blocks_per_cluster: usize, max_global_blocks: usize) -> Self {
         Self {
             cluster_dirty_blocks: HashMap::new(),
@@ -743,7 +834,48 @@ impl DirtyBlockTracker {
             block_metadata: HashMap::new(),
             max_blocks_per_cluster,
             max_global_blocks,
+            overflow_strategy: DirtyBlockOverflowStrategy::default(),
+            overflow_store: None,
         }
+    }
+
+    /// Create new dirty block tracker with overflow strategy
+    pub fn with_overflow_strategy(
+        max_blocks_per_cluster: usize,
+        max_global_blocks: usize,
+        overflow_strategy: DirtyBlockOverflowStrategy,
+    ) -> Self {
+        Self {
+            cluster_dirty_blocks: HashMap::new(),
+            global_dirty_blocks: HashSet::new(),
+            block_timestamps: HashMap::new(),
+            block_access_counts: HashMap::new(),
+            block_metadata: HashMap::new(),
+            max_blocks_per_cluster,
+            max_global_blocks,
+            overflow_strategy,
+            overflow_store: None,
+        }
+    }
+
+    /// Set the overflow strategy
+    pub fn set_overflow_strategy(&mut self, strategy: DirtyBlockOverflowStrategy) {
+        self.overflow_strategy = strategy;
+    }
+
+    /// Get the current overflow strategy
+    pub fn get_overflow_strategy(&self) -> DirtyBlockOverflowStrategy {
+        self.overflow_strategy
+    }
+
+    /// Enable disk spill-to-disk with specified path and capacity
+    pub fn enable_spill_to_disk(&mut self, spill_path: PathBuf, max_spilled_blocks: usize) {
+        self.overflow_store = Some(DiskOverflowStore::new(spill_path, max_spilled_blocks));
+    }
+
+    /// Get reference to the overflow store if enabled
+    pub fn get_overflow_store(&self) -> Option<&DiskOverflowStore> {
+        self.overflow_store.as_ref()
     }
 
     /// Mark cluster-specific block as dirty
