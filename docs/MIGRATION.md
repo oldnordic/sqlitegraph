@@ -166,44 +166,88 @@ r2d2 = "0.8"
 r2d2_sqlite = "0.38"  # Requires rusqlite 0.38+
 ```
 
-## HNSW Disk-Based Migration
+## HNSW Disk-Based Migration (v2+)
 
-### Status: RESEARCH (Deferred to v2)
+### Current State (v1.1)
 
-### Options Evaluated
+- **In-Memory Graph**: Full HNSW structure in RAM
+- **Vector Persistence**: Vectors stored in SQLite BLOB
+- **Rebuild on Load**: Graph structure rebuilt from vectors
+- **Limitation**: ~30% overhead + vector data must fit in RAM
 
-#### Option 1: Custom HNSW Disk Spill
+### Disk-Based Options
+
+#### Option 1: Hybrid HNSW with Disk Spill
+
+**Architecture**:
+- Hot nodes (recently accessed) in memory
+- Cold nodes spilled to disk (SQLite BLOB)
+- LRU cache for hot node promotion
 
 **Pros**:
-- Consistent with current architecture
+- Maintains current HNSW algorithm
 - Gradual migration path
+- Familiar SQLite storage
 
 **Cons**:
-- Complex implementation, replay on load
+- Complex cache management
+- Disk I/O during search
+- Cache miss performance penalty
 
-#### Option 2: DiskANN
+**Implementation Estimate**: 3-5 days
+
+#### Option 2: DiskANN Integration
+
+**Architecture**:
+- Replace HNSW with DiskANN entirely
+- Separate disk-optimized index
 
 **Pros**:
 - Designed for disk-based indexes
+- Better large-scale performance
 
 **Cons**:
-- Less mature Rust ecosystem, different API
+- Less mature Rust ecosystem
+- Breaking API change
+- Different algorithm semantics
 
-#### Option 3: SQLite Vector Storage
+**Implementation Estimate**: 5-7 days
+
+#### Option 3: Separate Vector Database
+
+**Architecture**:
+- Use separate vector DB (e.g., sqlite-vec extension)
+- SQLiteGraph handles graph structure only
 
 **Pros**:
-- Already available, ACID
+- Leverages optimized vector storage
+- Separation of concerns
 
 **Cons**:
-- Not optimized for vector workloads
+- Additional dependency
+- Coordination complexity
 
-### Recommended Path (v2)
+**Implementation Estimate**: 2-3 days
 
-1. Benchmark DiskANN vs HNSW disk spill for typical workloads
-2. Evaluate separate vector database (e.g., separate SQLite DB)
-3. Consider memory-mapped vector storage for large indexes
+### Recommended Decision Matrix
 
-**Detailed analysis**: See [SCALING.md](SCALING.md#hnsw-vector-index) section on HNSW disk-based options.
+| Use Case | Recommendation |
+|----------|----------------|
+| < 1M vectors, RAM available | Current in-memory HNSW |
+| 1M-10M vectors | Hybrid HNSW with disk spill |
+| > 10M vectors | DiskANN or separate vector DB |
+
+### v2 Decision Criteria
+
+- User workload data (vector count, RAM availability)
+- Benchmark results for each option
+- Community feedback on scaling needs
+
+### Code References
+
+Current HNSW implementation:
+- `sqlitegraph/src/hnsw/storage.rs` - InMemoryVectorStorage
+- `sqlitegraph/src/hnsw/index.rs` - HnswIndex implementation
 
 ## Dependency Health Checklist
 
