@@ -1,6 +1,8 @@
 //! Native backend configuration.
 
 use crate::backend::native::CpuProfile;
+use crate::backend::native::v2::wal::checkpoint::CheckpointStrategy;
+use std::time::Duration;
 
 /// Configuration for native backend operations.
 #[derive(Clone, Debug)]
@@ -15,6 +17,8 @@ pub struct NativeConfig {
     pub cpu_profile: Option<CpuProfile>,
     /// Maximum number of parallel WAL recovery transactions (default: 4)
     pub max_parallel_transactions: usize,
+    /// Checkpoint strategy (default: Adaptive with sensible defaults)
+    pub checkpoint_strategy: Option<CheckpointStrategy>,
 }
 
 impl Default for NativeConfig {
@@ -25,6 +29,7 @@ impl Default for NativeConfig {
             reserve_edge_capacity: None,
             cpu_profile: None,
             max_parallel_transactions: 4, // Default parallelism degree
+            checkpoint_strategy: None,   // Uses WAL manager default
         }
     }
 }
