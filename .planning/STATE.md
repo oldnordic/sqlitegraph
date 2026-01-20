@@ -10,11 +10,11 @@ See: .planning/PROJECT.md (updated 2026-01-20)
 ## Current Position
 
 Phase: 16 of 22 (Memory Safety)
-Plan: 3 of 4 in phase
-Status: Plan 16-03 complete
-Last activity: 2026-01-20 — Completed 16-03 - Replayer Transmute Consolidation
+Plan: 4 of 4 in phase
+Status: Phase 16 complete
+Last activity: 2026-01-20 — Completed 16-04 - Miri Tests and JSON Input Validation
 
-Progress: [█████████████████████████████████ ] 97%
+Progress: [██████████████████████████████████] 98%
 
 ## Performance Metrics
 
@@ -133,6 +133,11 @@ Recent decisions affecting current work:
 - Created centralized store_helpers.rs module with create_node_store() and create_edge_store() documented-safe functions - 16-03
 - Replaced all 13 replayer transmute sites (rollback.rs: 7, edge_ops.rs: 3, transaction_ops.rs: 1, operations_with_problematic_tests.rs: 2) - 16-03
 - Zero inline transmutes remain in WAL recovery replayer code - 16-03
+- Miri CI integration with MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-symbolic-alignment-check - 16-04
+- JSON validation defaults: 10MB max size, 128 max depth (configurable via V2WALConfig) - 16-04
+- Size check BEFORE parsing (prevents memory allocation), depth check AFTER parsing (prevents stack overflow) - 16-04
+- All 5 Miri tests pass (store_helpers), all 20 JSON validation tests pass (malicious payloads) - 16-04
+- Requirements UNSAFE-06, UNSAFE-07, INPUT-01, INPUT-02, INPUT-03, INPUT-04 satisfied - 16-04
 
 ### Pending Todos
 
@@ -145,8 +150,8 @@ Recent decisions affecting current work:
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 16-03 execution)
-Stopped at: Completed 16-03 - Replayer Transmute Consolidation
+Last session: 2026-01-20 (plan 16-04 execution)
+Stopped at: Completed 16-04 - Miri Tests and JSON Input Validation
 Resume file: None
 
 ### Roadmap Evolution
@@ -157,4 +162,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 in progress (3/4)
+  - Progress: Phase 11 complete (3/3), Phase 12 complete (5/5, verified 4/4), Phase 13 complete (4/4, verified 4/4), Phase 14 complete (4/4), Phase 15 complete (4/4, with Tasks 3-4 deferred), Phase 16 complete (4/4)
