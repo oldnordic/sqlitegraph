@@ -14,5 +14,5 @@ pub use self::checkpoint_writer::CheckpointWriter;
 // Re-export multi-file checkpoint types
 pub use self::multi_file::{
     CheckpointManifest, CheckpointSegment, CheckpointSegmentMeta, MultiFileCheckpointConfig,
-    MultiFileRecovery, SegmentReader, SegmentWriter,
+    MultiFileRecovery, MultiSegmentIterator, RecoveredCheckpoint, SegmentReader, SegmentWriter,
 };

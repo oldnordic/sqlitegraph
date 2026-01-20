@@ -36,7 +36,7 @@ pub use self::coordinator::CheckpointExecutor;
 pub use self::io::BlockFlusher;
 pub use self::io::multi_file::{
     CheckpointManifest, CheckpointSegment, CheckpointSegmentMeta, MultiFileCheckpointConfig,
-    MultiFileRecovery, SegmentReader, SegmentWriter,
+    MultiFileRecovery, MultiSegmentIterator, RecoveredCheckpoint, SegmentReader, SegmentWriter,
 };
 pub use self::record::V2GraphIntegrator;
 pub use self::strategies::{

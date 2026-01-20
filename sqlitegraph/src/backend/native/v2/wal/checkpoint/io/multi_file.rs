@@ -910,6 +910,64 @@ impl MultiFileRecovery {
 
         Ok(())
     }
+
+    /// Recover a checkpoint from manifest, returning an iterator over the data
+    pub fn recover_checkpoint(
+        manifest: CheckpointManifest,
+        base_path: PathBuf,
+    ) -> CheckpointResult<RecoveredCheckpoint> {
+        // Validate before recovery
+        Self::validate_checkpoint(&manifest, &base_path)?;
+
+        Ok(RecoveredCheckpoint {
+            manifest,
+            base_path,
+        })
+    }
+}
+
+/// Result of a successful multi-file checkpoint recovery
+///
+/// This struct provides access to the recovered checkpoint data
+/// through an iterator that reads across all segment files.
+pub struct RecoveredCheckpoint {
+    /// The checkpoint manifest
+    pub manifest: CheckpointManifest,
+
+    /// Base path for segment files
+    pub base_path: PathBuf,
+}
+
+impl RecoveredCheckpoint {
+    /// Get the LSN range of this checkpoint
+    pub fn lsn_range(&self) -> (u64, u64) {
+        self.manifest.total_lsn_range
+    }
+
+    /// Get the total block count
+    pub fn block_count(&self) -> u64 {
+        self.manifest.total_block_count
+    }
+
+    /// Get the timestamp of this checkpoint
+    pub fn timestamp(&self) -> u64 {
+        self.manifest.timestamp
+    }
+
+    /// Get the number of segments
+    pub fn segment_count(&self) -> u32 {
+        self.manifest.segment_count
+    }
+
+    /// Create an iterator over the checkpoint data
+    pub fn into_iterator(self) -> CheckpointResult<MultiSegmentIterator> {
+        MultiSegmentIterator::new(self.manifest, self.base_path)
+    }
+
+    /// Create a shared reference iterator over the checkpoint data
+    pub fn iterator(&self) -> CheckpointResult<MultiSegmentIterator> {
+        MultiSegmentIterator::new(self.manifest.clone(), self.base_path.clone())
+    }
 }
 
 /// Iterator for reading data across multiple checkpoint segments
@@ -1354,5 +1412,70 @@ mod tests {
     #[test]
     fn test_max_segments_constant() {
         assert_eq!(DEFAULT_MAX_SEGMENTS, 16);
+    }
+
+    #[test]
+    fn test_recover_checkpoint() -> CheckpointResult<()> {
+        let temp_dir = tempdir()?;
+        let base_path = temp_dir.path().join("checkpoint");
+
+        // Create and write a manifest
+        let mut manifest = CheckpointManifest::new();
+        manifest.timestamp = 1234567890;
+        manifest.add_segment(CheckpointSegmentMeta {
+            index: 0,
+            lsn_start: 100,
+            lsn_end: 200,
+            block_count: 50,
+            checksum: 12345,
+            size: 1024,
+        });
+
+        MultiFileRecovery::write_manifest(&manifest, &base_path)?;
+
+        // Create a corresponding segment file
+        let segment_path = base_path.with_extension("ckpt.000");
+        let mut writer = SegmentWriter::create(
+            MultiFileCheckpointConfig::new(base_path.clone()),
+            0,
+            100,
+        )?;
+        writer.write_data(&[1u8, 2, 3, 4, 5])?;
+        writer.finalize(200, 50)?;
+
+        // Recover the checkpoint
+        let loaded_manifest = MultiFileRecovery::load_manifest(&base_path.with_extension("manifest"))?;
+        let recovered = MultiFileRecovery::recover_checkpoint(loaded_manifest, base_path)?;
+
+        assert_eq!(recovered.lsn_range(), (100, 200));
+        assert_eq!(recovered.block_count(), 50);
+        assert_eq!(recovered.timestamp(), 1234567890);
+        assert_eq!(recovered.segment_count(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_recover_checkpoint_missing_segment() {
+        let temp_dir = tempdir().unwrap();
+        let base_path = temp_dir.path().join("checkpoint");
+
+        // Create and write a manifest
+        let mut manifest = CheckpointManifest::new();
+        manifest.add_segment(CheckpointSegmentMeta {
+            index: 0,
+            lsn_start: 100,
+            lsn_end: 200,
+            block_count: 50,
+            checksum: 0,
+            size: 1024,
+        });
+
+        MultiFileRecovery::write_manifest(&manifest, &base_path).unwrap();
+
+        // Don't create the segment file - recovery should fail
+        let loaded_manifest = MultiFileRecovery::load_manifest(&base_path.with_extension("manifest")).unwrap();
+        let result = MultiFileRecovery::recover_checkpoint(loaded_manifest, base_path);
+        assert!(result.is_err());
     }
 }
