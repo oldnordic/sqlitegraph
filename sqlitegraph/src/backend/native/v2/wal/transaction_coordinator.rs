@@ -638,10 +638,29 @@ impl V2TransactionCoordinator {
             // Check for deadlock before adding to wait queue
             // (wait edges were added by V2LockManager::acquire_lock)
             if self.deadlock_detector.detect_cycle(tx_id)? {
-                return Err(NativeBackendError::DeadlockDetected {
-                    tx_id,
-                    conflicting_resources: vec![],
-                });
+                // Get the cycle and select victim
+                let cycle = self.deadlock_detector.get_cycle(tx_id)?;
+                let active = self.active_transactions.read();
+
+                let victim = self.deadlock_detector.select_victim(&cycle, &active)
+                    .ok_or_else(|| NativeBackendError::CorruptionDetected {
+                        context: "Deadlock detected but no victim found".to_string(),
+                        source: None,
+                    })?;
+
+                // Abort the victim
+                drop(active); // Release read lock before abort
+                self.abort_victim(victim)?;
+
+                // If we are the victim, return error
+                if victim == tx_id {
+                    return Err(NativeBackendError::DeadlockDetected {
+                        tx_id,
+                        conflicting_resources: vec![],
+                    });
+                }
+                // Otherwise, retry acquiring the lock (victim's locks released)
+                return self.acquire_lock(tx_id, resource_id, lock_type);
             }
 
             // Add to wait queue
