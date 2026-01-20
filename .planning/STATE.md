@@ -5,21 +5,21 @@
 See: .planning/PROJECT.md (updated 2026-01-20)
 
 **Core value:** Feature parity, performance, and reliability equally. Native V2 must match or exceed SQLite backend capabilities while maintaining rock-solid MVCC correctness and achieving best-in-class embedded graph database performance.
-**Current focus:** Phase 11 - ACID Atomicity (v1.1 ACID & Reliability)
+**Current focus:** Phase 12 - ACID Consistency (v1.1 ACID & Reliability)
 
 ## Current Position
 
-Phase: 11 of 22 (ACID Atomicity)
-Plan: 3 of 3 in current phase
-Status: Phase complete
-Last activity: 2026-01-20 — Completed 11-03: IN_PROGRESS transaction recovery tests
+Phase: 12 of 22 (ACID Consistency)
+Plan: 1 of 5 in current phase
+Status: In progress
+Last activity: 2026-01-20 — Completed 12-01: Cluster overlap validation re-enabled
 
-Progress: [████████████████████████░░░░░░░░░] 55%
+Progress: [███████████████████████████░░░░░░░] 58%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 36
+- Total plans completed: 37
 - Average duration: TBD
 - Total execution time: TBD
 
@@ -28,10 +28,10 @@ Progress: [███████████████████████
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1-10 (completed) | 33 | TBD | TBD |
-| 11-22 (v1.1) | 3/45 | 8min 23sec | 2min 49sec |
+| 11-12 (v1.1) | 4/45 | 35min | 8min 45sec |
 
 **Recent Trend:**
-- Last 5 plans: 11-01 (7min 38sec), 11-02 (7min), 11-03 (14min)
+- Last 5 plans: 11-01 (7min 38sec), 11-02 (7min), 11-03 (14min), 12-01 (10min)
 - Trend: Stable
 
 *Updated after each plan completion*
@@ -61,6 +61,9 @@ Recent decisions affecting current work:
 - FreeSpaceManager::remove_from_free_list for slot reclamation during rollback - 11-02
 - Rollback state persistence deferred to Phase 13+ (memory-only acceptable for recovery replay) - 11-03
 - IN_PROGRESS transactions filtered by `committed=true && commit_lsn.is_some()` - 11-03
+- Bidirectional cluster overlap check: `incoming_offset < outgoing_end && outgoing_offset < incoming_end` - 12-01
+- Calculate actual overlap_size and only error if > 0 to allow adjacent clusters - 12-01
+- Only validate when both cluster offsets > 0 to prevent false positives during sequential allocation - 12-01
 
 ### Pending Todos
 
@@ -72,8 +75,8 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-01-20 (plan 11-03 execution)
-Stopped at: Completed 11-03 - IN_PROGRESS transaction recovery tests and verification
+Last session: 2026-01-20 (plan 12-01 execution)
+Stopped at: Completed 12-01 - Cluster overlap validation re-enabled with timing-aware allocation sequencing
 Resume file: None
 
 ### Roadmap Evolution
@@ -84,4 +87,4 @@ Resume file: None
   - Goal: Complete ACID transaction correctness for Native V2 backend
   - Scope: 78 requirements across 12 phases (11-22)
   - Total: 45 plans for v1.1 milestone
-  - Progress: Phase 11 complete (3/3 plans)
+  - Progress: Phase 11 complete (3/3 plans), Phase 12 in progress (1/5 plans)
