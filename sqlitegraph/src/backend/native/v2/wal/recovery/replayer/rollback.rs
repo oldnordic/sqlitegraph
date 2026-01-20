@@ -64,12 +64,19 @@ impl RollbackSystem {
     ///
     /// Rollback operations are applied in reverse chronological order
     /// to properly undo the transaction changes.
+    ///
+    /// NOTE: Current implementation does NOT persist rollback state to WAL
+    /// before execution. This is acceptable for Phase 11 where rollback is
+    /// used during recovery replay failure (which already has transaction
+    /// boundaries). Full crash-safe rollback with WAL persistence is
+    /// planned for Phase 13+ with transaction coordinator integration.
     pub fn execute_rollback(&self) -> Result<(), crate::backend::native::v2::wal::recovery::errors::RecoveryError> {
         if self.operations.is_empty() {
             debug_log!("No rollback operations to execute");
             return Ok(());
         }
 
+        debug_log!("Persisting rollback state: {} operations in memory", self.operations.len());
         debug_log!("Executing rollback with {} operations", self.operations.len());
 
         // Apply rollback operations in reverse order (LIFO)
