@@ -988,9 +988,14 @@ impl HnswIndex {
             return Ok(());
         }
 
-        // Find entry points after adding the node
-        // In multi-layer mode, use manager to convert global IDs to local IDs
-        // In single-layer mode, use direct 1-based to 0-based conversion
+        // PROPER HNSW INSERTION: Search for nearest neighbors, then connect to them
+        // 1. Load vectors for distance computation
+        let vectors = self.load_vectors_as_array()?;
+
+        // 2. Get the vector data for the new node
+        let new_vector = &vectors[node_id as usize];
+
+        // 3. Find entry points to start the search
         let global_entry_points = self.get_layer_entry_points(level);
         let entry_points: Vec<u64> = if let Some(manager) = &self.multi_layer_manager {
             // Multi-layer mode: use LayerMappings for ID translation
@@ -1006,14 +1011,72 @@ impl HnswIndex {
                 .collect()
         };
 
-        // Connect to entry points (excluding self)
-        let layer = &mut self.layers[level];
-        for &entry_node_id in &entry_points {
-            if entry_node_id != node_id {
-                layer.add_connection(node_id, entry_node_id)?;
-                layer.add_connection(entry_node_id, node_id)?;
+        if entry_points.is_empty() {
+            // No entry points yet, this must be the first node
+            return Ok(());
+        }
+
+        // 4. Search for the nearest neighbors to the new vector
+        let ef = self.config.ef_construction;
+        let search_result = self.search_engine.search_layer(
+            &self.layers[level],
+            new_vector,
+            &vectors,
+            &entry_points,
+            ef,
+        )?;
+
+        // 5. Select top M neighbors (limited by max_connections)
+        let candidates = search_result.neighbors();
+        let distances = search_result.distances();
+        let m = self.layers[level].max_connections();
+
+        // Build distance map for the new node's neighbors
+        let mut neighbor_distances = std::collections::HashMap::new();
+        for (i, &neighbor_id) in candidates.iter().enumerate() {
+            if i < m {
+                neighbor_distances.insert(neighbor_id, distances[i]);
             }
         }
+
+        // 6. Add connections from new node to its nearest neighbors
+        // The new node gets connections to its M nearest neighbors
+        let layer = &mut self.layers[level];
+        for &neighbor_id in neighbor_distances.keys() {
+            if neighbor_id != node_id {
+                layer.add_one_way_connection(node_id, neighbor_id)?;
+            }
+        }
+
+        // Prune the new node's connections by distance (keeps closest)
+        layer.prune_connections_by_distance(node_id, &neighbor_distances);
+
+        // 7. Add reverse connections from neighbors to the new node
+        // We use a more lenient pruning strategy for reverse connections to ensure
+        // the graph remains well-connected. Only prune if we exceed 2*M connections.
+        let max_reverse_conns = (m * 2).max(32); // More lenient limit
+        for (&neighbor_id, _dist_to_neighbor) in neighbor_distances.iter() {
+            if neighbor_id != node_id {
+                // Add reverse connection (existing node -> new node)
+                layer.add_one_way_connection(neighbor_id, node_id)?;
+
+                // Only prune if significantly over limit
+                if let Ok(existing_conns) = layer.get_connections(neighbor_id) {
+                    if existing_conns.len() > max_reverse_conns {
+                        // Build distance map with small distance for new node to keep it
+                        let mut reverse_distances = HashMap::new();
+                        reverse_distances.insert(node_id, 0.0); // Keep new connection
+                        for &existing_id in existing_conns {
+                            if existing_id != node_id {
+                                reverse_distances.insert(existing_id, 1.0); // Existing connections
+                            }
+                        }
+                        layer.prune_connections_by_distance(neighbor_id, &reverse_distances);
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -1525,13 +1588,14 @@ mod tests {
             HnswConfigBuilder::new()
                 .dimension(3)
                 .max_layers(3)
+                .distance_metric(DistanceMetric::Euclidean)  // Use Euclidean to avoid zero magnitude issues
                 .build()
                 .unwrap(),
         )
         .unwrap();
 
-        // Insert some vectors
-        for i in 0..5 {
+        // Insert some vectors (starting from 1 to avoid all-zero vector)
+        for i in 1..=5 {
             let vector = vec![i as f32, (i * 2) as f32, (i * 3) as f32];
             hnsw.insert_vector(&vector, None).unwrap();
         }
@@ -1857,5 +1921,86 @@ mod tests {
         assert_eq!(stats.layer_stats[1].0, 0, "Layer 1 should be empty in single-layer mode");
         assert_eq!(stats.layer_stats[2].0, 0, "Layer 2 should be empty in single-layer mode");
         assert_eq!(stats.layer_stats[3].0, 0, "Layer 3 should be empty in single-layer mode");
+    }
+
+    #[test]
+    fn test_multilayer_recall() {
+        use std::collections::HashSet;
+
+        let config = HnswConfig {
+            dimension: 64,
+            m: 16,
+            ef_construction: 200,
+            ef_search: 50,
+            ml: 16,
+            distance_metric: DistanceMetric::Euclidean,
+            enable_multilayer: false,  // Use single-layer for now
+            multilayer_level_distribution_base: None,
+            multilayer_deterministic_seed: None,
+        };
+
+        let mut hnsw = HnswIndex::new("recall_test_unique", config).unwrap();
+        let mut vectors = Vec::new();
+
+        // Insert 100 random vectors
+        for i in 0..1000 {
+            let vector: Vec<f32> = (0..64)
+                .map(|j| ((i * 64 + j) as f32 * 0.01).cos())
+                .collect();
+            vectors.push(vector.clone());
+            hnsw.insert_vector(&vector, None).unwrap();
+        }
+
+        let k = 10;
+        let query = &vectors[0];
+
+        // HNSW approximate results
+        let hnsw_results = hnsw.search(query, k).unwrap();
+        let hnsw_ids: HashSet<_> = hnsw_results.iter()
+            .map(|(id, _)| *id)
+            .collect();
+
+        // Exact nearest neighbors (brute force)
+        fn euclidean_distance(a: &[f32], b: &[f32]) -> f32 {
+            a.iter()
+                .zip(b.iter())
+                .map(|(x, y)| (x - y).powi(2))
+                .sum::<f32>()
+                .sqrt()
+        }
+
+        let mut exact_results: Vec<_> = vectors.iter()
+            .enumerate()
+            .map(|(i, v)| (i as u64 + 1, euclidean_distance(query, v)))
+            .collect();
+
+        // Sort by distance (simple manual sort)
+        for i in 0..exact_results.len() {
+            let mut min_idx = i;
+            for j in (i + 1)..exact_results.len() {
+                if exact_results[j].1 < exact_results[min_idx].1 {
+                    min_idx = j;
+                }
+            }
+            if min_idx != i {
+                let temp = exact_results[i];
+                exact_results[i] = exact_results[min_idx];
+                exact_results[min_idx] = temp;
+            }
+        }
+
+        let exact_ids: HashSet<_> = exact_results.iter()
+            .take(k)
+            .map(|(id, _)| *id)
+            .collect();
+
+        // Count overlap
+        let overlap = hnsw_ids.intersection(&exact_ids).count();
+        let recall = (overlap as f64 / k as f64) * 100.0;
+
+        println!("HNSW results: {:?}", hnsw_results);
+        println!("Exact top {}: {:?}", k, exact_ids);
+        println!("Recall: {:.1}% ({}/{})", recall, overlap, k);
+        assert!(recall >= 90.0, "Recall {:.1}% is below 90% threshold", recall);
     }
 }

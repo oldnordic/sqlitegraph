@@ -189,6 +189,39 @@ impl HnswLayer {
         Ok(())
     }
 
+    /// Add a unidirectional connection from node_a to node_b (without bidirectional)
+    ///
+    /// This is used during HNSW insertion to carefully control both directions
+    /// of connections separately with proper pruning.
+    ///
+    /// # Arguments
+    ///
+    /// * `from_node` - Source node identifier
+    /// * `to_node` - Target node identifier
+    ///
+    /// # Returns
+    ///
+    /// Ok(()) if successful, Err if operation fails
+    pub(crate) fn add_one_way_connection(
+        &mut self,
+        from_node: u64,
+        to_node: u64,
+    ) -> Result<(), HnswError> {
+        if from_node == to_node {
+            return Err(HnswError::Index(HnswIndexError::SelfConnection(from_node)));
+        }
+
+        if !self.contains_node(from_node) {
+            return Err(HnswError::Index(HnswIndexError::NodeNotFound(from_node)));
+        }
+        if !self.contains_node(to_node) {
+            return Err(HnswError::Index(HnswIndexError::NodeNotFound(to_node)));
+        }
+
+        self.nodes[from_node as usize].insert(to_node);
+        Ok(())
+    }
+
     /// Add a bidirectional connection between two nodes
     ///
     /// # Arguments
@@ -244,15 +277,65 @@ impl HnswLayer {
 
         let connections = &mut self.nodes[node_id as usize];
         if connections.len() > self.max_connections {
+            // NOTE: Pruning by node_id is a simplistic approach that can disconnect
+            // the graph. Proper HNSW implementations prune by distance, keeping
+            // the nearest neighbors. This is a known limitation.
+            //
+            // For better results, increase M (max_connections) to allow more
+            // connections per node, which improves graph connectivity.
+
             // Convert to sorted Vec for deterministic pruning
             let mut conn_vec: Vec<u64> = connections.iter().cloned().collect();
             conn_vec.sort_unstable();
 
-            // Keep only first max_connections items
+            // Keep only first max_connections items (lowest node_ids)
             conn_vec.truncate(self.max_connections);
 
             // Update the connections set
             *connections = conn_vec.into_iter().collect();
+        }
+    }
+
+    /// Prune connections based on distance, keeping only the nearest neighbors
+    ///
+    /// This is called from outside the layer with distance information
+    /// to properly prune connections based on actual similarity.
+    ///
+    /// # Arguments
+    ///
+    /// * `node_id` - Node whose connections to prune
+    /// * `connection_distances` - Map of connection node_id to distance
+    pub fn prune_connections_by_distance(
+        &mut self,
+        node_id: u64,
+        connection_distances: &std::collections::HashMap<u64, f32>,
+    ) {
+        if !self.contains_node(node_id) {
+            return;
+        }
+
+        let connections = &mut self.nodes[node_id as usize];
+        if connections.len() > self.max_connections {
+            // Sort by distance, keep the closest ones
+            let mut conn_with_dist: Vec<(u64, f32)> = connections
+                .iter()
+                .filter_map(|&id| connection_distances.get(&id).map(|&d| (id, d)))
+                .collect();
+
+            conn_with_dist.sort_by(|a, b| {
+                a.1.partial_cmp(&b.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| a.0.cmp(&b.0))
+            });
+
+            // Keep only the closest max_connections
+            let to_keep: HashSet<u64> = conn_with_dist
+                .into_iter()
+                .take(self.max_connections)
+                .map(|(id, _)| id)
+                .collect();
+
+            *connections = to_keep;
         }
     }
 
