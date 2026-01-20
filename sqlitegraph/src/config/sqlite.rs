@@ -9,6 +9,8 @@ pub struct SqliteConfig {
     pub without_migrations: bool,
     /// Optional cache size for prepared statements
     pub cache_size: Option<usize>,
+    /// Optional pool size for connection pooling (default: 5)
+    pub pool_size: Option<usize>,
     /// Additional SQLite PRAGMA settings
     pub pragma_settings: HashMap<String, String>,
 }
@@ -51,6 +53,38 @@ impl SqliteConfig {
             .insert("journal_mode".to_string(), "WAL".to_string());
         self.pragma_settings
             .insert("synchronous".to_string(), "NORMAL".to_string());
+        self
+    }
+
+    /// Set the connection pool size (builder pattern)
+    ///
+    /// # Arguments
+    ///
+    /// * `size` - Maximum number of connections in the pool
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let cfg = SqliteConfig::new().with_pool_size(10);
+    /// ```
+    pub fn with_pool_size(mut self, size: usize) -> Self {
+        self.pool_size = Some(size);
+        self
+    }
+
+    /// Set the maximum number of connections (alias for with_pool_size)
+    ///
+    /// # Arguments
+    ///
+    /// * `max` - Maximum number of connections in the pool
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let cfg = SqliteConfig::new().with_max_connections(10);
+    /// ```
+    pub fn with_max_connections(mut self, max: usize) -> Self {
+        self.pool_size = Some(max);
         self
     }
 }
