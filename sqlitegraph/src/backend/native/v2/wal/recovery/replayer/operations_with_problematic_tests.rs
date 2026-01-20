@@ -13,6 +13,8 @@ use crate::backend::native::v2::{
     StringTable, EdgeCluster, FreeSpaceManager,
     edge_cluster::{CompactEdgeRecord, Direction},
 };
+use crate::backend::native::v2::wal::recovery::errors::RecoveryError;
+use crate::backend::native::v2::wal::recovery::store_helpers;
 use super::types::{RollbackOperation, ReplayStatistics};
 use crate::debug::{info_log, debug_log, warn_log, error_log};
 
@@ -194,8 +196,8 @@ impl ReplayOperationHandler for DefaultReplayOperations {
             if node_store_guard.is_none() {
                 let mut graph_file = self.graph_file.write()
                     .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(format!("Failed to lock graph file: {}", e)))?;
-                *node_store_guard = Some(NodeStore::new(unsafe {
-                    std::mem::transmute(&mut *graph_file)
+                *node_store_guard = Some(unsafe {
+                    store_helpers::create_node_store(&mut *graph_file)
                 }));
             }
         }
@@ -415,8 +417,8 @@ impl ReplayOperationHandler for DefaultReplayOperations {
                     .map_err(|e| crate::backend::native::v2::wal::recovery::errors::RecoveryError::io_error(
                         format!("Failed to lock graph file: {}", e)
                     ))?;
-                *node_store_guard = Some(crate::backend::native::NodeStore::new(unsafe {
-                    std::mem::transmute(&mut *graph_file)
+                *node_store_guard = Some(unsafe {
+                    store_helpers::create_node_store(&mut *graph_file)
                 }));
             }
 
