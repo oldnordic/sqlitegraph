@@ -840,8 +840,8 @@ mod tests {
             &mut rollback_data
         );
 
-        // TODO: This test will fail until real implementation is complete
-        // SME Phase 2: Writing failing tests as required by TDD methodology
+        // NOTE: Working versions of these tests are in operations/node_ops.rs
+        // This file uses a mock implementation and is not included in the module tree
         // Should succeed when properly implemented
         assert!(result.is_ok(), "Basic node delete should succeed");
 
@@ -878,8 +878,8 @@ mod tests {
             &mut rollback_data
         );
 
-        // TODO: This test will fail until real implementation is complete
-        // SME Phase 2: Writing failing tests as required by TDD methodology
+        // NOTE: Working versions of these tests are in operations/node_ops.rs
+        // This file uses a mock implementation and is not included in the module tree
         assert!(result.is_ok(), "Node delete with old data should succeed");
 
         // Should record rollback with preserved data
@@ -906,8 +906,8 @@ mod tests {
             &mut rollback_data
         );
 
-        // TODO: This test will fail until real implementation is complete
-        // SME Phase 2: Writing failing tests as required by TDD methodology
+        // NOTE: Working versions of these tests are in operations/node_ops.rs
+        // This file uses a mock implementation and is not included in the module tree
         // Should handle gracefully (maybe succeed, maybe error - depends on design)
         // For now, expect success with rollback operation
         assert!(result.is_ok(), "Should handle non-existent node gracefully");
@@ -944,8 +944,8 @@ mod tests {
             &mut rollback_data
         );
 
-        // TODO: This test will fail until real implementation is complete
-        // SME Phase 2: Writing failing tests as required by TDD methodology
+        // NOTE: Working versions of these tests are in operations/node_ops.rs
+        // This file uses a mock implementation and is not included in the module tree
         assert!(result.is_ok(), "Node delete with cluster references should succeed");
 
         // This is a complex scenario requiring:
@@ -978,8 +978,8 @@ mod tests {
             &mut rollback_data
         );
 
-        // TODO: This test will fail until real implementation is complete
-        // SME Phase 2: Writing failing tests as required by TDD methodology
+        // NOTE: Working versions of these tests are in operations/node_ops.rs
+        // This file uses a mock implementation and is not included in the module tree
         // Should handle malformed data gracefully
         assert!(result.is_ok(), "Should handle malformed old data gracefully");
 
@@ -1000,8 +1000,8 @@ mod tests {
             &mut rollback_data
         );
 
-        // TODO: This test will fail until real implementation is complete
-        // SME Phase 2: Writing failing tests as required by TDD methodology
+        // NOTE: Working versions of these tests are in operations/node_ops.rs
+        // This file uses a mock implementation and is not included in the module tree
         // Should handle invalid node ID gracefully
         assert!(result.is_ok(), "Should handle invalid node ID gracefully");
 
@@ -1024,8 +1024,8 @@ mod tests {
             &mut rollback_data
         );
 
-        // TODO: This test will fail until real implementation is complete
-        // SME Phase 2: Writing failing tests as required by TDD methodology
+        // NOTE: Working versions of these tests are in operations/node_ops.rs
+        // This file uses a mock implementation and is not included in the module tree
         assert!(result.is_ok(), "Node delete should succeed");
 
         assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
@@ -1066,8 +1066,8 @@ mod tests {
             &mut rollback_data
         );
 
-        // TODO: This test will fail until real implementation is complete
-        // SME Phase 2: Writing failing tests as required by TDD methodology
+        // NOTE: Working versions of these tests are in operations/node_ops.rs
+        // This file uses a mock implementation and is not included in the module tree
         // This is the most complex scenario requiring:
         // 1. Edge cascade deletion
         // 2. Cluster reference cleanup

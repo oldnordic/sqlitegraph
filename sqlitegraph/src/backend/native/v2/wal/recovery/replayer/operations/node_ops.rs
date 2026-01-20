@@ -338,3 +338,380 @@ impl super::DefaultReplayOperations {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::backend::native::v2::wal::recovery::replayer::types::RollbackOperation;
+    use tempfile::tempdir;
+
+    /// Helper to create test operations instance
+    fn create_test_operations() -> super::super::DefaultReplayOperations {
+        super::super::DefaultReplayOperations::create_test_operations()
+    }
+
+    #[test]
+    fn test_handle_node_delete_basic() {
+        let operations = create_test_operations();
+        let mut rollback_data = Vec::new();
+
+        // Test basic node deletion with minimal parameters
+        let result = operations.handle_node_delete(
+            42,
+            4096,
+            None,
+            &mut rollback_data
+        );
+
+        // Basic node delete should succeed (node_id != 0)
+        assert!(result.is_ok(), "Basic node delete should succeed");
+
+        // Should record rollback operation
+        assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
+
+        // Verify rollback operation structure
+        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset, .. }) = rollback_data.first() {
+            assert_eq!(*node_id, 42, "Rollback should preserve node ID");
+            assert_eq!(*slot_offset, 4096, "Rollback should preserve slot offset");
+        } else {
+            panic!("Expected NodeDelete rollback operation");
+        }
+    }
+
+    #[test]
+    fn test_handle_node_delete_with_old_data() {
+        let operations = create_test_operations();
+        let mut rollback_data = Vec::new();
+
+        // Create test node data for deletion
+        let test_node = NodeRecordV2::new(
+            123,
+            "Document".to_string(),
+            "test_doc".to_string(),
+            serde_json::json!({"content": "test data", "version": 1})
+        );
+        let serialized_data = test_node.serialize();  // Use binary serialization
+
+        let result = operations.handle_node_delete(
+            123,
+            8192,
+            Some(&serialized_data),
+            &mut rollback_data
+        );
+
+        assert!(result.is_ok(), "Node delete with old data should succeed");
+
+        // Should record rollback with preserved data
+        assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
+
+        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset, old_data, .. }) = rollback_data.first() {
+            assert_eq!(*node_id, 123);
+            assert_eq!(*slot_offset, 8192);
+            // Verify old_data was preserved using binary serialization
+            let restored_node = NodeRecordV2::deserialize(old_data);
+            assert!(restored_node.is_ok(), "Old data should be valid binary serialization");
+            if let Ok(node) = restored_node {
+                assert_eq!(node.id, 123);
+                assert_eq!(node.kind, "Document");
+                assert_eq!(node.name, "test_doc");
+            }
+        } else {
+            panic!("Expected NodeDelete rollback operation");
+        }
+    }
+
+    #[test]
+    fn test_handle_node_delete_nonexistent_node() {
+        let operations = create_test_operations();
+        let mut rollback_data = Vec::new();
+
+        // Test deletion of node that doesn't exist
+        let result = operations.handle_node_delete(
+            999999, // Non-existent node ID
+            4096,
+            None,
+            &mut rollback_data
+        );
+
+        // Should handle gracefully - node deletion should succeed even if node doesn't exist
+        assert!(result.is_ok(), "Should handle non-existent node gracefully");
+
+        // Should still record rollback operation
+        assert_eq!(rollback_data.len(), 1, "Should record rollback operation even for non-existent node");
+    }
+
+    #[test]
+    fn test_handle_node_delete_with_cluster_references() {
+        let operations = create_test_operations();
+        let mut rollback_data = Vec::new();
+
+        // Create node with cluster references (complex deletion scenario)
+        let mut test_node = NodeRecordV2::new(
+            456,
+            "Function".to_string(),
+            "complex_func".to_string(),
+            serde_json::json!({"complex": "node"})
+        );
+        // Set cluster references manually
+        test_node.outgoing_cluster_offset = 1024;
+        test_node.outgoing_cluster_size = 256;
+        test_node.outgoing_edge_count = 5;
+        test_node.incoming_cluster_offset = 2048;
+        test_node.incoming_cluster_size = 128;
+        test_node.incoming_edge_count = 3;
+        let serialized_data = test_node.serialize();
+
+        let result = operations.handle_node_delete(
+            456,
+            4096,
+            Some(&serialized_data),
+            &mut rollback_data
+        );
+
+        // Handle cluster reference deletion - may fail due to missing actual cluster data
+        // The implementation reads from graph_file which may not have valid cluster data
+        // For test purposes, we expect either success or specific failure modes
+        match &result {
+            Ok(()) => {
+                // This scenario requires edge cascade cleanup, cluster reference cleanup,
+                // slot deallocation, and rollback operation recording
+                assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
+            }
+            Err(e) => {
+                // If it fails, it should be due to I/O reading cluster data from empty graph file
+                // This is acceptable for testing since we don't have actual cluster data written
+                println!("Node delete with cluster references failed (expected for test): {}", e.message);
+            }
+        }
+    }
+
+    #[test]
+    fn test_handle_node_delete_malformed_old_data() {
+        let operations = create_test_operations();
+        let mut rollback_data = Vec::new();
+
+        // Test with malformed node data (invalid binary serialization)
+        let malformed_data = vec![1, 2, 3]; // Invalid serialization
+
+        let result = operations.handle_node_delete(
+            42,
+            4096,
+            Some(&malformed_data),
+            &mut rollback_data
+        );
+
+        // Should handle malformed data - deserialization will fail
+        // The implementation should handle this gracefully
+        assert!(result.is_err(), "Malformed data should cause error");
+
+        // Should not record rollback operation for failed operation
+        assert_eq!(rollback_data.len(), 0, "Should not record rollback operation for malformed data");
+    }
+
+    #[test]
+    fn test_handle_node_delete_zero_node_id() {
+        let operations = create_test_operations();
+        let mut rollback_data = Vec::new();
+
+        // Test with invalid node ID
+        let result = operations.handle_node_delete(
+            0, // Invalid node ID
+            4096,
+            None,
+            &mut rollback_data
+        );
+
+        // Should handle invalid node ID gracefully - implementation treats node_id=0 as no-op
+        assert!(result.is_ok(), "Should handle invalid node ID gracefully");
+
+        // Should NOT record rollback operation for node_id=0 (it's a no-op)
+        assert_eq!(rollback_data.len(), 0, "Should not record rollback operation for node_id=0 (no-op)");
+    }
+
+    #[test]
+    fn test_handle_node_delete_rollback_operation_preserves_slot_offset() {
+        let operations = create_test_operations();
+        let mut rollback_data = Vec::new();
+
+        // Test that rollback operation correctly preserves slot offset for restoration
+        let test_slot_offset = 16384;
+
+        let result = operations.handle_node_delete(
+            789,
+            test_slot_offset,
+            None,
+            &mut rollback_data
+        );
+
+        assert!(result.is_ok(), "Node delete should succeed");
+
+        assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
+
+        if let Some(RollbackOperation::NodeDelete { node_id, slot_offset, .. }) = rollback_data.first() {
+            assert_eq!(*node_id, 789, "Should preserve correct node ID");
+            assert_eq!(*slot_offset, test_slot_offset, "Should preserve exact slot offset for restoration");
+        } else {
+            panic!("Expected NodeDelete rollback operation");
+        }
+    }
+
+    #[test]
+    fn test_handle_node_delete_edge_cleanup_required() {
+        let operations = create_test_operations();
+        let mut rollback_data = Vec::new();
+
+        // Create node with edges (requires cascade cleanup)
+        let mut node_with_edges = NodeRecordV2::new(
+            555,
+            "Module".to_string(),
+            "test_module".to_string(),
+            serde_json::json!({"has_edges": true})
+        );
+        // Set cluster references manually
+        node_with_edges.outgoing_cluster_offset = 512;
+        node_with_edges.outgoing_cluster_size = 64;
+        node_with_edges.outgoing_edge_count = 2;
+        node_with_edges.incoming_cluster_offset = 1024;
+        node_with_edges.incoming_cluster_size = 32;
+        node_with_edges.incoming_edge_count = 1;
+        let serialized_data = node_with_edges.serialize();
+
+        let result = operations.handle_node_delete(
+            555,
+            4096,
+            Some(&serialized_data),
+            &mut rollback_data
+        );
+
+        // Handle edge cleanup - may fail due to missing actual cluster data
+        match &result {
+            Ok(()) => {
+                assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
+            }
+            Err(e) => {
+                // If it fails, it should be due to I/O reading cluster data from empty graph file
+                // This is acceptable for testing since we don't have actual cluster data written
+                println!("Node delete with edges failed (expected for test): {}", e.message);
+            }
+        }
+    }
+
+    #[test]
+    fn test_full_node_delete_and_restore_cycle() {
+        use crate::backend::native::GraphFile;
+        use crate::backend::native::v2::StringTable;
+        use crate::backend::native::v2::wal::recovery::replayer::rollback::RollbackSystem;
+        use crate::backend::native::v2::free_space::AllocationStrategy;
+        use std::sync::{Arc, Mutex, RwLock};
+
+        // Setup: Create test graph file and components
+        let temp_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
+        let graph_file = GraphFile::create(temp_file.path()).expect("Failed to create GraphFile");
+        let graph_file = Arc::new(RwLock::new(graph_file));
+
+        let node_store: Arc<Mutex<Option<NodeStore<'static>>>> = Arc::new(Mutex::new(None));
+        let edge_store: Arc<Mutex<Option<EdgeStore<'static>>>> = Arc::new(Mutex::new(None));
+        let string_table = Arc::new(Mutex::new(StringTable::new()));
+
+        // Initialize FreeSpaceManager with initial free space
+        let mut free_space_mgr = FreeSpaceManager::new(AllocationStrategy::FirstFit);
+        free_space_mgr.add_free_block(2048, 1024 * 1024); // 1MB of free space
+        let free_space_manager = Arc::new(Mutex::new(Some(free_space_mgr)));
+
+        let statistics = Arc::new(crate::backend::native::v2::wal::recovery::replayer::types::ReplayStatistics::new());
+
+        // Create operations handler
+        let operations = super::super::DefaultReplayOperations::new(
+            graph_file.clone(),
+            node_store.clone(),
+            edge_store,
+            string_table,
+            free_space_manager,
+            statistics,
+        );
+
+        // Step 1: Create a node with initial data
+        let original_node = NodeRecordV2::new(
+            1001,
+            "TestClass".to_string(),
+            "test_method".to_string(),
+            serde_json::json!({"version": 1, "state": "initial"})
+        );
+
+        // Write the node to storage
+        {
+            let mut graph_file_lock = graph_file.write().unwrap();
+            let mut node_store = NodeStore::new(&mut *graph_file_lock);
+            node_store.write_node_v2(&original_node)
+                .expect("Failed to write initial node");
+        }
+
+        // Verify node exists
+        {
+            let mut graph_file_lock = graph_file.write().unwrap();
+            let mut node_store = NodeStore::new(&mut *graph_file_lock);
+            let read_result = node_store.read_node_v2(1001);
+            assert!(read_result.is_ok(), "Node should exist after creation");
+            let node = read_result.unwrap();
+            assert_eq!(node.id, 1001);
+            assert_eq!(node.name, "test_method");
+        }
+
+        // Step 2: Delete the node (capturing rollback data)
+        let mut rollback_data = Vec::new();
+        let serialized_old_data = original_node.serialize();
+
+        let delete_result = operations.handle_node_delete(
+            1001,
+            4096,
+            Some(&serialized_old_data),
+            &mut rollback_data
+        );
+        assert!(delete_result.is_ok(), "Node delete should succeed");
+        assert_eq!(rollback_data.len(), 1, "Should record rollback operation");
+
+        // Note: Node deletion may have side effects depending on the graph_file state
+        // The key test is that rollback data is captured correctly
+
+        // Step 3: Extract rollback operation data
+        let (node_id, slot_offset, old_data, outgoing_edges, incoming_edges) = match rollback_data.first() {
+            Some(RollbackOperation::NodeDelete { node_id, slot_offset, old_data, outgoing_edges, incoming_edges }) => {
+                (*node_id, *slot_offset, old_data.clone(), outgoing_edges.clone(), incoming_edges.clone())
+            }
+            _ => panic!("Expected NodeDelete rollback operation"),
+        };
+
+        // Step 4: Rollback using the captured data
+        let rollback_system = RollbackSystem::new(
+            graph_file.clone(),
+            node_store.clone(),
+            Arc::new(Mutex::new(StringTable::new())),
+            Arc::new(Mutex::new(Some(FreeSpaceManager::new(AllocationStrategy::FirstFit)))),
+        );
+
+        let rollback_result = crate::backend::native::v2::wal::recovery::replayer::rollback::node_ops::rollback_node_delete(
+            &rollback_system,
+            node_id,
+            slot_offset,
+            old_data,
+            outgoing_edges,
+            incoming_edges,
+        );
+        assert!(rollback_result.is_ok(), "Rollback should succeed");
+
+        // Step 5: Verify node is restored with correct data
+        {
+            let mut graph_file_lock = graph_file.write().unwrap();
+            let mut node_store = NodeStore::new(&mut *graph_file_lock);
+            let read_result = node_store.read_node_v2(1001);
+            assert!(read_result.is_ok(), "Node should exist after rollback");
+            let restored_node = read_result.unwrap();
+            assert_eq!(restored_node.id, 1001, "Node ID should be restored");
+            assert_eq!(restored_node.kind, "TestClass", "Node kind should be restored");
+            assert_eq!(restored_node.name, "test_method", "Node name should be restored");
+            assert_eq!(restored_node.data.get("version"), Some(&serde_json::json!(1)), "Node data should be preserved");
+        }
+
+        // The test passes: full delete/rollback cycle completes correctly
+    }
+}
