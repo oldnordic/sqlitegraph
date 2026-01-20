@@ -11,7 +11,8 @@ None — No specialized domain expertise directories available. Relying on codeb
 ## Milestones
 
 - ✅ **v0.2 Foundation** — Phases 1-7 (shipped 2026-01-17)
-- 🚧 **v1.0 Production** — Phases 8-10 (in progress)
+- ✅ **v1.0 Production** — Phases 8-10 (shipped 2026-01-17)
+- 🚧 **v1.1 ACID & Reliability** — Phases 11-21 (in progress)
 
 ---
 
@@ -25,7 +26,6 @@ None — No specialized domain expertise directories available. Relying on codeb
 ### Phase 1: Foundation Cleanup
 **Goal**: Address technical debt to improve maintainability
 **Depends on**: Nothing (first phase)
-**Research**: Unlikely (internal code cleanup)
 **Plans**: 3 plans
 
 Plans:
@@ -36,7 +36,6 @@ Plans:
 ### Phase 2: WAL Integration
 **Goal**: Complete WAL recovery and checkpoint functionality
 **Depends on**: Phase 1
-**Research**: Unlikely (internal code integration, architecture understood)
 **Plans**: 3 plans
 
 Plans:
@@ -45,10 +44,8 @@ Plans:
 - [x] 02-03: Add WAL recovery edge case tests ✅
 
 ### Phase 3: Native V2 Reads
-**Goal**: Implement read path optimizations for Native V2 (NOT BETrees - see docs/BETREE_RESEARCH.md)
+**Goal**: Implement read path optimizations for Native V2
 **Depends on**: Phase 2
-**Research**: Complete (betree research concluded: inappropriate for graph DB workloads)
-**Research topics**: Read path caching, compression for cache efficiency, traversal-aware optimizations
 **Plans**: 3 plans
 
 Plans:
@@ -56,20 +53,9 @@ Plans:
 - [x] 03-02: Compressed edge representation (delta encoding, bit-packing) ✅
 - [x] 03-03: Read path performance benchmarks and validation ✅
 
-**Status**: Complete ✅ (2026-01-17)
-**Performance**: See docs/PHASE3_PERFORMANCE_REPORT.md
-**Key Results**:
-- Cache hit ratio: 100% for BFS (exceeds 60% target by 67%)
-- Compression ratio: 30-50% memory reduction (exceeds 1.5x target)
-- Benchmark suite: 22 benchmarks with regression detection
-
-**IMPORTANT**: BETrees were evaluated and REJECTED for primary storage due to 20-50% read performance degradation. Current clustered adjacency is already optimal for graph workloads. See docs/BETREE_RESEARCH.md for full analysis.
-
 ### Phase 4: MVCC Completion
 **Goal**: Fix identified MVCC gaps and edge cases
 **Depends on**: Phase 3
-**Research**: Likely (MVCC patterns, snapshot isolation edge cases)
-**Research topics**: Concurrent read/write patterns, snapshot lifecycle management
 **Plans**: 3 plans
 
 Plans:
@@ -80,14 +66,7 @@ Plans:
 ### Phase 5: HNSW Persistence
 **Goal**: Enable HNSW index save/restore to disk
 **Depends on**: Phase 4
-**Research**: Complete (schema exists, pragmatic approach documented)
-**Research topics**: HNSW serialization format, incremental index updates, recovery from corruption
 **Plans**: 3 plans
-
-**Approach**: Pragmatic vector storage + index rebuild
-- Store vectors as BLOB in hnsw_vectors table
-- On load: read vectors, rebuild HNSW graph structure (O(N log N) rebuild cost)
-- Simpler than full graph serialization to hnsw_layers table
 
 Plans:
 - [x] 05-01: Implement HNSW index metadata persistence ✅
@@ -97,25 +76,15 @@ Plans:
 ### Phase 6: HNSW CLI
 **Goal**: Fix HNSW indexes lost across CLI invocations
 **Depends on**: Phase 5
-**Research**: Unlikely (builds on Phase 5 persistence)
 **Plans**: 2 plans
 
 Plans:
 - [x] 06-01: Integrate persistent HNSW with CLI ✅
 - [x] 06-02: Add CLI commands for index management ✅
 
-**Key Results**:
-- Index metadata persists across CLI invocations
-- New commands: `hnsw-list`, `hnsw-delete`, `hnsw-info`
-- Added `--index-name` parameter for custom index names
-
-**Known Limitation**: Vector persistence requires Connection sharing architecture (documented in 06-01-SUMMARY.md)
-
 ### Phase 7: Performance
 **Goal**: Optimize WAL recovery, reduce lock contention, improve benchmarks
 **Depends on**: Phase 6
-**Research**: Likely (parallel recovery patterns, lock-free data structures)
-**Research topics**: Parallel WAL replay strategies, lock-free snapshot updates, profiling tools
 **Plans**: 3 plans
 
 Plans:
@@ -123,24 +92,16 @@ Plans:
 - [x] 07-02: Reduce lock contention with lock-free structures ✅
 - [x] 07-03: Add comprehensive performance benchmarks ✅
 
-**Key Results**:
-- Parallel WAL recovery: 2-3x speedup for large WAL files
-- Lock-free atomic statistics: AtomicU64 counters
-- Comprehensive benchmark suite with CI integration
-
 </details>
 
----
-
-### 🚧 v1.0 Production (In Progress)
+<details>
+<summary>✅ v1.0 Production (Phases 8-10) - SHIPPED 2026-01-17</summary>
 
 **Milestone Goal:** Complete production-ready graph database with advanced algorithms, introspection APIs for LLM tooling, and comprehensive documentation.
 
 ### Phase 8: Graph Algorithms
 **Goal**: Add centrality measures and community detection
 **Depends on**: Phase 7
-**Research**: Likely (algorithm selection, implementation patterns)
-**Research topics**: PageRank, betweenness centrality, Louvain method, label propagation
 **Plans**: 3
 
 Plans:
@@ -148,19 +109,9 @@ Plans:
 - [x] 08-02: Implement community detection (Louvain, label propagation) ✅
 - [x] 08-03: Add algorithm benchmarks and tests ✅
 
-**Status**: Complete ✅ (2026-01-17)
-**Key Results**:
-- 4 production algorithms implemented: PageRank, Betweenness Centrality, Label Propagation, Louvain
-- 27 tests passing (100% pass rate)
-- 4 benchmark groups with multiple topologies (random, cycle, star, barbell)
-- Comprehensive rustdoc with complexity analysis
-- 10 commits total
-
 ### Phase 9: Developer Tooling
 **Goal**: Add debugging, profiling, and introspection utilities
 **Depends on**: Phase 8
-**Research**: Likely (Rust profiling tools, debugging patterns)
-**Research topics: flamegraph integration, introspection APIs, debugging hooks
 **Plans**: 3
 
 Plans:
@@ -168,36 +119,226 @@ Plans:
 - [x] 09-02: Create debugging utilities ✅
 - [x] 09-03: Add developer CLI commands ✅
 
-**Status**: Complete ✅ (2026-01-17)
-**Key Results**:
-- GraphIntrospection API with JSON serialization (LLM consumable)
-- ProgressCallback trait with ConsoleProgress for long-running operations
-- CLI debug commands: debug-stats, debug-dump, debug-trace
-- New algorithm commands: pagerank, betweenness, louvain with progress bars
-- 13 commits total across 3 plans
-
 ### Phase 10: Testing & Docs
 **Goal**: Comprehensive test coverage and module documentation
 **Depends on**: Phase 9
-**Research**: Unlikely (testing patterns and documentation)
 **Plans**: 3
 
 Plans:
 - [x] 10-01: Fix broken WAL tests and add edge case tests ✅
-- [ ] 10-02: Add concurrent operation tests
-- [ ] 10-03: Add module documentation
+- [x] 10-02: Add concurrent operation tests ✅
+- [x] 10-03: Add module documentation ✅
 
-**Scope:**
-- Fix V2WALConfig compilation errors in wal_core_tests.rs
-- 16 WAL recovery edge case tests (corruption, transactions, checkpoints, recovery)
-- 15 concurrent operation tests (algorithms, snapshots, lifecycle)
-- Complete rustdoc for: graph, hnsw, algo, cache, introspection, progress modules
-- Invariants and guarantees documentation (not marketing copy)
+</details>
+
+---
+
+### 🚧 v1.1 ACID & Reliability (In Progress)
+
+**Milestone Goal:** Complete ACID transaction correctness for Native V2 backend and resolve all identified technical debt, security issues, and reliability concerns.
+
+### Phase 11: ACID Atomicity
+**Goal**: Complete rollback implementation for all operations, especially node deletion
+**Depends on**: Phase 10
+**Requirements**: ACID-01, ACID-02, ACID-03, ACID-04, ACID-05, ACID-06
+**Success Criteria** (what must be TRUE):
+  1. Deleting a node captures complete before-image (node record + all edges) in WAL
+  2. Rollback restores deleted node to its exact previous state with all edges
+  3. Crash recovery treats IN_PROGRESS transactions as ABORTED and rolls them back
+  4. All rollback operations persist their state to WAL before executing
+**Plans**: 3 plans
+
+Plans:
+- [ ] 11-01: Implement node deletion before-image capture in WAL
+- [ ] 11-02: Implement node deletion rollback with slot reclamation
+- [ ] 11-03: Add WAL recovery tests for IN_PROGRESS transactions
+
+### Phase 12: ACID Consistency
+**Goal**: Enable all runtime validation for data integrity
+**Depends on**: Phase 11
+**Requirements**: ACID-07, ACID-08, ACID-09, ACID-10, ACID-11, ACID-12
+**Success Criteria** (what must be TRUE):
+  1. Cluster overlap validation detects allocation corruption at runtime
+  2. Checkpoint state validation detects corrupted checkpoints
+  3. Pre-commit validation checks database constraints before persisting
+  4. Post-recovery validation verifies database integrity after WAL replay
+**Plans**: 4 plans
+
+Plans:
+- [ ] 12-01: Re-enable cluster overlap validation with sequencing support
+- [ ] 12-02: Fix checkpoint state validation to match CheckpointState enum
+- [ ] 12-03: Add pre-commit constraint validation
+- [ ] 12-04: Add post-recovery integrity validation
+
+### Phase 13: ACID Isolation
+**Goal**: Implement transaction coordinator with deadlock detection
+**Depends on**: Phase 12
+**Requirements**: ACID-13, ACID-14, ACID-15, ACID-16, ACID-17, ACID-18, CW-01, CW-02, CW-03
+**Success Criteria** (what must be TRUE):
+  1. Transaction coordinator tracks resource-level locks for all active transactions
+  2. Deadlock detection identifies cycles in wait-for graph
+  3. Deadlock victim selection aborts the youngest transaction in the cycle
+  4. Multiple writers can commit transactions concurrently without deadlocks
+**Plans**: 4 plans
+
+Plans:
+- [ ] 13-01: Implement transaction coordinator with resource-level lock tracking
+- [ ] 13-02: Build wait-for graph and cycle detection
+- [ ] 13-03: Add victim selection and transaction abort
+- [ ] 13-04: Design and document lock acquisition ordering
+
+### Phase 14: ACID Durability
+**Goal**: Complete all checkpoint trigger strategies
+**Depends on**: Phase 13
+**Requirements**: ACID-19, ACID-20, ACID-21, ACID-22, ACID-23, CP-01, CP-02, CP-03, CP-04
+**Success Criteria** (what must be TRUE):
+  1. Transaction-count checkpoint triggers after N transactions
+  2. Size-based checkpoint triggers when WAL exceeds threshold
+  3. WAL manager tracks transaction count and file size accurately
+  4. All three checkpoint strategies reset counters after completion
+**Plans**: 4 plans
+
+Plans:
+- [ ] 14-01: Wire transaction-count checkpoint trigger
+- [ ] 14-02: Wire size-based checkpoint trigger
+- [ ] 14-03: Add WAL metrics tracking (count and size)
+- [ ] 14-04: Add tests for all checkpoint strategies
+
+### Phase 15: HNSW Multi-Layer
+**Goal**: Implement O(log N) HNSW search with multi-layer graph
+**Depends on**: Phase 14
+**Requirements**: HNSW-01, HNSW-02, HNSW-03, HNSW-04, HNSW-05, HNSW-06, HNSW-07, HNSW-08, HNSW-09, HNSW-10
+**Success Criteria** (what must be TRUE):
+  1. HNSW insertion distributes nodes across multiple layers using exponential distribution
+  2. HNSW search performs greedy descent through higher layers
+  3. Multi-layer HNSW achieves O(log N) search complexity (verified by benchmarks)
+  4. Multi-layer HNSW maintains >95% recall vs exact nearest neighbor
+**Plans**: 4 plans
+
+Plans:
+- [ ] 15-01: Implement determine_insertion_level with exponential distribution
+- [ ] 15-02: Add multi-layer graph structure
+- [ ] 15-03: Update insert to add nodes to all layers 0..=target_layer
+- [ ] 15-04: Update search for greedy descent and O(log N) benchmarks
+
+### Phase 16: Memory Safety
+**Goal**: Eliminate unsafe transmute and add input validation
+**Depends on**: Phase 15
+**Requirements**: UNSAFE-01, UNSAFE-02, UNSAFE-03, UNSAFE-04, UNSAFE-05, UNSAFE-06, UNSAFE-07, INPUT-01, INPUT-02, INPUT-03, INPUT-04
+**Success Criteria** (what must be TRUE):
+  1. All unsafe transmute sites replaced with Arc<RwLock<GraphFile>>
+  2. Miri tests validate safety of all former transmute sites
+  3. JSON payloads are limited to configurable size and depth
+  4. CI runs Miri tests on every commit
+**Plans**: 4 plans
+
+Plans:
+- [ ] 16-01: Audit and document all 10+ transmute sites
+- [ ] 16-02: Replace checkpoint/operations.rs transmute with Arc<RwLock<GraphFile>>
+- [ ] 16-03: Replace replayer/rollback.rs transmute sites (6)
+- [ ] 16-04: Add Miri tests and CI integration
+
+### Phase 17: Input Validation
+**Goal**: Add safe handling of external data
+**Depends on**: Phase 16
+**Requirements**: INPUT-01, INPUT-02, INPUT-03, INPUT-04
+**Success Criteria** (what must be TRUE):
+  1. JSON payloads larger than configured limit are rejected
+  2. JSON payloads deeper than configured limit are rejected
+  3. Malicious payload tests cover edge cases
+**Plans**: 3 plans
+
+Plans:
+- [ ] 17-01: Add JSON size limit validation
+- [ ] 17-02: Add JSON depth limit validation
+- [ ] 17-03: Add malicious payload tests
+
+### Phase 18: Code Structure
+**Goal**: Split large files for maintainability
+**Depends on**: Phase 17
+**Requirements**: REFAC-01, REFAC-02, REFAC-03, REFAC-04, REFAC-05, REFAC-06, REFAC-07, CLONE-01, CLONE-02, CLONE-03
+**Success Criteria** (what must be TRUE):
+  1. All files over 600 LOC are split into focused submodules
+  2. All split modules maintain test coverage
+  3. Unnecessary clone() calls are replaced with references
+**Plans**: 4 plans
+
+Plans:
+- [ ] 18-01: Split rollback.rs (1654 LOC) into submodules
+- [ ] 18-02: Split hnsw/index.rs (1605 LOC) into modules
+- [ ] 18-03: Split checkpoint/operations.rs (1594 LOC) and algo.rs (1398 LOC)
+- [ ] 18-04: Audit and reduce clone() calls (263 total)
+
+### Phase 19: Concurrent Features
+**Goal**: Add connection pooling and concurrent write support
+**Depends on**: Phase 18
+**Requirements**: POOL-01, POOL-02, POOL-03
+**Success Criteria** (what must be TRUE):
+  1. SQLite backend uses connection pool for concurrent access
+  2. Pool size is configurable via configuration
+  3. Connection reuse reduces open/close overhead
+**Plans**: 3 plans
+
+Plans:
+- [ ] 19-01: Implement connection pool for SQLite backend
+- [ ] 19-02: Add configurable pool size
+- [ ] 19-03: Add benchmarks for connection reuse
+
+### Phase 20: Data Management
+**Goal**: Add migration and backup/restore APIs
+**Depends on**: Phase 19
+**Requirements**: MIGRATE-01, MIGRATE-02, MIGRATE-03, MIGRATE-04, BACKUP-01, BACKUP-02, BACKUP-03, SCHEMA-01, SCHEMA-02, SCHEMA-03
+**Success Criteria** (what must be TRUE):
+  1. File migration API detects old format versions automatically
+  2. Migration converts to current format atomically
+  3. Backup API creates consistent snapshots of database
+  4. Restore API loads snapshots and verifies integrity
+**Plans**: 4 plans
+
+Plans:
+- [ ] 20-01: Implement file format migration API
+- [ ] 20-02: Update schema version to 4-byte field
+- [ ] 20-03: Implement backup/restore API
+- [ ] 20-04: Add migration and backup tests
+
+### Phase 21: Test Coverage
+**Goal**: Comprehensive test coverage for all critical paths
+**Depends on**: Phase 20
+**Requirements**: TEST-WAL-01, TEST-WAL-02, TEST-WAL-03, TEST-WAL-04, TEST-CLUS-01, TEST-CLUS-02, TEST-CLUS-03, TEST-CP-01, TEST-CP-02, TEST-CP-03, TEST-HNSW-01, TEST-HNSW-02, TEST-HNSW-03, TEST-HNSW-04, TEST-MIRI-01, TEST-MIRI-02, TEST-MIRI-03, TEST-MIRI-04
+**Success Criteria** (what must be TRUE):
+  1. All WAL recovery tests pass including node deletion rollback
+  2. All cluster validation tests are enabled and pass
+  3. All checkpoint validation tests are enabled and pass
+  4. All HNSW multi-layer tests pass with O(log N) verification
+**Plans**: 4 plans
+
+Plans:
+- [ ] 21-01: Enable and fix WAL recovery tests
+- [ ] 21-02: Enable and fix cluster validation tests
+- [ ] 21-03: Enable and fix checkpoint validation tests
+- [ ] 21-04: Add HNSW multi-layer and Miri tests
+
+### Phase 22: Scaling & Dependencies
+**Goal**: Address scaling limits and dependency updates
+**Depends on**: Phase 21
+**Requirements**: SCALE-CP-01, SCALE-CP-02, SCALE-CP-03, SCALE-DB-01, SCALE-DB-02, SCALE-DB-03, SCALE-TX-01, SCALE-TX-02, SCALE-TX-03, SCALE-HNSW-01, SCALE-HNSW-02, DEP-RUST-01, DEP-RUST-02, DEP-BIN-01, DEP-BIN-02
+**Success Criteria** (what must be TRUE):
+  1. Checkpoint supports files larger than 1GB
+  2. Dirty block tracking handles overflow for >50,000 blocks
+  3. Transaction ID bounds are enforced with cleanup
+  4. Disk-based HNSW option exists for indexes larger than RAM
+**Plans**: 4 plans
+
+Plans:
+- [ ] 22-01: Implement multi-file checkpointing
+- [ ] 22-02: Implement dirty block overflow strategy
+- [ ] 22-03: Add transaction ID bounds and cleanup
+- [ ] 22-04: Plan bincode 2.0 migration and monitor rusqlite updates
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 9 → 10
+Phases execute in numeric order: 1 → 2 → 3 → ... → 10 → 11 → 12 → ... → 22
 
 | Phase | Milestone | Plans | Status | Completed |
 |-------|-----------|-------|--------|-----------|
@@ -210,4 +351,16 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 7. Performance | v0.2 | 3/3 | Complete | 2026-01-17 |
 | 8. Graph Algorithms | v1.0 | 3/3 | Complete | 2026-01-17 |
 | 9. Developer Tooling | v1.0 | 3/3 | Complete | 2026-01-17 |
-| 10. Testing & Docs | v1.0 | 0/3 | Not started | - |
+| 10. Testing & Docs | v1.0 | 3/3 | Complete | 2026-01-17 |
+| 11. ACID Atomicity | v1.1 | 0/3 | Not started | - |
+| 12. ACID Consistency | v1.1 | 0/4 | Not started | - |
+| 13. ACID Isolation | v1.1 | 0/4 | Not started | - |
+| 14. ACID Durability | v1.1 | 0/4 | Not started | - |
+| 15. HNSW Multi-Layer | v1.1 | 0/4 | Not started | - |
+| 16. Memory Safety | v1.1 | 0/4 | Not started | - |
+| 17. Input Validation | v1.1 | 0/3 | Not started | - |
+| 18. Code Structure | v1.1 | 0/4 | Not started | - |
+| 19. Concurrent Features | v1.1 | 0/3 | Not started | - |
+| 20. Data Management | v1.1 | 0/4 | Not started | - |
+| 21. Test Coverage | v1.1 | 0/4 | Not started | - |
+| 22. Scaling & Dependencies | v1.1 | 0/4 | Not started | - |

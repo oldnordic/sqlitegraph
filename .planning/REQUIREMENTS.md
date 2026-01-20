@@ -110,12 +110,12 @@ Requirements for file format consistency.
 Requirements for eliminating unsafe lifetime transmutation.
 
 - [ ] **UNSAFE-01**: All 10+ transmute sites documented with lifetime analysis
-- [ ] **UNSAFE-02`: checkpoint/operations.rs transmute replaced with Arc<RwLock<GraphFile>>
-- [ ] **UNSAFE-03`: checkpoint/record/integrator.rs transmute replaced with Arc<RwLock<GraphFile>>
-- [ ] **UNSAFE-04`: recovery/replayer/rollback.rs transmute sites (6) replaced with Arc<RwLock<GraphFile>>
-- [ ] **UNSAFE-05`: No unsafe transmute remains in codebase without documented justification
-- [ ] **UNSAFE-06`: Miri tests validate safety of all former transmute sites
-- [ ] **UNSAFE-07`: CI runs Miri tests on every commit
+- [ ] **UNSAFE-02**: checkpoint/operations.rs transmute replaced with Arc<RwLock<GraphFile>>
+- [ ] **UNSAFE-03**: checkpoint/record/integrator.rs transmute replaced with Arc<RwLock<GraphFile>>
+- [ ] **UNSAFE-04**: recovery/replayer/rollback.rs transmute sites (6) replaced with Arc<RwLock<GraphFile>>
+- [ ] **UNSAFE-05**: No unsafe transmute remains in codebase without documented justification
+- [ ] **UNSAFE-06**: Miri tests validate safety of all former transmute sites
+- [ ] **UNSAFE-07**: CI runs Miri tests on every commit
 
 ---
 
@@ -123,10 +123,10 @@ Requirements for eliminating unsafe lifetime transmutation.
 
 Requirements for safe handling of external data.
 
-- [ ] **INPUT-01`: JSON payloads limited to 10MB default size
-- [ ] **INPUT-02`: JSON payloads limited to 128 levels depth
-- [ ] **INPUT-03`: Input validation tests cover malicious payloads
-- [ ] **INPUT-04`: Size/depth limits are configurable
+- [ ] **INPUT-01**: JSON payloads limited to 10MB default size
+- [ ] **INPUT-02**: JSON payloads limited to 128 levels depth
+- [ ] **INPUT-03**: Input validation tests cover malicious payloads
+- [ ] **INPUT-04**: Size/depth limits are configurable
 
 ---
 
@@ -135,9 +135,9 @@ Requirements for safe handling of external data.
 Requirements for splitting files exceeding 600 LOC guidelines.
 
 - [ ] **REFAC-01**: rollback.rs (1654 LOC) split into focused submodules by operation type
-- [ ] **REFAC-02`: hnsw/index.rs (1605 LOC) split into modules (index, layer, search, insert)
-- [ ] **REFAC-03`: checkpoint/operations.rs (1594 LOC) split into modules (checkpoint, flush, restore)
-- [ ] **REFAC-04`: algo.rs (1398 LOC) split into modules (centrality, community, utility)
+- [ ] **REFAC-02**: hnsw/index.rs (1605 LOC) split into modules (index, layer, search, insert)
+- [ ] **REFAC-03**: checkpoint/operations.rs (1594 LOC) split into modules (checkpoint, flush, restore)
+- [ ] **REFAC-04**: algo.rs (1398 LOC) split into modules (centrality, community, utility)
 - [ ] **REFAC-05**: validator.rs (1300 LOC) split into modules (header, cluster, wal)
 - [ ] **REFAC-06**: All split modules maintain test coverage
 - [ ] **REFAC-07**: All split modules maintain documentation
@@ -148,9 +148,9 @@ Requirements for splitting files exceeding 600 LOC guidelines.
 
 Requirements for reducing unnecessary clone operations.
 
-- [ ] **CLONE-01`: All 263 clone() calls audited for necessity
-- [ ] **CLONE-02`: Unnecessary clone() calls replaced with references
-- [ ] **CLONE-03`: Clone audit documented with findings
+- [ ] **CLONE-01**: All 263 clone() calls audited for necessity
+- [ ] **CLONE-02**: Unnecessary clone() calls replaced with references
+- [ ] **CLONE-03**: Clone audit documented with findings
 
 ---
 
@@ -158,9 +158,9 @@ Requirements for reducing unnecessary clone operations.
 
 Requirements for SQLite backend concurrency.
 
-- [ ] **POOL-01`: Connection pool implemented for SQLite backend
-- [ ] **POOL-02`: Pool size is configurable
-- [ ] **POOL-03`: Connection reuse reduces open/close overhead
+- [ ] **POOL-01**: Connection pool implemented for SQLite backend
+- [ ] **POOL-02**: Pool size is configurable
+- [ ] **POOL-03**: Connection reuse reduces open/close overhead
 
 ---
 
@@ -168,7 +168,7 @@ Requirements for SQLite backend concurrency.
 
 Requirements for multi-writer support.
 
-- [ ] **CW-01`: Concurrent write design document defines architecture
+- [ ] **CW-01**: Concurrent write design document defines architecture
 - [ ] **CW-02**: Lock acquisition ordering prevents deadlocks
 - [ ] **CW-03**: Multiple writers can commit transactions concurrently
 
@@ -178,10 +178,10 @@ Requirements for multi-writer support.
 
 Requirements for automated file format migration.
 
-- [ ] **MIGRATE-01`: File migration API detects old format versions
-- [ ] **MIGRATE-02`: File migration API converts to current format
-- [ ] **MIGRATE-03`: Migration is atomic (write to new file, replace old)
-- [ ] **MIGRATE-04`: Migration can be rolled back
+- [ ] **MIGRATE-01**: File migration API detects old format versions
+- [ ] **MIGRATE-02**: File migration API converts to current format
+- [ ] **MIGRATE-03**: Migration is atomic (write to new file, replace old)
+- [ ] **MIGRATE-04**: Migration can be rolled back
 
 ---
 
@@ -189,9 +189,9 @@ Requirements for automated file format migration.
 
 Requirements for high-level snapshot API.
 
-- [ ] **BACKUP-01`: Backup API creates consistent snapshot of database
-- [ ] **BACKUP-02`: Restore API loads snapshot and verifies integrity
-- [ ] **BACKUP-03`: Snapshot includes all data pages and WAL position
+- [ ] **BACKUP-01**: Backup API creates consistent snapshot of database
+- [ ] **BACKUP-02**: Restore API loads snapshot and verifies integrity
+- [ ] **BACKUP-03**: Snapshot includes all data pages and WAL position
 
 ---
 
@@ -199,10 +199,10 @@ Requirements for high-level snapshot API.
 
 Requirements for WAL recovery test coverage.
 
-- [ ] **TEST-WAL-01`: Node deletion rollback test passes (currently stubbed/TODO)
-- [ ] **TEST-WAL-02`: Crash simulation tests cover each WAL operation type
-- [ ] **TEST-WAL-03`: Recovery tests verify database state after crash
-- [ ] **TEST-WAL-04`: All 8 "will fail until implementation complete" tests pass
+- [ ] **TEST-WAL-01**: Node deletion rollback test passes (currently stubbed/TODO)
+- [ ] **TEST-WAL-02**: Crash simulation tests cover each WAL operation type
+- [ ] **TEST-WAL-03**: Recovery tests verify database state after crash
+- [ ] **TEST-WAL-04**: All 8 "will fail until implementation complete" tests pass
 
 ---
 
@@ -210,8 +210,8 @@ Requirements for WAL recovery test coverage.
 
 Requirements for cluster allocation integrity tests.
 
-- [ ] **TEST-CLUS-01`: Cluster overlap validation tests are enabled (not commented out)
-- [ ] **TEST-CLUS-02`: Cluster overlap validation detects artificially corrupted clusters
+- [ ] **TEST-CLUS-01**: Cluster overlap validation tests are enabled (not commented out)
+- [ ] **TEST-CLUS-02**: Cluster overlap validation detects artificially corrupted clusters
 - [ ] **TEST-CLUS-03**: Cluster overlap validation timing issues are resolved
 
 ---
@@ -220,7 +220,7 @@ Requirements for cluster allocation integrity tests.
 
 Requirements for checkpoint integrity tests.
 
-- [ ] **TEST-CP-01`: Checkpoint state invariants tests are enabled
+- [ ] **TEST-CP-01**: Checkpoint state invariants tests are enabled
 - [ ] **TEST-CP-02**: Checkpoint state validation detects corrupted checkpoints
 - [ ] **TEST-CP-03**: All checkpoint strategies have test coverage
 
@@ -230,10 +230,10 @@ Requirements for checkpoint integrity tests.
 
 Requirements for multi-layer HNSW tests.
 
-- [ ] **TEST-HNSW-01`: Layer distribution test verifies exponential distribution
-- [ ] **TEST-HNSW-02`: Multi-layer insert test verifies nodes in correct layers
-- [ ] **TEST-HNSW-03`: Multi-layer search test verifies correctness vs layer 0
-- [ ] **TEST-HNSW-04`: Search complexity benchmark demonstrates O(log N)
+- [ ] **TEST-HNSW-01**: Layer distribution test verifies exponential distribution
+- [ ] **TEST-HNSW-02**: Multi-layer insert test verifies nodes in correct layers
+- [ ] **TEST-HNSW-03**: Multi-layer search test verifies correctness vs layer 0
+- [ ] **TEST-HNSW-04**: Search complexity benchmark demonstrates O(log N)
 
 ---
 
@@ -241,10 +241,10 @@ Requirements for multi-layer HNSW tests.
 
 Requirements for unsafe block validation.
 
-- [ ] **TEST-MIRI-01`: Miri is configured for the project
-- [ ] **TEST-MIRI-02`: All former transmute sites have Miri tests
-- [ ] **TEST-MIRI-03`: CI runs Miri tests on every commit
-- [ ] **TEST-MIRI-04`: No Miri errors in test suite
+- [ ] **TEST-MIRI-01**: Miri is configured for the project
+- [ ] **TEST-MIRI-02**: All former transmute sites have Miri tests
+- [ ] **TEST-MIRI-03**: CI runs Miri tests on every commit
+- [ ] **TEST-MIRI-04**: No Miri errors in test suite
 
 ---
 
@@ -252,8 +252,8 @@ Requirements for unsafe block validation.
 
 Requirements for large database checkpoint handling.
 
-- [ ] **SCALE-CP-01`: Checkpoint supports files larger than 1GB
-- [ ] **SCALE-CP-02`: Multi-file checkpointing or streaming checkpoint implemented
+- [ ] **SCALE-CP-01**: Checkpoint supports files larger than 1GB
+- [ ] **SCALE-CP-02**: Multi-file checkpointing or streaming checkpoint implemented
 - [ ] **SCALE-CP-03**: Large checkpoint tests verify correctness
 
 ---
@@ -262,9 +262,9 @@ Requirements for large database checkpoint handling.
 
 Requirements for tracking overflow handling.
 
-- [ ] **SCALE-DB-01`: Dirty block tracking overflow strategy implemented
-- [ ] **SCALE-DB-02`: Hierarchical tracking supports >50,000 global dirty blocks
-- [ ] **SCALE-DB-03`: Overflow handling tests verify correctness
+- [ ] **SCALE-DB-01**: Dirty block tracking overflow strategy implemented
+- [ ] **SCALE-DB-02**: Hierarchical tracking supports >50,000 global dirty blocks
+- [ ] **SCALE-DB-03**: Overflow handling tests verify correctness
 
 ---
 
@@ -272,7 +272,7 @@ Requirements for tracking overflow handling.
 
 Requirements for unbounded growth prevention.
 
-- [ ] **SCALE-TX-01`: Transaction ID bounds are enforced
+- [ ] **SCALE-TX-01**: Transaction ID bounds are enforced
 - [ ] **SCALE-TX-02**: Deadlock detection wait-for graph has cleanup
 - [ ] **SCALE-TX-03**: Transaction coordinator tests verify cleanup
 
@@ -291,8 +291,8 @@ Requirements for memory-limited HNSW indexes.
 
 Requirements for SQLite dependency management.
 
-- [ ] **DEP-RUST-01`: rusqlite 0.31 monitored for security updates
-- [ ] **DEP-RUST-02`: System SQLite option evaluated for security patches
+- [ ] **DEP-RUST-01**: rusqlite 0.31 monitored for security updates
+- [ ] **DEP-RUST-02**: System SQLite option evaluated for security patches
 
 ---
 
@@ -300,8 +300,8 @@ Requirements for SQLite dependency management.
 
 Requirements for serialization upgrade planning.
 
-- [ ] **DEP-BIN-01`: bincode 2.0 migration plan documented
-- [ ] **DEP-BIN-02`: bincode 2.0 migration preserves existing data (format version bump)
+- [ ] **DEP-BIN-01**: bincode 2.0 migration plan documented
+- [ ] **DEP-BIN-02**: bincode 2.0 migration preserves existing data (format version bump)
 
 ---
 
@@ -328,25 +328,139 @@ Explicitly excluded from this milestone.
 
 ## Traceability
 
-Requirements will be mapped to phases during roadmap creation.
+Requirements mapped to phases in roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (To be populated by roadmap) | - | Pending |
+| ACID-01 | Phase 11 | Pending |
+| ACID-02 | Phase 11 | Pending |
+| ACID-03 | Phase 11 | Pending |
+| ACID-04 | Phase 11 | Pending |
+| ACID-05 | Phase 11 | Pending |
+| ACID-06 | Phase 11 | Pending |
+| ACID-07 | Phase 12 | Pending |
+| ACID-08 | Phase 12 | Pending |
+| ACID-09 | Phase 12 | Pending |
+| ACID-10 | Phase 12 | Pending |
+| ACID-11 | Phase 12 | Pending |
+| ACID-12 | Phase 12 | Pending |
+| ACID-13 | Phase 13 | Pending |
+| ACID-14 | Phase 13 | Pending |
+| ACID-15 | Phase 13 | Pending |
+| ACID-16 | Phase 13 | Pending |
+| ACID-17 | Phase 13 | Pending |
+| ACID-18 | Phase 13 | Pending |
+| ACID-19 | Phase 14 | Pending |
+| ACID-20 | Phase 14 | Pending |
+| ACID-21 | Phase 14 | Pending |
+| ACID-22 | Phase 14 | Pending |
+| ACID-23 | Phase 14 | Pending |
+| HNSW-01 | Phase 15 | Pending |
+| HNSW-02 | Phase 15 | Pending |
+| HNSW-03 | Phase 15 | Pending |
+| HNSW-04 | Phase 15 | Pending |
+| HNSW-05 | Phase 15 | Pending |
+| HNSW-06 | Phase 15 | Pending |
+| HNSW-07 | Phase 15 | Pending |
+| HNSW-08 | Phase 15 | Pending |
+| HNSW-09 | Phase 15 | Pending |
+| HNSW-10 | Phase 15 | Pending |
+| CP-01 | Phase 14 | Pending |
+| CP-02 | Phase 14 | Pending |
+| CP-03 | Phase 14 | Pending |
+| CP-04 | Phase 14 | Pending |
+| CPV-01 | Phase 12 | Pending |
+| CPV-02 | Phase 12 | Pending |
+| CPV-03 | Phase 12 | Pending |
+| CPV-04 | Phase 12 | Pending |
+| CPV-05 | Phase 12 | Pending |
+| SCHEMA-01 | Phase 20 | Pending |
+| SCHEMA-02 | Phase 20 | Pending |
+| SCHEMA-03 | Phase 20 | Pending |
+| UNSAFE-01 | Phase 16 | Pending |
+| UNSAFE-02 | Phase 16 | Pending |
+| UNSAFE-03 | Phase 16 | Pending |
+| UNSAFE-04 | Phase 16 | Pending |
+| UNSAFE-05 | Phase 16 | Pending |
+| UNSAFE-06 | Phase 16 | Pending |
+| UNSAFE-07 | Phase 16 | Pending |
+| INPUT-01 | Phase 16 | Pending |
+| INPUT-02 | Phase 16 | Pending |
+| INPUT-03 | Phase 17 | Pending |
+| INPUT-04 | Phase 17 | Pending |
+| REFAC-01 | Phase 18 | Pending |
+| REFAC-02 | Phase 18 | Pending |
+| REFAC-03 | Phase 18 | Pending |
+| REFAC-04 | Phase 18 | Pending |
+| REFAC-05 | Phase 18 | Pending |
+| REFAC-06 | Phase 18 | Pending |
+| REFAC-07 | Phase 18 | Pending |
+| CLONE-01 | Phase 18 | Pending |
+| CLONE-02 | Phase 18 | Pending |
+| CLONE-03 | Phase 18 | Pending |
+| POOL-01 | Phase 19 | Pending |
+| POOL-02 | Phase 19 | Pending |
+| POOL-03 | Phase 19 | Pending |
+| CW-01 | Phase 13 | Pending |
+| CW-02 | Phase 13 | Pending |
+| CW-03 | Phase 13 | Pending |
+| MIGRATE-01 | Phase 20 | Pending |
+| MIGRATE-02 | Phase 20 | Pending |
+| MIGRATE-03 | Phase 20 | Pending |
+| MIGRATE-04 | Phase 20 | Pending |
+| BACKUP-01 | Phase 20 | Pending |
+| BACKUP-02 | Phase 20 | Pending |
+| BACKUP-03 | Phase 20 | Pending |
+| TEST-WAL-01 | Phase 21 | Pending |
+| TEST-WAL-02 | Phase 21 | Pending |
+| TEST-WAL-03 | Phase 21 | Pending |
+| TEST-WAL-04 | Phase 21 | Pending |
+| TEST-CLUS-01 | Phase 21 | Pending |
+| TEST-CLUS-02 | Phase 21 | Pending |
+| TEST-CLUS-03 | Phase 21 | Pending |
+| TEST-CP-01 | Phase 21 | Pending |
+| TEST-CP-02 | Phase 21 | Pending |
+| TEST-CP-03 | Phase 21 | Pending |
+| TEST-HNSW-01 | Phase 21 | Pending |
+| TEST-HNSW-02 | Phase 21 | Pending |
+| TEST-HNSW-03 | Phase 21 | Pending |
+| TEST-HNSW-04 | Phase 21 | Pending |
+| TEST-MIRI-01 | Phase 21 | Pending |
+| TEST-MIRI-02 | Phase 21 | Pending |
+| TEST-MIRI-03 | Phase 21 | Pending |
+| TEST-MIRI-04 | Phase 21 | Pending |
+| SCALE-CP-01 | Phase 22 | Pending |
+| SCALE-CP-02 | Phase 22 | Pending |
+| SCALE-CP-03 | Phase 22 | Pending |
+| SCALE-DB-01 | Phase 22 | Pending |
+| SCALE-DB-02 | Phase 22 | Pending |
+| SCALE-DB-03 | Phase 22 | Pending |
+| SCALE-TX-01 | Phase 22 | Pending |
+| SCALE-TX-02 | Phase 22 | Pending |
+| SCALE-TX-03 | Phase 22 | Pending |
+| SCALE-HNSW-01 | Phase 22 | Pending |
+| SCALE-HNSW-02 | Phase 22 | Pending |
+| DEP-RUST-01 | Phase 22 | Pending |
+| DEP-RUST-02 | Phase 22 | Pending |
+| DEP-BIN-01 | Phase 22 | Pending |
+| DEP-BIN-02 | Phase 22 | Pending |
 
 **Summary:**
 - v1.1 requirements: 78 total
-- ACID: 23 requirements
-- HNSW: 10 requirements
-- Checkpoint: 9 requirements
-- Schema: 3 requirements
-- Unsafe: 7 requirements
-- Refactoring: 10 requirements
-- Features: 9 requirements
-- Testing: 14 requirements
-- Scaling: 8 requirements
-- Dependencies: 4 requirements
+- Coverage: 78/78 mapped (100%)
+- Phase 11 (Atomicity): 6 requirements
+- Phase 12 (Consistency): 10 requirements
+- Phase 13 (Isolation): 9 requirements
+- Phase 14 (Durability): 9 requirements
+- Phase 15 (HNSW): 10 requirements
+- Phase 16 (Memory Safety): 11 requirements
+- Phase 17 (Input Validation): 2 requirements
+- Phase 18 (Code Structure): 10 requirements
+- Phase 19 (Concurrent Features): 3 requirements
+- Phase 20 (Data Management): 10 requirements
+- Phase 21 (Test Coverage): 16 requirements
+- Phase 22 (Scaling & Dependencies): 14 requirements
 
 ---
 *Requirements defined: 2026-01-20*
-*Last updated: 2026-01-20 after initial definition*
+*Last updated: 2026-01-20 after roadmap creation*
