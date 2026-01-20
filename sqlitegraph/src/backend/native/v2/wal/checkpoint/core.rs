@@ -677,7 +677,9 @@ impl V2WALCheckpointManager {
                 }
             }
             CheckpointStrategy::TransactionCount(_threshold) => {
-                Ok(false) // TODO: Implement transaction count checking
+                // TODO: Use actual transaction counter from WAL manager (14-03)
+                // Counter exists in WALManagerMetrics but needs to be added to CheckpointManagerState
+                Ok(false)
             }
             CheckpointStrategy::SizeThreshold(_threshold) => {
                 Ok(false) // TODO: Implement size threshold checking
