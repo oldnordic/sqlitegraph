@@ -344,6 +344,10 @@ pub mod dsl; // Public for examples
 pub mod hnsw;
 pub mod pattern; // Public for binary // HNSW vector search capabilities
 
+// Dependency monitoring module (feature-gated)
+#[cfg(feature = "dependency-monitoring")]
+pub mod dependency_monitor;
+
 // Re-export cache statistics for benchmarking
 pub use cache::CacheStats;
 

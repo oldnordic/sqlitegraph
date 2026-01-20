@@ -50,6 +50,7 @@ native-v2 = ["v2_io_exclusive_std"]  # Native V2 backend (high performance, prod
 debug = []                   # Enable debug/info logging (disabled in release for zero overhead)
 trace_v2_io = []             # Debug V2 I/O operations (development only)
 bench-ci = []                # CI benchmarking
+dependency-monitoring = []   # Enable dependency health monitoring
 
 # Legacy compatibility
 v2_experimental = ["native-v2"]  # Alias for backwards compatibility
