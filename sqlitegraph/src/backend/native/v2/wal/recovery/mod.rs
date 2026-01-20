@@ -68,6 +68,9 @@ pub mod constants;
 // Errors module for comprehensive error handling
 pub mod errors;
 
+// Store helpers for safe transmute operations
+pub mod store_helpers;
+
 // Import dependencies
 use crate::backend::native::v2::wal::V2WALConfig;
 use std::path::{Path, PathBuf};
