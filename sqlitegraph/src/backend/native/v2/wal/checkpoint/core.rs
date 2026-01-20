@@ -107,6 +107,9 @@ pub struct CheckpointManagerState {
 
     /// Transactions committed since last checkpoint (resettable counter)
     pub transactions_since_checkpoint: u64,
+
+    /// WAL file size at last checkpoint (for size-based delta calculations)
+    pub checkpointed_wal_size: u64,
 }
 
 impl Default for CheckpointManagerState {
@@ -121,6 +124,7 @@ impl Default for CheckpointManagerState {
             failed_attempts: 0,
             checkpoint_start_time: None,
             transactions_since_checkpoint: 0,
+            checkpointed_wal_size: 0,
         }
     }
 }
