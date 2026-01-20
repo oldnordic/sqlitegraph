@@ -22,8 +22,10 @@ pub struct PersistentHeaderV2 {
     pub node_count: u64,
     /// Total number of edges in the file
     pub edge_count: u64,
-    /// Schema version
-    pub schema_version: u64,
+    /// Schema version (4 bytes in v3 format)
+    pub schema_version: u32,
+    /// Reserved field (4 bytes for future use)
+    pub reserved: u32,
     /// Offset to node data section
     pub node_data_offset: u64,
     /// Offset to edge data section (V1) or outgoing clusters begin (V2)
@@ -43,7 +45,8 @@ pub mod offset {
     pub const FLAGS: usize = 12; // bytes 12-15
     pub const NODE_COUNT: usize = 16; // bytes 16-23
     pub const EDGE_COUNT: usize = 24; // bytes 24-31
-    pub const SCHEMA_VERSION: usize = 32; // bytes 32-39
+    pub const SCHEMA_VERSION: usize = 32; // bytes 32-35 (u32, 4 bytes in v3 format)
+    pub const RESERVED: usize = 36; // bytes 36-39 (u32, 4 bytes reserved field)
     pub const NODE_DATA_OFFSET: usize = 40; // bytes 40-47
     pub const EDGE_DATA_OFFSET: usize = 48; // bytes 48-55
     pub const OUTGOING_CLUSTER_OFFSET: usize = 56; // bytes 56-63
@@ -58,7 +61,8 @@ pub mod size {
     pub const FLAGS: usize = 4;
     pub const NODE_COUNT: usize = 8;
     pub const EDGE_COUNT: usize = 8;
-    pub const SCHEMA_VERSION: usize = 8;
+    pub const SCHEMA_VERSION: usize = 4; // u32 (4 bytes) in v3 format
+    pub const RESERVED: usize = 4; // u32 (4 bytes) reserved field in v3 format
     pub const NODE_DATA_OFFSET: usize = 8;
     pub const EDGE_DATA_OFFSET: usize = 8;
     pub const OUTGOING_CLUSTER_OFFSET: usize = 8;
@@ -76,7 +80,8 @@ impl PersistentHeaderV2 {
             flags: crate::backend::native::constants::DEFAULT_FEATURE_FLAGS,
             node_count: 0,
             edge_count: 0,
-            schema_version: crate::backend::native::constants::DEFAULT_SCHEMA_VERSION,
+            schema_version: crate::backend::native::constants::DEFAULT_SCHEMA_VERSION as u32,
+            reserved: 0,
             node_data_offset: crate::backend::native::constants::HEADER_SIZE,
             edge_data_offset: crate::backend::native::constants::HEADER_SIZE,
             outgoing_cluster_offset: 0,
@@ -165,6 +170,7 @@ pub const PERSISTENT_HEADER_SIZE: usize = size::MAGIC
     + size::NODE_COUNT
     + size::EDGE_COUNT
     + size::SCHEMA_VERSION
+    + size::RESERVED
     + size::NODE_DATA_OFFSET
     + size::EDGE_DATA_OFFSET
     + size::OUTGOING_CLUSTER_OFFSET
