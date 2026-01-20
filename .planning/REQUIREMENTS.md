@@ -332,12 +332,12 @@ Requirements mapped to phases in roadmap.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACID-01 | Phase 11 | Pending |
-| ACID-02 | Phase 11 | Pending |
-| ACID-03 | Phase 11 | Pending |
-| ACID-04 | Phase 11 | Pending |
-| ACID-05 | Phase 11 | Pending |
-| ACID-06 | Phase 11 | Pending |
+| ACID-01 | Phase 11 | Complete |
+| ACID-02 | Phase 11 | Complete |
+| ACID-03 | Phase 11 | Complete |
+| ACID-04 | Phase 11 | Complete |
+| ACID-05 | Phase 11 | Complete |
+| ACID-06 | Phase 11 | Complete |
 | ACID-07 | Phase 12 | Pending |
 | ACID-08 | Phase 12 | Pending |
 | ACID-09 | Phase 12 | Pending |
