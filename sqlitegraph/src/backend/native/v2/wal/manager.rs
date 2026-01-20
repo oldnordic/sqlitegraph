@@ -462,11 +462,8 @@ impl V2WALManager {
 
         self.checkpoint_manager.force_checkpoint()?;
 
-        // Update metrics
-        {
-            let mut metrics = self.metrics.write();
-            metrics.checkpoint_count += 1;
-        }
+        // Notify WAL manager of checkpoint completion (resets counters)
+        self.on_checkpoint_completed(checkpoint_lsn)?;
 
         Ok(())
     }
@@ -489,6 +486,41 @@ impl V2WALManager {
     /// Get transaction count since last checkpoint
     pub fn get_transactions_since_checkpoint(&self) -> u64 {
         self.metrics.read().transactions_since_checkpoint
+    }
+
+    /// Notification callback when checkpoint completes
+    ///
+    /// Resets transaction counter and updates checkpointed LSN.
+    /// Called by checkpoint manager after successful checkpoint to ensure
+    /// counter synchronization between components.
+    ///
+    /// # Arguments
+    ///
+    /// * `checkpointed_lsn` - The LSN that was checkpointed
+    ///
+    /// # Returns
+    ///
+    /// * `NativeResult<()>` - Result indicating success or error
+    pub fn on_checkpoint_completed(&self, checkpointed_lsn: u64) -> NativeResult<()> {
+        // Reset transaction counter
+        {
+            let mut metrics = self.metrics.write();
+            metrics.transactions_since_checkpoint = 0;
+        }
+
+        // Update checkpointed LSN in header
+        {
+            let mut header = self.header.write();
+            header.checkpointed_lsn = checkpointed_lsn;
+        }
+
+        // Update checkpoint count
+        {
+            let mut metrics = self.metrics.write();
+            metrics.checkpoint_count += 1;
+        }
+
+        Ok(())
     }
 
     /// Check if WAL requires checkpoint
