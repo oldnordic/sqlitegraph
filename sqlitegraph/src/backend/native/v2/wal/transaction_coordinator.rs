@@ -253,6 +253,14 @@ impl V2LockManager {
 
         Ok(())
     }
+
+    /// Get the lock table for testing purposes
+    #[cfg(test)]
+    pub fn lock_table_for_test(
+        &self,
+    ) -> &Arc<RwLock<HashMap<ResourceId, (LockType, HashSet<TransactionId>)>>> {
+        &self.lock_table
+    }
 }
 
 /// Deadlock detector using wait-for graph
@@ -1698,5 +1706,79 @@ mod tests {
         detector2.add_wait_edge(2, 3);
         detector2.add_wait_edge(3, 2);
         assert!(detector2.detect_cycle(2).unwrap());
+    }
+
+    #[test]
+    fn test_concurrent_writers_different_nodes() {
+        // Verify that concurrent writers on DIFFERENT nodes can both succeed
+        let detector = Arc::new(DeadlockDetector::new());
+        let lock_manager = Arc::new(V2LockManager::new(detector));
+
+        // Acquire Exclusive lock on Node(1) for transaction 1
+        let tx1 = 1;
+        let node1 = ResourceId::Node(1);
+        assert!(lock_manager.acquire_lock(tx1, node1, LockType::Exclusive).unwrap());
+
+        // Acquire Exclusive lock on Node(2) for transaction 2 - different resource, should succeed
+        let tx2 = 2;
+        let node2 = ResourceId::Node(2);
+        assert!(lock_manager.acquire_lock(tx2, node2, LockType::Exclusive).unwrap());
+
+        // Both transactions should have their locks
+        let lock_table = lock_manager.lock_table_for_test().read();
+        assert!(lock_table.contains_key(&node1));
+        assert!(lock_table.contains_key(&node2));
+        assert!(lock_table.get(&node1).unwrap().1.contains(&tx1));
+        assert!(lock_table.get(&node2).unwrap().1.contains(&tx2));
+    }
+
+    #[test]
+    fn test_concurrent_writers_different_clusters() {
+        // Verify concurrent writers on different cluster ranges succeed
+        let detector = Arc::new(DeadlockDetector::new());
+        let lock_manager = Arc::new(V2LockManager::new(detector));
+
+        // T1 locks cluster 0
+        let tx1 = 1;
+        let cluster0 = ResourceId::Cluster(0);
+        assert!(lock_manager.acquire_lock(tx1, cluster0, LockType::Exclusive).unwrap());
+
+        // T2 locks cluster 1 - different resource, should succeed
+        let tx2 = 2;
+        let cluster1 = ResourceId::Cluster(1);
+        assert!(lock_manager.acquire_lock(tx2, cluster1, LockType::Exclusive).unwrap());
+
+        // Both transactions should have their respective cluster locks
+        let lock_table = lock_manager.lock_table_for_test().read();
+        assert!(lock_table.get(&cluster0).unwrap().1.contains(&tx1));
+        assert!(lock_table.get(&cluster1).unwrap().1.contains(&tx2));
+    }
+
+    #[test]
+    fn test_concurrent_writers_mixed_resources() {
+        // Verify concurrent writers on different resource types succeed
+        let detector = Arc::new(DeadlockDetector::new());
+        let lock_manager = Arc::new(V2LockManager::new(detector));
+
+        // T1 locks Node(1)
+        let tx1 = 1;
+        let node1 = ResourceId::Node(1);
+        assert!(lock_manager.acquire_lock(tx1, node1, LockType::Exclusive).unwrap());
+
+        // T2 locks Cluster(0) - different type, should succeed
+        let tx2 = 2;
+        let cluster0 = ResourceId::Cluster(0);
+        assert!(lock_manager.acquire_lock(tx2, cluster0, LockType::Exclusive).unwrap());
+
+        // T3 locks StringTable(1) - different type, should succeed
+        let tx3 = 3;
+        let string_table = ResourceId::StringTable(1);
+        assert!(lock_manager.acquire_lock(tx3, string_table, LockType::Exclusive).unwrap());
+
+        // All three transactions should have their locks
+        let lock_table = lock_manager.lock_table_for_test().read();
+        assert!(lock_table.get(&node1).unwrap().1.contains(&tx1));
+        assert!(lock_table.get(&cluster0).unwrap().1.contains(&tx2));
+        assert!(lock_table.get(&string_table).unwrap().1.contains(&tx3));
     }
 }
