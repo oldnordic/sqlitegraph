@@ -3,6 +3,31 @@
 This file tracks releases of the `sqlitegraph` package on PyPI. The Rust
 crate of the same name has its own changelog at the repository root.
 
+## [0.2.0] - 2026-05-15
+
+### Added
+- **`bfs(start, depth, edge_types=None, direction=None)`** — `bfs` now accepts
+  an optional `edge_types` list and `direction` (`"outgoing"` or
+  `"incoming"`). When `edge_types` is provided, traversal only follows edges
+  whose type is in the list, dispatching to the new
+  `GraphBackend::bfs_filtered`. With `edge_types=None`, behavior is unchanged
+  (outgoing traversal, all edge types).
+- **`shortest_path(start, end, edge_types=None)`** — Optional `edge_types`
+  list restricts which edge types the path can traverse, dispatching to
+  `GraphBackend::shortest_path_filtered`. Empty list returns `None`.
+- **`k_hop(start, depth, direction=None, edge_types=None)`** — The existing
+  `k_hop` now exposes `edge_types`, dispatching to
+  `GraphBackend::k_hop_filtered` when provided. Empty list returns an empty
+  result.
+- **11 new pytest tests** in `tests/test_filtered_traversal.py` covering each
+  new kwarg plus backwards-compatibility checks for the old kwargless calls.
+
+### Notes
+- Built against `sqlitegraph` (Rust) **v2.3.0**, which adds the underlying
+  `bfs_filtered` / `shortest_path_filtered` trait methods.
+- All existing tests continue to pass without modification — the new kwargs
+  are strictly additive.
+
 ## [0.1.1] - 2026-05-15
 
 ### Fixed

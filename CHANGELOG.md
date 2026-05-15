@@ -1,5 +1,20 @@
 # SQLiteGraph Changelog
 
+## [2.3.0] - 2026-05-15
+
+### Added
+- **`bfs_filtered` and `shortest_path_filtered`** — Kind-aware variants of `bfs` and `shortest_path`. Both accept `allowed_edge_types: &[&str]` to restrict traversal to specific edge types, mirroring the existing `k_hop_filtered` API. Free functions in `bfs.rs` (`bfs_neighbors_filtered`, `shortest_path_filtered`) plus `GraphBackend` trait methods and `&B` blanket forwarders.
+  - `bfs_neighbors_filtered(graph, start, max_depth, allowed_edge_types, direction)` — Outgoing or incoming traversal, restricted to allowed edge types. Empty `allowed_edge_types` returns an empty result (parity with `k_hop_filtered`).
+  - `shortest_path_filtered(graph, start, end, allowed_edge_types)` — BFS shortest path restricted to allowed edge types. Empty `allowed_edge_types` returns `None`.
+- **Internal helpers `typed_adjacency` and `build_lookup`** in `multi_hop.rs` are now `pub(crate)` so `bfs.rs` can reuse the typed-edge SQL access path that already backs `k_hop_filtered`.
+
+### Implementations
+- **`SqliteGraphBackend`** — Full implementation of `bfs_filtered` and `shortest_path_filtered` via the new `bfs.rs` free functions. Backed by the existing typed-edge SQL access (`OUTGOING_TYPED_SQL` / `INCOMING_TYPED_SQL`).
+- **`V3Backend`** — Stub implementation matching the existing `k_hop_filtered` pattern: delegates to the unfiltered methods until the V3 BFS path is wired to `edge_store.neighbors_filtered`. Tracked alongside the existing `k_hop_filtered` TODO.
+
+### Tests
+- **`bfs_tests.rs`** — 8 new integration tests covering filtered traversal: restriction to a single kind, union over multiple kinds, empty-allowlist returns empty, incoming direction, path selection through the allowed kind, exclusion when the only path uses an excluded kind, empty allowlist returns `None`, and the same-node singleton case.
+
 ## [2.2.5] - 2026-05-15
 
 ### Fixed
