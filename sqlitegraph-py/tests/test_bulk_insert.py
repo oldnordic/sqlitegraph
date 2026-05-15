@@ -2,6 +2,7 @@
 
 import pytest
 import sqlitegraph
+from sqlitegraph import InvalidArgumentError
 
 
 def _g():
@@ -50,13 +51,13 @@ def test_add_nodes_bulk_accepts_data_and_file_path():
 
 def test_add_nodes_bulk_missing_kind_raises():
     g = _g()
-    with pytest.raises(Exception):
+    with pytest.raises(InvalidArgumentError):
         g.add_nodes_bulk([{"name": "alpha"}])
 
 
 def test_add_nodes_bulk_missing_name_raises():
     g = _g()
-    with pytest.raises(Exception):
+    with pytest.raises(InvalidArgumentError):
         g.add_nodes_bulk([{"kind": "Function"}])
 
 
@@ -86,9 +87,7 @@ def test_add_edges_bulk_empty_returns_empty():
 
 def test_add_edges_bulk_accepts_data():
     g = _g()
-    a, b = g.add_nodes_bulk(
-        [{"kind": "N", "name": "a"}, {"kind": "N", "name": "b"}]
-    )
+    a, b = g.add_nodes_bulk([{"kind": "N", "name": "a"}, {"kind": "N", "name": "b"}])
     edge_ids = g.add_edges_bulk(
         [{"from_id": a, "to_id": b, "edge_type": "CALL", "data": {"line": 17}}]
     )
@@ -99,13 +98,9 @@ def test_add_edges_bulk_accepts_data():
 
 def test_add_edges_bulk_unknown_endpoint_raises():
     g = _g()
-    a, _ = g.add_nodes_bulk(
-        [{"kind": "N", "name": "a"}, {"kind": "N", "name": "b"}]
-    )
-    with pytest.raises(Exception):
-        g.add_edges_bulk(
-            [{"from_id": a, "to_id": 999_999, "edge_type": "CALL"}]
-        )
+    a, _ = g.add_nodes_bulk([{"kind": "N", "name": "a"}, {"kind": "N", "name": "b"}])
+    with pytest.raises(InvalidArgumentError):
+        g.add_edges_bulk([{"from_id": a, "to_id": 999_999, "edge_type": "CALL"}])
 
 
 def test_bulk_matches_single_observable_state():
@@ -113,15 +108,11 @@ def test_bulk_matches_single_observable_state():
     g_bulk = _g()
     g_single = _g()
 
-    items = [
-        {"kind": "N", "name": f"node_{i}"} for i in range(50)
-    ]
+    items = [{"kind": "N", "name": f"node_{i}"} for i in range(50)]
     bulk_ids = g_bulk.add_nodes_bulk(items)
-    single_ids = [
-        g_single.add_node(kind=item["kind"], name=item["name"]) for item in items
-    ]
+    single_ids = [g_single.add_node(kind=item["kind"], name=item["name"]) for item in items]
     assert len(bulk_ids) == len(single_ids)
 
     # Round-trip names match
-    for nid_bulk, nid_single in zip(bulk_ids, single_ids):
+    for nid_bulk, nid_single in zip(bulk_ids, single_ids, strict=True):
         assert g_bulk.get_node(nid_bulk)["name"] == g_single.get_node(nid_single)["name"]

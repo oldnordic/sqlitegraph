@@ -151,11 +151,11 @@ impl Graph {
         for item in items.iter() {
             let kind: String = item
                 .get_item("kind")?
-                .ok_or_else(|| PyException::new_err("each item must have a 'kind' field"))?
+                .ok_or_else(|| InvalidArgumentError::new_err("each item must have a 'kind' field"))?
                 .extract()?;
             let name: String = item
                 .get_item("name")?
-                .ok_or_else(|| PyException::new_err("each item must have a 'name' field"))?
+                .ok_or_else(|| InvalidArgumentError::new_err("each item must have a 'name' field"))?
                 .extract()?;
             let file_path: Option<String> = match item.get_item("file_path")? {
                 Some(v) if !v.is_none() => Some(v.extract()?),
@@ -293,15 +293,21 @@ impl Graph {
         for item in items.iter() {
             let from_id: i64 = item
                 .get_item("from_id")?
-                .ok_or_else(|| PyException::new_err("each item must have a 'from_id' field"))?
+                .ok_or_else(|| {
+                    InvalidArgumentError::new_err("each item must have a 'from_id' field")
+                })?
                 .extract()?;
             let to_id: i64 = item
                 .get_item("to_id")?
-                .ok_or_else(|| PyException::new_err("each item must have a 'to_id' field"))?
+                .ok_or_else(|| {
+                    InvalidArgumentError::new_err("each item must have a 'to_id' field")
+                })?
                 .extract()?;
             let edge_type: String = item
                 .get_item("edge_type")?
-                .ok_or_else(|| PyException::new_err("each item must have an 'edge_type' field"))?
+                .ok_or_else(|| {
+                    InvalidArgumentError::new_err("each item must have an 'edge_type' field")
+                })?
                 .extract()?;
             let data = match item.get_item("data")? {
                 Some(v) if !v.is_none() => {
