@@ -1237,6 +1237,33 @@ impl GraphBackend for V3Backend {
         self.k_hop(_snapshot_id, _start, _depth, _direction)
     }
 
+    fn bfs_filtered(
+        &self,
+        snapshot_id: SnapshotId,
+        start: i64,
+        depth: u32,
+        _direction: BackendDirection,
+        _allowed_edge_types: &[&str],
+    ) -> Result<Vec<i64>, SqliteGraphError> {
+        // TODO: Implement edge type filtering for V3 backend.
+        // V3's edge_store exposes `neighbors_filtered`, but typed-edge traversal
+        // is not yet wired into the BFS path. Tracked alongside `k_hop_filtered`.
+        // For now, delegate to unfiltered bfs to match the existing stub pattern.
+        self.bfs(snapshot_id, start, depth)
+    }
+
+    fn shortest_path_filtered(
+        &self,
+        snapshot_id: SnapshotId,
+        start: i64,
+        end: i64,
+        _allowed_edge_types: &[&str],
+    ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
+        // TODO: Implement edge type filtering for V3 backend.
+        // See note on `bfs_filtered`.
+        self.shortest_path(snapshot_id, start, end)
+    }
+
     fn chain_query(
         &self,
         _snapshot_id: SnapshotId,

@@ -260,22 +260,73 @@ impl Graph {
     }
 
     /// BFS traversal from a node.
-    fn bfs(&self, start: i64, depth: u32) -> PyResult<Vec<i64>> {
-        self.backend
-            .bfs(sqlitegraph::SnapshotId::current(), start, depth)
-            .map_err(into_pyerr)
+    ///
+    /// Args:
+    ///     start: Node ID to traverse from.
+    ///     depth: Maximum hop distance.
+    ///     edge_types: Optional list of edge types to traverse along. If
+    ///         ``None``, every outgoing edge is followed. If provided as an
+    ///         empty list, the result is empty.
+    ///     direction: ``"outgoing"`` (default) or ``"incoming"``. Only meaningful
+    ///         when ``edge_types`` is provided; the unfiltered path is always
+    ///         outgoing.
+    #[pyo3(signature = (start, depth, edge_types=None, direction=None))]
+    fn bfs(
+        &self,
+        start: i64,
+        depth: u32,
+        edge_types: Option<Vec<String>>,
+        direction: Option<String>,
+    ) -> PyResult<Vec<i64>> {
+        let snapshot = sqlitegraph::SnapshotId::current();
+        match edge_types {
+            None => self.backend.bfs(snapshot, start, depth).map_err(into_pyerr),
+            Some(types) => {
+                let dir = match direction.as_deref() {
+                    Some("incoming") => sqlitegraph::BackendDirection::Incoming,
+                    _ => sqlitegraph::BackendDirection::Outgoing,
+                };
+                let refs: Vec<&str> = types.iter().map(String::as_str).collect();
+                self.backend
+                    .bfs_filtered(snapshot, start, depth, dir, &refs)
+                    .map_err(into_pyerr)
+            }
+        }
     }
 
     /// K-hop neighbors.
-    #[pyo3(signature = (start, depth, direction=None))]
-    fn k_hop(&self, start: i64, depth: u32, direction: Option<String>) -> PyResult<Vec<i64>> {
+    ///
+    /// Args:
+    ///     start: Starting node ID.
+    ///     depth: Number of hops.
+    ///     direction: ``"outgoing"`` (default) or ``"incoming"``.
+    ///     edge_types: Optional list of edge types to traverse along. When
+    ///         provided as an empty list, the result is empty.
+    #[pyo3(signature = (start, depth, direction=None, edge_types=None))]
+    fn k_hop(
+        &self,
+        start: i64,
+        depth: u32,
+        direction: Option<String>,
+        edge_types: Option<Vec<String>>,
+    ) -> PyResult<Vec<i64>> {
         let dir = match direction.as_deref() {
             Some("incoming") => sqlitegraph::BackendDirection::Incoming,
             _ => sqlitegraph::BackendDirection::Outgoing,
         };
-        self.backend
-            .k_hop(sqlitegraph::SnapshotId::current(), start, depth, dir)
-            .map_err(into_pyerr)
+        let snapshot = sqlitegraph::SnapshotId::current();
+        match edge_types {
+            None => self
+                .backend
+                .k_hop(snapshot, start, depth, dir)
+                .map_err(into_pyerr),
+            Some(types) => {
+                let refs: Vec<&str> = types.iter().map(String::as_str).collect();
+                self.backend
+                    .k_hop_filtered(snapshot, start, depth, dir, &refs)
+                    .map_err(into_pyerr)
+            }
+        }
     }
 
     /// Get node degree as ``(in_degree, out_degree)``.
@@ -292,11 +343,33 @@ impl Graph {
 
     /// Shortest path between two nodes, as a list of node IDs.
     ///
+    /// Args:
+    ///     start: Source node ID.
+    ///     end: Destination node ID.
+    ///     edge_types: Optional list of edge types the path may traverse. When
+    ///         provided as an empty list, ``None`` is returned.
+    ///
     /// Returns ``None`` if no path exists.
-    fn shortest_path(&self, start: i64, end: i64) -> PyResult<Option<Vec<i64>>> {
-        self.backend
-            .shortest_path(sqlitegraph::SnapshotId::current(), start, end)
-            .map_err(into_pyerr)
+    #[pyo3(signature = (start, end, edge_types=None))]
+    fn shortest_path(
+        &self,
+        start: i64,
+        end: i64,
+        edge_types: Option<Vec<String>>,
+    ) -> PyResult<Option<Vec<i64>>> {
+        let snapshot = sqlitegraph::SnapshotId::current();
+        match edge_types {
+            None => self
+                .backend
+                .shortest_path(snapshot, start, end)
+                .map_err(into_pyerr),
+            Some(types) => {
+                let refs: Vec<&str> = types.iter().map(String::as_str).collect();
+                self.backend
+                    .shortest_path_filtered(snapshot, start, end, &refs)
+                    .map_err(into_pyerr)
+            }
+        }
     }
 
     /// Fetch an edge by ID as a dict with keys: id, from_id, to_id, edge_type, data.

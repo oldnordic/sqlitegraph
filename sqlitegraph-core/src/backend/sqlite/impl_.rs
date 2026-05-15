@@ -10,7 +10,7 @@ use crate::{
     SqliteGraphError,
     backend::sqlite::types::{BackendDirection, EdgeSpec, NeighborQuery, NodeSpec},
     backend::{PubSubEvent, SubscriptionFilter},
-    bfs::{bfs_neighbors, shortest_path},
+    bfs::{bfs_neighbors, bfs_neighbors_filtered, shortest_path, shortest_path_filtered},
     graph::{GraphEdge, GraphEntity, SqliteGraph},
     multi_hop,
     pattern::{self, PatternMatch, PatternQuery},
@@ -425,6 +425,29 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
             result.clone(),
         );
         Ok(result)
+    }
+
+    fn bfs_filtered(
+        &self,
+        snapshot_id: crate::snapshot::SnapshotId,
+        start: i64,
+        depth: u32,
+        direction: BackendDirection,
+        allowed_edge_types: &[&str],
+    ) -> Result<Vec<i64>, SqliteGraphError> {
+        validate_snapshot_for_sqlite(snapshot_id)?;
+        bfs_neighbors_filtered(&self.graph, start, depth, allowed_edge_types, direction)
+    }
+
+    fn shortest_path_filtered(
+        &self,
+        snapshot_id: crate::snapshot::SnapshotId,
+        start: i64,
+        end: i64,
+        allowed_edge_types: &[&str],
+    ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
+        validate_snapshot_for_sqlite(snapshot_id)?;
+        shortest_path_filtered(&self.graph, start, end, allowed_edge_types)
     }
 
     fn chain_query(

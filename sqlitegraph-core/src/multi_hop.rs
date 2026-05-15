@@ -140,6 +140,15 @@ fn adjacency_for(
     direction: BackendDirection,
     allowed_types: Option<&AHashSet<&str>>,
 ) -> Result<Vec<i64>, SqliteGraphError> {
+    typed_adjacency(graph, node, direction, allowed_types)
+}
+
+pub(crate) fn typed_adjacency(
+    graph: &SqliteGraph,
+    node: i64,
+    direction: BackendDirection,
+    allowed_types: Option<&AHashSet<&str>>,
+) -> Result<Vec<i64>, SqliteGraphError> {
     match allowed_types {
         Some(set) => filter_neighbors(graph, node, direction, set),
         None => match direction {
@@ -183,7 +192,7 @@ fn filter_neighbors(
     Ok(result)
 }
 
-fn build_lookup<'a>(types: &'a [&'a str]) -> AHashSet<&'a str> {
+pub(crate) fn build_lookup<'a>(types: &'a [&'a str]) -> AHashSet<&'a str> {
     let mut lookup = AHashSet::with_capacity(types.len());
     for ty in types {
         lookup.insert(*ty);

@@ -250,6 +250,21 @@ pub trait GraphBackend {
         direction: BackendDirection,
         allowed_edge_types: &[&str],
     ) -> Result<Vec<i64>, SqliteGraphError>;
+    fn bfs_filtered(
+        &self,
+        snapshot_id: SnapshotId,
+        start: i64,
+        depth: u32,
+        direction: BackendDirection,
+        allowed_edge_types: &[&str],
+    ) -> Result<Vec<i64>, SqliteGraphError>;
+    fn shortest_path_filtered(
+        &self,
+        snapshot_id: SnapshotId,
+        start: i64,
+        end: i64,
+        allowed_edge_types: &[&str],
+    ) -> Result<Option<Vec<i64>>, SqliteGraphError>;
     fn chain_query(
         &self,
         snapshot_id: SnapshotId,
@@ -604,6 +619,27 @@ where
         allowed_edge_types: &[&str],
     ) -> Result<Vec<i64>, SqliteGraphError> {
         (*self).k_hop_filtered(snapshot_id, start, depth, direction, allowed_edge_types)
+    }
+
+    fn bfs_filtered(
+        &self,
+        snapshot_id: SnapshotId,
+        start: i64,
+        depth: u32,
+        direction: BackendDirection,
+        allowed_edge_types: &[&str],
+    ) -> Result<Vec<i64>, SqliteGraphError> {
+        (*self).bfs_filtered(snapshot_id, start, depth, direction, allowed_edge_types)
+    }
+
+    fn shortest_path_filtered(
+        &self,
+        snapshot_id: SnapshotId,
+        start: i64,
+        end: i64,
+        allowed_edge_types: &[&str],
+    ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
+        (*self).shortest_path_filtered(snapshot_id, start, end, allowed_edge_types)
     }
 
     fn chain_query(
