@@ -133,6 +133,51 @@ impl Graph {
         self.backend.insert_node(spec).map_err(into_pyerr)
     }
 
+    /// Insert many nodes atomically inside a single transaction.
+    ///
+    /// Args:
+    ///     items: List of dicts, each with `kind` and `name` (required) plus
+    ///         optional `data` (dict) and `file_path` (str).
+    ///
+    /// Returns:
+    ///     List of new node IDs in the same order as ``items``.
+    ///
+    /// Raises:
+    ///     InvalidArgumentError if any item is missing required fields or
+    ///     fails validation. On error the transaction is rolled back; no
+    ///     nodes are inserted.
+    fn add_nodes_bulk(&self, items: Vec<Bound<'_, PyDict>>) -> PyResult<Vec<i64>> {
+        let mut specs = Vec::with_capacity(items.len());
+        for item in items.iter() {
+            let kind: String = item
+                .get_item("kind")?
+                .ok_or_else(|| PyException::new_err("each item must have a 'kind' field"))?
+                .extract()?;
+            let name: String = item
+                .get_item("name")?
+                .ok_or_else(|| PyException::new_err("each item must have a 'name' field"))?
+                .extract()?;
+            let file_path: Option<String> = match item.get_item("file_path")? {
+                Some(v) if !v.is_none() => Some(v.extract()?),
+                _ => None,
+            };
+            let data = match item.get_item("data")? {
+                Some(v) if !v.is_none() => {
+                    let dict = v.cast::<PyDict>()?;
+                    dict_to_json(dict)?
+                }
+                _ => serde_json::json!({}),
+            };
+            specs.push(NodeSpec {
+                kind,
+                name,
+                file_path,
+                data,
+            });
+        }
+        self.backend.insert_nodes_bulk(&specs).map_err(into_pyerr)
+    }
+
     /// Get a node by ID. Returns a dict with keys: id, kind, name, data.
     fn get_node<'py>(&self, py: Python<'py>, id: i64) -> PyResult<Bound<'py, PyDict>> {
         let entity = self
@@ -228,6 +273,51 @@ impl Graph {
             data: json_data,
         };
         self.backend.insert_edge(spec).map_err(into_pyerr)
+    }
+
+    /// Insert many edges atomically inside a single transaction.
+    ///
+    /// Args:
+    ///     items: List of dicts, each with `from_id`, `to_id`, and
+    ///         `edge_type` (all required) plus optional `data` (dict).
+    ///
+    /// Returns:
+    ///     List of new edge IDs in the same order as ``items``.
+    ///
+    /// Raises:
+    ///     InvalidArgumentError if any item is missing required fields or
+    ///     references non-existent endpoints. On error the transaction is
+    ///     rolled back; no edges are inserted.
+    fn add_edges_bulk(&self, items: Vec<Bound<'_, PyDict>>) -> PyResult<Vec<i64>> {
+        let mut specs = Vec::with_capacity(items.len());
+        for item in items.iter() {
+            let from_id: i64 = item
+                .get_item("from_id")?
+                .ok_or_else(|| PyException::new_err("each item must have a 'from_id' field"))?
+                .extract()?;
+            let to_id: i64 = item
+                .get_item("to_id")?
+                .ok_or_else(|| PyException::new_err("each item must have a 'to_id' field"))?
+                .extract()?;
+            let edge_type: String = item
+                .get_item("edge_type")?
+                .ok_or_else(|| PyException::new_err("each item must have an 'edge_type' field"))?
+                .extract()?;
+            let data = match item.get_item("data")? {
+                Some(v) if !v.is_none() => {
+                    let dict = v.cast::<PyDict>()?;
+                    dict_to_json(dict)?
+                }
+                _ => serde_json::json!({}),
+            };
+            specs.push(EdgeSpec {
+                from: from_id,
+                to: to_id,
+                edge_type,
+                data,
+            });
+        }
+        self.backend.insert_edges_bulk(&specs).map_err(into_pyerr)
     }
 
     /// Get neighbors of a node.

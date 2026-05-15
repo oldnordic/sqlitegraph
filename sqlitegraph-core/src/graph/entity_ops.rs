@@ -28,6 +28,63 @@ impl SqliteGraph {
         Ok(self.connection().last_insert_rowid())
     }
 
+    /// Insert many entities atomically inside a single transaction.
+    ///
+    /// Returns the rowids of the inserted entities in the same order as the
+    /// input. Empty input returns an empty vector without opening a
+    /// transaction. On any error, the transaction is rolled back and the
+    /// database is left untouched.
+    pub fn insert_entities_bulk(
+        &self,
+        entities: &[GraphEntity],
+    ) -> Result<Vec<i64>, SqliteGraphError> {
+        if entities.is_empty() {
+            return Ok(Vec::new());
+        }
+        for entity in entities {
+            validate_entity(entity)?;
+        }
+        let conn = self.connection();
+        conn.underlying()
+            .execute_batch("BEGIN")
+            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+
+        let mut ids = Vec::with_capacity(entities.len());
+        let insert_result: Result<(), SqliteGraphError> = (|| {
+            let mut stmt = conn
+                .prepare_cached(
+                    "INSERT INTO graph_entities(kind, name, file_path, data) VALUES(?1, ?2, ?3, ?4)",
+                )
+                .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+            for entity in entities {
+                let data = serde_json::to_string(&entity.data)
+                    .map_err(|e| SqliteGraphError::invalid_input(e.to_string()))?;
+                stmt.execute(params![
+                    entity.kind.as_str(),
+                    entity.name.as_str(),
+                    entity.file_path.as_deref(),
+                    data,
+                ])
+                .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+                ids.push(conn.last_insert_rowid());
+            }
+            Ok(())
+        })();
+
+        match insert_result {
+            Ok(()) => {
+                conn.underlying()
+                    .execute_batch("COMMIT")
+                    .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+                Ok(ids)
+            }
+            Err(err) => {
+                let _ = conn.underlying().execute_batch("ROLLBACK");
+                Err(err)
+            }
+        }
+    }
+
     pub fn get_entity(&self, id: i64) -> Result<GraphEntity, SqliteGraphError> {
         self.connection()
             .query_row(

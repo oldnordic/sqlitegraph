@@ -296,6 +296,62 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         Ok(id)
     }
 
+    fn insert_nodes_bulk(&self, nodes: &[NodeSpec]) -> Result<Vec<i64>, SqliteGraphError> {
+        let entities: Vec<GraphEntity> = nodes
+            .iter()
+            .map(|node| GraphEntity {
+                id: 0,
+                kind: node.kind.clone(),
+                name: node.name.clone(),
+                file_path: node.file_path.clone(),
+                data: node.data.clone(),
+            })
+            .collect();
+        let ids = self.graph.insert_entities_bulk(&entities)?;
+
+        // Emit per-row events after the commit, matching single-insert
+        // observer semantics.
+        let pub_guard = self.publisher.read();
+        if let Some(ref publisher) = *pub_guard {
+            for id in &ids {
+                publisher.emit(PubSubEvent::NodeChanged {
+                    node_id: *id,
+                    snapshot_id: 0,
+                });
+            }
+        }
+
+        Ok(ids)
+    }
+
+    fn insert_edges_bulk(&self, edges: &[EdgeSpec]) -> Result<Vec<i64>, SqliteGraphError> {
+        let graph_edges: Vec<GraphEdge> = edges
+            .iter()
+            .map(|edge| GraphEdge {
+                id: 0,
+                from_id: edge.from,
+                to_id: edge.to,
+                edge_type: edge.edge_type.clone(),
+                data: edge.data.clone(),
+            })
+            .collect();
+        let ids = self.graph.insert_edges_bulk(&graph_edges)?;
+
+        let pub_guard = self.publisher.read();
+        if let Some(ref publisher) = *pub_guard {
+            for (id, edge) in ids.iter().zip(edges.iter()) {
+                publisher.emit(PubSubEvent::EdgeChanged {
+                    from_node: edge.from,
+                    to_node: edge.to,
+                    edge_id: *id,
+                    snapshot_id: 0,
+                });
+            }
+        }
+
+        Ok(ids)
+    }
+
     fn delete_entity(&self, id: i64) -> Result<(), SqliteGraphError> {
         self.graph.delete_entity(id)
     }

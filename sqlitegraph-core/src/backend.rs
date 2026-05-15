@@ -117,6 +117,35 @@ pub trait GraphBackend {
     fn insert_node(&self, node: NodeSpec) -> Result<i64, SqliteGraphError>;
     fn insert_edge(&self, edge: EdgeSpec) -> Result<i64, SqliteGraphError>;
 
+    /// Insert many nodes atomically.
+    ///
+    /// Default implementation loops single-insert for each item; backends
+    /// override with a single-transaction path. Returns the new node IDs in
+    /// the same order as `nodes`. All-or-nothing: if any insert fails the
+    /// caller should assume nothing was committed.
+    fn insert_nodes_bulk(&self, nodes: &[NodeSpec]) -> Result<Vec<i64>, SqliteGraphError> {
+        let mut ids = Vec::with_capacity(nodes.len());
+        for n in nodes {
+            ids.push(self.insert_node(n.clone())?);
+        }
+        Ok(ids)
+    }
+
+    /// Insert many edges atomically.
+    ///
+    /// Default implementation loops single-insert for each item; backends
+    /// override with a single-transaction path. Returns the new edge IDs in
+    /// the same order as `edges`. All-or-nothing semantics on the bulk path;
+    /// the default fallback inherits whatever atomicity the single
+    /// `insert_edge` provides.
+    fn insert_edges_bulk(&self, edges: &[EdgeSpec]) -> Result<Vec<i64>, SqliteGraphError> {
+        let mut ids = Vec::with_capacity(edges.len());
+        for e in edges {
+            ids.push(self.insert_edge(e.clone())?);
+        }
+        Ok(ids)
+    }
+
     /// Update an existing node in place without allocating a new node ID
     ///
     /// This modifies the data associated with an existing node while preserving
@@ -563,6 +592,14 @@ where
 
     fn entity_ids(&self) -> Result<Vec<i64>, SqliteGraphError> {
         (*self).entity_ids()
+    }
+
+    fn insert_nodes_bulk(&self, nodes: &[NodeSpec]) -> Result<Vec<i64>, SqliteGraphError> {
+        (*self).insert_nodes_bulk(nodes)
+    }
+
+    fn insert_edges_bulk(&self, edges: &[EdgeSpec]) -> Result<Vec<i64>, SqliteGraphError> {
+        (*self).insert_edges_bulk(edges)
     }
 
     fn neighbors(
