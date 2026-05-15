@@ -1,5 +1,17 @@
 # SQLiteGraph Changelog
 
+## [2.4.0] - 2026-05-16
+
+### Added
+- **`SqliteGraph::insert_entities_bulk` and `insert_edges_bulk`** — Atomic transactional bulk insert with a single `prepare_cached` INSERT statement reused across rows. Empty input returns `Ok(vec![])` without opening a transaction; on any error the transaction is rolled back and the database is left unchanged. Returns rowids in input order.
+- **`GraphBackend::insert_nodes_bulk` and `insert_edges_bulk`** — Trait methods with default implementations that loop the single-insert path (so existing implementations remain source-compatible). `&B` blanket forwarders included.
+- **`SqliteGraphBackend` overrides** that dispatch to the new `SqliteGraph` bulk paths. Publisher events fire per row after commit, matching single-insert observer semantics.
+- **`bulk_insert_tests.rs`** — 8 integration tests: input-order IDs, empty input, transactional rollback on validation error, edge-bulk parity, observable state matches per-item loop.
+
+### Notes
+- The default trait impl preserves correct semantics for third-party `GraphBackend` consumers: they get a working bulk method without modifications, at single-insert performance. Override for speed.
+- V3Backend inherits the default loop impl; a future patch can route through `WriteBatchGuard` for native batched writes.
+
 ## [2.3.0] - 2026-05-15
 
 ### Added

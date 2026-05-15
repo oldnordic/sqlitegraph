@@ -3,6 +3,27 @@
 This file tracks releases of the `sqlitegraph` package on PyPI. The Rust
 crate of the same name has its own changelog at the repository root.
 
+## [0.3.0] - 2026-05-16
+
+### Added
+- **`Graph.add_nodes_bulk(items: list[dict])`** — Insert many nodes in a
+  single FFI call inside one transaction. Each dict must have `kind` and
+  `name`; `data` (dict) and `file_path` (str) are optional. Returns
+  IDs in input order.
+- **`Graph.add_edges_bulk(items: list[dict])`** — Insert many edges in a
+  single FFI call inside one transaction. Each dict must have `from_id`,
+  `to_id`, and `edge_type`; `data` (dict) is optional. Returns IDs in
+  input order.
+- **10 new pytest cases** in `tests/test_bulk_insert.py` covering both
+  bulk paths, missing-field validation, data round-trip, and parity
+  with per-item single-insert.
+
+### Notes
+- Built against `sqlitegraph` (Rust) **v2.4.0**, which adds the
+  underlying `GraphBackend::insert_nodes_bulk` and `insert_edges_bulk`
+  trait methods.
+- All existing `add_node`/`add_edge` signatures are unchanged.
+
 ## [0.2.0] - 2026-05-15
 
 ### Added
