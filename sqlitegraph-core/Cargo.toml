@@ -1,6 +1,6 @@
 [package]
 name = "sqlitegraph"
-version = "3.0.1"
+version = "3.0.2"
 edition = "2024"
 rust-version = "1.89"
 description = "Embedded graph database with full ACID transactions, HNSW vector search, dual backend support, and comprehensive graph algorithms library"

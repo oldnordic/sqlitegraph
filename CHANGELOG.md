@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-05-20
+
+### Added
+
+- **AVX-512F SIMD distance functions** — 512-bit vector path for all four
+  HNSW distance kernels (`dot_product`, `compute_norm_squared`,
+  `cosine_similarity`, `euclidean_distance`). Runtime auto-detection picks
+  the highest available SIMD level (AVX-512F → AVX2 → Scalar) and caches
+  the result in a `OnceLock`. The cosine kernel fuses dot product and both
+  squared norms into a single 16-wide loop with three independent FMA
+  accumulators, eliminating three separate passes over the data.
+
+### Changed
+
+- **`SimdLevel` enum replaces `HAS_AVX2: OnceLock<bool>`** — the boolean
+  flag is replaced by a `SimdLevel { Avx512, Avx2, Scalar }` enum with a
+  public `simd_level()` detector. All four dispatch sites now use a single
+  match instead of scattered if/else blocks.
+- **Correctness claim updated** — module documentation now states
+  "near-identical" (≤ 1e-5 relative error) instead of "bit-identical",
+  reflecting the different horizontal reduction order in SIMD paths.
+
+### Performance
+
+- **~2x over AVX2** (median across 20 measured configurations on Ryzen
+  7800X3D): dot_product 1.2–1.5x, euclidean 2.0–3.4x, cosine 2.1–3.2x,
+  norm_squared 1.4–1.8x.
+- **~13x over scalar** (median), with cosine at 1536 dimensions reaching
+  30x.
+
 ## [3.0.1] - 2026-05-18
 
 ### Fixed
