@@ -504,6 +504,13 @@ impl HnswIndex {
         Ok(())
     }
 
+    /// Delete a vector by id.
+    ///
+    /// Invariant: `entry_points` stays non-empty while `vector_count > 0`. If
+    /// the deleted vector was the current entry point, a replacement is
+    /// re-elected deterministically (see [`Self::elect_entry_point`]) so the
+    /// index remains searchable; deleting the last vector leaves the index
+    /// empty with no entry point.
     pub fn delete_vector(&mut self, id: u64) -> Result<(), crate::hnsw::errors::HnswError> {
         let node_id = if let Some(manager) = &self.multi_layer_manager {
             manager.get_local_id(id, 0).unwrap_or(id)
@@ -511,13 +518,55 @@ impl HnswIndex {
             id - 1
         };
         self.storage.delete_vector(id)?;
+        // Evict from the in-memory vector cache too — `search` reads vectors
+        // from it (`load_vectors_as_local_map`), so a stale entry would let a
+        // deleted vector still be scored and returned.
+        self.vector_cache.remove(&id);
         for layer in &mut self.layers {
             layer.remove_node(node_id);
         }
         self.entry_points.retain(|&ep| ep != id);
         self.vector_count = self.vector_count.saturating_sub(1);
+        // If deleting `id` emptied the entry-point set while vectors remain,
+        // re-elect one — otherwise `search` rejects a non-empty index with
+        // `IndexNotInitialized`. Deleting the last vector intentionally leaves
+        // the set empty (`vector_count == 0`).
+        if self.entry_points.is_empty() && self.vector_count > 0 {
+            // `extend` pushes 0 or 1 entry point (Option is an iterator).
+            self.entry_points.extend(self.elect_entry_point());
+        }
         self.persist_topology()?;
         Ok(())
+    }
+
+    /// Deterministically choose a new entry point from the surviving vectors:
+    /// scan from the highest non-empty layer down, and within the first layer
+    /// that holds a *living* node pick the lowest global id. The `min` makes
+    /// the choice stable across identical index states (required: deterministic
+    /// ordering). `search` skips empty upper layers, so an entry point at the
+    /// highest non-empty layer keeps the greedy descent valid.
+    ///
+    /// `remove_node` clears a deleted node's connections but leaves its key in
+    /// the layer map (a tombstone); the live set of record is `vector_cache`
+    /// (kept in sync — see `delete_vector`'s eviction). So only candidates
+    /// still present in `vector_cache` are eligible, which skips tombstones.
+    /// Returns `None` only when no living vector remains.
+    fn elect_entry_point(&self) -> Option<u64> {
+        for level in (0..self.layers.len()).rev() {
+            let mut best: Option<u64> = None;
+            for (&local_id, _) in self.layers[level].nodes_iter() {
+                let Ok(global) = self.get_global_id_for_layer(level, local_id) else {
+                    continue;
+                };
+                if self.vector_cache.contains_key(&global) {
+                    best = Some(best.map_or(global, |b| b.min(global)));
+                }
+            }
+            if best.is_some() {
+                return best;
+            }
+        }
+        None
     }
 
     pub fn persist_topology(&mut self) -> Result<(), crate::hnsw::errors::HnswError> {

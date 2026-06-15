@@ -339,6 +339,151 @@ mod tests {
     }
 
     #[test]
+    fn delete_entry_point_re_elects_and_search_survives() {
+        // Regression: deleting the current HNSW entry point must re-elect a new
+        // one so a non-empty index stays searchable (was IndexNotInitialized).
+        let mut hnsw = HnswIndex::new(
+            "test_delete_entry_point",
+            HnswConfigBuilder::new()
+                .dimension(2)
+                .m_connections(4)
+                .distance_metric(DistanceMetric::Euclidean)
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+        for v in [
+            [1.0f32, 0.0],
+            [0.0, 1.0],
+            [-1.0, 0.0],
+            [0.0, -1.0],
+            [0.7, 0.7],
+        ] {
+            hnsw.insert_vector(&v, None).unwrap();
+        }
+        let ep = *hnsw
+            .entry_points
+            .last()
+            .expect("a non-empty index has an entry point");
+        hnsw.delete_vector(ep).unwrap();
+        let results = hnsw.search(&[0.95, 0.05], 3).unwrap();
+        assert!(
+            !results.is_empty(),
+            "search must still find survivors after deleting the entry point"
+        );
+        assert!(
+            results.iter().all(|(id, _)| *id != ep),
+            "the deleted entry point must not be returned"
+        );
+        assert!(
+            !hnsw.entry_points.is_empty(),
+            "a non-empty index must keep an entry point"
+        );
+    }
+
+    #[test]
+    fn delete_non_entry_point_leaves_entry_points_unchanged() {
+        let mut hnsw = HnswIndex::new(
+            "test_delete_non_entry_point",
+            HnswConfigBuilder::new()
+                .dimension(2)
+                .m_connections(4)
+                .distance_metric(DistanceMetric::Euclidean)
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+        let mut ids = Vec::new();
+        for v in [
+            [1.0f32, 0.0],
+            [0.0, 1.0],
+            [-1.0, 0.0],
+            [0.0, -1.0],
+            [0.7, 0.7],
+        ] {
+            ids.push(hnsw.insert_vector(&v, None).unwrap());
+        }
+        let before = hnsw.entry_points.clone();
+        let victim = *ids
+            .iter()
+            .find(|&&id| !before.contains(&id))
+            .expect("a non-entry-point vector exists");
+        hnsw.delete_vector(victim).unwrap();
+        assert_eq!(
+            hnsw.entry_points, before,
+            "deleting a non-entry-point must not touch entry_points"
+        );
+        let results = hnsw.search(&[1.0, 0.0], 3).unwrap();
+        assert!(
+            results.iter().all(|(id, _)| *id != victim),
+            "the deleted vector must not be returned"
+        );
+    }
+
+    #[test]
+    fn delete_last_vector_leaves_index_empty_without_spurious_entry_point() {
+        let mut hnsw = HnswIndex::new(
+            "test_delete_to_empty",
+            HnswConfigBuilder::new()
+                .dimension(2)
+                .m_connections(4)
+                .distance_metric(DistanceMetric::Euclidean)
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+        let id = hnsw.insert_vector(&[1.0, 0.0], None).unwrap();
+        hnsw.delete_vector(id).unwrap();
+        assert!(
+            hnsw.entry_points.is_empty(),
+            "an empty index must have no entry point (no spurious re-election)"
+        );
+        let results = hnsw.search(&[1.0, 0.0], 1).unwrap();
+        assert!(
+            results.is_empty(),
+            "search on an empty index returns nothing"
+        );
+    }
+
+    #[test]
+    fn re_elected_entry_point_persists_across_reopen() {
+        use std::fs;
+        let dir = "/tmp/test_hnsw_ep_reelect_persist";
+        let _ = fs::remove_dir_all(dir);
+        fs::create_dir_all(dir).unwrap();
+        let db = format!("{}/t.db", dir);
+        {
+            let graph = SqliteGraph::open(&db).unwrap();
+            let cfg = HnswConfigBuilder::new()
+                .dimension(2)
+                .m_connections(4)
+                .distance_metric(DistanceMetric::Euclidean)
+                .build()
+                .unwrap();
+            drop(graph.hnsw_index_persistent("p", cfg).unwrap());
+            graph
+                .get_hnsw_index_mut("p", |idx| {
+                    for v in [[1.0f32, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]] {
+                        idx.insert_vector(&v, None).unwrap();
+                    }
+                    let ep = *idx.entry_points.last().unwrap();
+                    idx.delete_vector(ep).unwrap();
+                })
+                .unwrap();
+        }
+        // Reopen → topology (incl. the re-elected entry point) restored.
+        let graph = SqliteGraph::open(&db).unwrap();
+        let results = graph
+            .get_hnsw_index_ref("p", |idx| idx.search(&[0.95, 0.05], 3).unwrap())
+            .unwrap();
+        assert!(
+            !results.is_empty(),
+            "search works after reopen — re-elected entry point round-tripped"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn test_metadata_persistence() {
         use std::fs;
 
