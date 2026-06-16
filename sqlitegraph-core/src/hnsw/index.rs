@@ -484,6 +484,57 @@ mod tests {
     }
 
     #[test]
+    fn elect_entry_point_falls_back_to_storage_when_cache_empty() {
+        // PR #13 review edge-case (Option 1): in the memory-constrained restore
+        // mode the topology is rebuilt but `vector_cache` stays EMPTY (it is
+        // lazy-loaded). Deleting the entry point in that state must still
+        // re-elect — from storage, since the cache can't serve as the live-set
+        // oracle — otherwise `search` returns IndexNotInitialized again.
+        let mut hnsw = HnswIndex::new(
+            "test_elect_storage_fallback",
+            HnswConfigBuilder::new()
+                .dimension(2)
+                .m_connections(4)
+                .distance_metric(DistanceMetric::Euclidean)
+                .build()
+                .unwrap(),
+        )
+        .unwrap();
+        for v in [
+            [1.0f32, 0.0],
+            [0.0, 1.0],
+            [-1.0, 0.0],
+            [0.0, -1.0],
+            [0.7, 0.7],
+        ] {
+            hnsw.insert_vector(&v, None).unwrap();
+        }
+        // Simulate the constrained restore: drop the in-memory cache so the
+        // live set must come from storage (which still holds every vector).
+        hnsw.vector_cache.clear();
+        let ep = *hnsw
+            .entry_points
+            .last()
+            .expect("a non-empty index has an entry point");
+        hnsw.delete_vector(ep).unwrap();
+        // RED before the fix: election saw an empty cache → None → the
+        // entry-point set stayed empty.
+        assert!(
+            !hnsw.entry_points.is_empty(),
+            "a non-empty index must keep an entry point even when the cache is empty"
+        );
+        let results = hnsw.search(&[0.95, 0.05], 3).unwrap();
+        assert!(
+            !results.is_empty(),
+            "search must find survivors after a cache-empty entry-point delete"
+        );
+        assert!(
+            results.iter().all(|(id, _)| *id != ep),
+            "the deleted entry point must not be returned"
+        );
+    }
+
+    #[test]
     fn test_metadata_persistence() {
         use std::fs;
 
