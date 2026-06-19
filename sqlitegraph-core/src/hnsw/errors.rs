@@ -112,6 +112,8 @@ impl std::error::Error for HnswConfigError {}
 /// * `VectorNotFound` - No vector found with specified ID
 /// * `IndexNotInitialized` - Operation attempted on uninitialized index
 /// * `IndexCorrupted` - Index structure is corrupted or invalid
+/// * `ZeroMagnitudeVector` - Vector has zero magnitude or non-finite values;
+///   cosine similarity is undefined
 ///
 /// # Examples
 ///
@@ -168,6 +170,16 @@ pub enum HnswIndexError {
 
     /// Attempt to connect node to itself
     SelfConnection(u64),
+
+    /// Vector has zero magnitude or contains non-finite values (NaN/Inf)
+    ///
+    /// Cosine similarity is undefined for such vectors. The insert boundary
+    /// rejects them with this typed error instead of letting them reach the
+    /// SIMD distance kernel, which panics ("First vector has zero magnitude",
+    /// see `simd.rs::cosine_similarity` `# Panics`). A panic is not catchable
+    /// by caller `Result` handling, so one degenerate vector would abort a
+    /// whole batch; returning `Err` lets callers skip the offending vector.
+    ZeroMagnitudeVector,
 }
 
 /// Vector storage-related errors
@@ -287,6 +299,12 @@ impl fmt::Display for HnswIndexError {
             }
             HnswIndexError::SelfConnection(id) => {
                 write!(f, "Attempt to connect node {} to itself", id)
+            }
+            HnswIndexError::ZeroMagnitudeVector => {
+                write!(
+                    f,
+                    "Vector has zero magnitude or non-finite values; cosine similarity is undefined"
+                )
             }
         }
     }

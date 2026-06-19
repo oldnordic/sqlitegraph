@@ -355,6 +355,16 @@ impl HnswIndex {
             }));
         }
 
+        // Reject degenerate vectors before they reach the SIMD kernel. This path
+        // re-inserts an already-stored vector by id (e.g. on index reload), so
+        // the guard is defense-in-depth for legacy/third-party data. See
+        // `distance_metric::validate_vector_for_metric` (Cosine-only).
+        crate::hnsw::distance_metric::validate_vector_for_metric(
+            self.config.distance_metric,
+            vector,
+        )
+        .map_err(HnswError::Index)?;
+
         // Store the vector in memory (not to database)
         self.storage.store_vector_with_id(vector_id, vector.to_vec(), metadata)?;
 

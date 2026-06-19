@@ -180,6 +180,15 @@ impl HnswIndex {
             }));
         }
 
+        // Reject degenerate vectors before they reach the SIMD distance kernel.
+        // See `distance_metric::validate_vector_for_metric` for the full
+        // rationale (Cosine-only: the origin vector is valid for other metrics).
+        crate::hnsw::distance_metric::validate_vector_for_metric(
+            self.config.distance_metric,
+            vector,
+        )
+        .map_err(HnswError::Index)?;
+
         // Store the vector
         let vector_id = self.storage.store_vector(vector, metadata)?;
 
@@ -270,6 +279,15 @@ impl HnswIndex {
                     actual: vec.len(),
                 }));
             }
+            // This batch path inlines storage+insert (it does not call
+            // `insert_vector`), so it needs its own degenerate-vector guard.
+            // Validation runs before `begin_bulk_insert`, so nothing is
+            // partially stored when a bad vector is found.
+            crate::hnsw::distance_metric::validate_vector_for_metric(
+                self.config.distance_metric,
+                vec,
+            )
+            .map_err(HnswError::Index)?;
         }
 
         let mut ids = Vec::with_capacity(vectors.len());
@@ -359,6 +377,14 @@ impl HnswIndex {
                 actual: query.len(),
             }));
         }
+
+        // Reject degenerate query vectors before they reach the SIMD kernel.
+        // See `distance_metric::validate_vector_for_metric` (Cosine-only).
+        crate::hnsw::distance_metric::validate_vector_for_metric(
+            self.config.distance_metric,
+            query,
+        )
+        .map_err(HnswError::Index)?;
 
         if self.vector_count == 0 {
             return Ok(Vec::new());
@@ -532,6 +558,99 @@ mod index_api_tests {
             "search should reject empty query vector, got {:?}",
             result
         );
+    }
+
+    #[test]
+    fn test_insert_vector_rejects_zero_magnitude() {
+        // Regression: a zero-magnitude vector used to reach the SIMD cosine
+        // kernel and panic ("First vector has zero magnitude"), which is not
+        // catchable by caller `Result` handling and aborted the whole batch.
+        // It must now return a typed error instead.
+        let config = HnswConfig::new(3, 16, 200, DistanceMetric::Cosine);
+        let mut index = HnswIndex::new("test_zero_mag", config).unwrap();
+
+        let err = index.insert_vector(&[0.0, 0.0, 0.0], None).unwrap_err();
+        assert_eq!(
+            err,
+            crate::hnsw::errors::HnswError::Index(
+                crate::hnsw::errors::HnswIndexError::ZeroMagnitudeVector
+            )
+        );
+    }
+
+    #[test]
+    fn test_insert_vector_rejects_non_finite_values() {
+        // NaN / Inf make the norm non-finite and are rejected by the same
+        // guard (they would otherwise either panic or produce a NaN result).
+        let config = HnswConfig::new(3, 16, 200, DistanceMetric::Cosine);
+        let mut index = HnswIndex::new("test_non_finite", config).unwrap();
+
+        for bad in [
+            [f32::NAN, 1.0, 0.0],
+            [1.0, f32::INFINITY, 0.0],
+            [f32::NEG_INFINITY, 0.0, 0.0],
+        ] {
+            let err = index.insert_vector(&bad, None).unwrap_err();
+            assert_eq!(
+                err,
+                crate::hnsw::errors::HnswError::Index(
+                    crate::hnsw::errors::HnswIndexError::ZeroMagnitudeVector
+                ),
+                "non-finite vector should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn test_batch_insert_rejects_zero_magnitude() {
+        // The batch path inlines storage+insert, so it has its own guard.
+        // Validation runs before any mutation, so nothing is partially stored.
+        let config = HnswConfig::new(3, 16, 200, DistanceMetric::Cosine);
+        let mut index = HnswIndex::new("test_batch_zero", config).unwrap();
+
+        let batch: Vec<(Vec<f32>, Option<serde_json::Value>)> = vec![
+            (vec![1.0, 0.0, 0.0], None),
+            (vec![0.0, 0.0, 0.0], None),
+        ];
+        let err = index.batch_insert_vectors(&batch).unwrap_err();
+        assert_eq!(
+            err,
+            crate::hnsw::errors::HnswError::Index(
+                crate::hnsw::errors::HnswIndexError::ZeroMagnitudeVector
+            )
+        );
+    }
+
+    #[test]
+    fn test_search_rejects_zero_magnitude_query() {
+        let config = HnswConfig::new(3, 16, 200, DistanceMetric::Cosine);
+        let mut index = HnswIndex::new("test_search_zero", config).unwrap();
+        index.insert_vector(&[1.0, 0.0, 0.0], None).unwrap();
+
+        let err = index.search(&[0.0, 0.0, 0.0], 1).unwrap_err();
+        assert_eq!(
+            err,
+            crate::hnsw::errors::HnswError::Index(
+                crate::hnsw::errors::HnswIndexError::ZeroMagnitudeVector
+            )
+        );
+    }
+
+    #[test]
+    fn test_non_cosine_metrics_accept_zero_magnitude() {
+        // The zero-magnitude guard is Cosine-only: Euclidean/Manhattan/DotProduct
+        // never divide by the norm, so the origin vector is valid for them.
+        for metric in [
+            DistanceMetric::Euclidean,
+            DistanceMetric::Manhattan,
+            DistanceMetric::DotProduct,
+        ] {
+            let config = HnswConfig::new(3, 16, 200, metric);
+            let mut index = HnswIndex::new("test_non_cosine_zero", config).unwrap();
+            index
+                .insert_vector(&[0.0, 0.0, 0.0], None)
+                .expect("non-cosine metric should accept a zero-magnitude vector");
+        }
     }
 
     #[test]

@@ -150,6 +150,32 @@ pub use crate::hnsw::distance_functions::{
     cosine_similarity, dot_product, euclidean_distance, manhattan_distance,
 };
 
+/// Reject a vector the distance kernel cannot handle for `metric`.
+///
+/// Cosine similarity divides by each vector's L2 norm, so it is undefined for a
+/// zero-magnitude vector or any vector containing a non-finite (NaN/Inf)
+/// component. The SIMD cosine kernel panics on such inputs ("First vector has
+/// zero magnitude", see `simd::cosine_similarity` `# Panics`); a panic is not
+/// catchable by caller `Result` handling, so one degenerate vector used to abort
+/// an entire batch insert. This validates the vector at the public API boundary
+/// instead, returning a typed error the caller can skip.
+///
+/// The other metrics (`Euclidean` / `Manhattan` / `DotProduct`) never divide by
+/// the norm, so the origin vector is valid for them and this returns `Ok`.
+pub(crate) fn validate_vector_for_metric(
+    metric: DistanceMetric,
+    vector: &[f32],
+) -> Result<(), crate::hnsw::errors::HnswIndexError> {
+    if !matches!(metric, DistanceMetric::Cosine) {
+        return Ok(());
+    }
+    let norm: f32 = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
+    if !norm.is_finite() || norm <= f32::EPSILON {
+        return Err(crate::hnsw::errors::HnswIndexError::ZeroMagnitudeVector);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,5 +247,69 @@ mod tests {
         assert_eq!(euclidean_dist, 0.0);
         assert_eq!(manhattan_dist, 0.0);
         assert_eq!(dot_dist, -1.0);
+    }
+
+    // --- validate_vector_for_metric -------------------------------------
+    //
+    // Focused unit coverage of the degenerate-vector guard. The integration
+    // behavior (guard fires at the HNSW insert/search boundary) is covered in
+    // index_api_tests; these tests pin the validation logic itself so a change
+    // here cannot silently pass the boundary tests.
+
+    #[test]
+    fn test_validate_cosine_rejects_zero_vector() {
+        let zero = [0.0, 0.0, 0.0];
+        assert_eq!(
+            validate_vector_for_metric(DistanceMetric::Cosine, &zero),
+            Err(crate::hnsw::errors::HnswIndexError::ZeroMagnitudeVector)
+        );
+    }
+
+    #[test]
+    fn test_validate_cosine_rejects_non_finite() {
+        // NaN / Inf make the norm non-finite and are rejected by the same check.
+        for bad in [
+            [f32::NAN, 1.0, 0.0],
+            [1.0, f32::INFINITY, 0.0],
+            [f32::NEG_INFINITY, 0.0, 0.0],
+        ] {
+            assert_eq!(
+                validate_vector_for_metric(DistanceMetric::Cosine, &bad),
+                Err(crate::hnsw::errors::HnswIndexError::ZeroMagnitudeVector),
+                "cosine must reject {bad:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_validate_cosine_accepts_unit_and_tiny_vectors() {
+        // A valid unit vector is accepted.
+        assert!(validate_vector_for_metric(DistanceMetric::Cosine, &[1.0, 0.0, 0.0]).is_ok());
+        // A sub-EPSILON-magnitude vector is rejected (norm <= f32::EPSILON).
+        let tiny = [f32::EPSILON, 0.0, 0.0]; // norm == EPSILON, not strictly >
+        assert_eq!(
+            validate_vector_for_metric(DistanceMetric::Cosine, &tiny),
+            Err(crate::hnsw::errors::HnswIndexError::ZeroMagnitudeVector)
+        );
+        // Just-above-threshold is accepted.
+        let ok = [2.0 * f32::EPSILON, 0.0, 0.0];
+        assert!(validate_vector_for_metric(DistanceMetric::Cosine, &ok).is_ok());
+    }
+
+    #[test]
+    fn test_validate_non_cosine_accepts_origin() {
+        // Euclidean / Manhattan / DotProduct never divide by the norm, so the
+        // origin vector is valid for them.
+        let zero = [0.0, 0.0, 0.0];
+        for metric in [
+            DistanceMetric::Euclidean,
+            DistanceMetric::Manhattan,
+            DistanceMetric::DotProduct,
+        ] {
+            assert!(
+                validate_vector_for_metric(metric, &zero).is_ok(),
+                "{metric:?} should accept a zero-magnitude vector"
+            );
+        }
     }
 }
