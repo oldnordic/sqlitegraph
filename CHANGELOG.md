@@ -1,5 +1,51 @@
 # SQLiteGraph Changelog
 
+## [3.3.0] - 2026-06-19
+
+The 3.3 release adds a temporal version chain (MVCC history) with
+persistent-homology topology analysis, fixes a monotonically-growing
+adjacency cache, wires 13 silently-broken criterion benchmarks, and guards the
+HNSW cosine kernel against zero-magnitude vectors.
+
+### Added — Temporal version chain (MVCC history)
+
+- `SqliteGraph::checkpoint()` captures the current adjacency state as a
+  numbered version in a bounded history chain (default capacity: 64 versions).
+  `snapshot_as_of(n)` retrieves an immutable `VersionedSnapshot` by version
+  number via binary search; `as_of_at(timestamp)` resolves by wall-clock time.
+- `neighbors()` and `bfs()` with `SnapshotId::from_lsn(n)` now serve adjacency
+  from the retained version N instead of erroring. Other operations reject
+  historical snapshots by design (the version chain stores untyped adjacency
+  only).
+- **Temporal topology module (`sqlitegraph::temporal`)** — persistent homology
+  over the version chain:
+  - `temporal_persistence_sweep()` — SCC landscape + β₁ (cyclomatic number) +
+    non-trivial SCC count per version.
+  - `scc_lineage_barcode()` — exact H₀ component barcode via Jaccard
+    membership-identity matching (replaces the deprecated LIFO approximation).
+  - `cycle_scc_barcode()` — circular-dependency lifecycle barcode (non-trivial
+    SCC tracking).
+  - `cycle_rank_snapshot()` — β₁ = E − V + W.
+- 30 temporal tests; `as_of` latency 24.7 ns at 1000 versions.
+
+### Fixed
+
+- **HNSW cosine kernel guards zero-magnitude / non-finite vectors** —
+  `ZeroMagnitudeVector` variant; guard from all four public entry points.
+- **AdjacencyCache bounded (was unbounded)** — `LruCache` cap 8192; values as
+  `Arc<Vec>`; hit cost degree 1000: ~131 ns → ~13 ns (–90 %).
+- **13 criterion benchmarks silently broken** — auto-discovered without
+  `harness = false`; now explicitly wired.
+
+## [3.2.5] - 2026-06-07
+
+### Fixed
+- **`insert_into_layer` no longer clones all vectors per insertion** —
+  `search_layer_fn` accepts a lookup closure instead of a `HashMap` of all
+  vectors. Eliminates ~2.3M heap allocations and ~7GB of memory copies per
+  batch of 16 vectors at 145K index size. Batch insert into 50K index improved
+  from ~2.8 to ~160 vectors/sec.
+
 ## [3.2.4] - 2026-06-07
 
 ### Fixed

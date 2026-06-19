@@ -224,6 +224,59 @@ pub trait VectorStorage {
 - `V3VectorStorage` - KV store storage (new)
 - `InMemoryVectorStorage` - RAM only
 
+### 4. Temporal Topology (MVCC Version Chain)
+
+**Location:** `src/temporal.rs` (+ version-chain storage in `src/mvcc.rs`)
+
+The temporal module analyses how graph topology evolves across a sequence of
+checkpointed versions, producing a research-grade picture of topological
+evolution for code graphs (call-graph circular-dependency lifecycle, component
+merges/splits, structural-redundancy growth). It is the discrete analogue of
+persistent homology, with **version number as the filtration parameter**.
+
+#### Version Chain Storage
+
+Retained versions live in `SnapshotManager` as a **bounded `VecDeque`**
+(`history`), capped at `max_history` (default 64). The chain is empty by default
+— zero overhead until `checkpoint()` is called. When full, the oldest version is
+evicted FIFO. Each entry is a `VersionedSnapshot { version: u64, created_at:
+SystemTime, state: Arc<SnapshotState> }`. The live state is held separately in an
+`ArcSwap` for lock-free current reads; the history deque is guarded by a
+short-lived `Mutex` (writes are rare relative to `as_of` reads, which do a
+read-lock + binary search). `SqliteGraph` exposes this as `checkpoint()` /
+`snapshot_as_of(v)` / `snapshot_versions()`.
+
+#### Lineage Matching (Jaccard Overlap)
+
+Across adjacent versions, components are linked by **greedy Jaccard-overlap
+matching**. For every pair of SCCs at version *i* and *i*+1 the similarity
+`|intersection| / |union|` is computed; pairs are then assigned
+highest-overlap-first, with each SCC matched to at most one predecessor or
+successor. A component is *born* when it shares no members with any predecessor,
+and *dies* when no successor shares its members. This yields exact
+`(birth_version, death_version)` bars — there is no component-count-delta
+approximation (the old `compute_temporal_barcode` used a LIFO count-delta policy
+and is deprecated in favour of this identity-based matching).
+
+#### The Three Topology Layers
+
+| Layer | Function | Invariant |
+|-------|----------|-----------|
+| **Exact H₀** — connected-component lifecycle | `scc_lineage_barcode` | Tracks *all* SCCs by membership identity; the discrete analogue of 0-dimensional persistent homology |
+| **β₁ trajectory** — cycle-rank | `cycle_rank_snapshot` | Cyclomatic number β₁ = E − V + W (independent undirected cycles) — a scalar per version, not a barcode |
+| **Circular-dependency barcode** | `cycle_scc_barcode` | Tracks *non-trivial* SCCs (size ≥ 2); each such SCC contains ≥ 1 directed cycle, so for a call graph this is the circular-dependency lifecycle |
+
+`temporal_persistence_sweep` is the scalar companion: one
+`TemporalPersistencePoint` per version carrying β₀, β₁, largest-SCC size, and
+non-trivial SCC counts.
+
+**What it is NOT:** none of these is classical multi-dimensional H₁ persistent
+homology with per-cycle-generator tracking. β₁ counts *undirected* cycles;
+`cycle_scc_barcode` detects cycle *presence* via SCCs and tracks
+cycle-containing components across versions — the practically useful signal for
+code-graph evolution, but a different invariant than true H₁ (which would
+require a per-version cycle basis plus generator matching across versions).
+
 ---
 
 ## Backend Architecture

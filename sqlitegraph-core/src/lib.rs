@@ -298,7 +298,7 @@ pub use progress::{ConsoleProgress, NoProgress, ProgressCallback, ProgressState}
 pub use introspection::{EdgeCount, GraphIntrospection, IntrospectError};
 
 // Internal modules - not part of public API
-pub mod algo; // Public for tests
+pub mod algo; // Public graph-algorithm library API (26 modules, ~530 tested fns)
 mod api_ergonomics;
 pub mod backend_selector;
 pub mod bfs; // Public for tests

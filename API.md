@@ -28,6 +28,7 @@ This document provides a quick overview of the current public API surface.
 - [HNSW Vector Search API](#hnsw-vector-search-api)
 - [KV Store API](#kv-store-api)
 - [Pub/Sub API](#pubsub-api)
+- [Temporal Topology API](#temporal-topology-api)
 
 ---
 
@@ -560,6 +561,136 @@ pub enum PubSubEvent {
     SnapshotCommitted { snapshot_id: u64 },
 }
 ```
+
+---
+
+## Temporal Topology API
+
+The `sqlitegraph::temporal` module analyses how graph topology evolves across the
+MVCC version chain. It sweeps over retained [`VersionedSnapshot`]s and produces
+three complementary topological views: an exact H₀ connected-component barcode,
+a β₁ (cycle-rank) trajectory, and a circular-dependency lifecycle barcode.
+
+> **Availability:** These functions operate purely on in-memory `SnapshotState`
+> adjacency — there is no SQLite I/O during analysis. They require that versions
+> have been retained via [`SqliteGraph::checkpoint`]; the chain is empty by
+> default, so with no checkpoints the analysis is a no-op.
+
+### Version Chain (`SqliteGraph`)
+
+Temporal tracking is opt-in. By default nothing is retained; call `checkpoint()`
+to capture numbered versions into the bounded history chain (default capacity
+64, configurable via `SnapshotManager::with_max_history`). When the chain is
+full, the oldest version is evicted (FIFO).
+
+```rust
+use sqlitegraph::SqliteGraph;
+
+let graph = SqliteGraph::open("data.db")?;
+
+// Capture the current live state as a numbered version.
+let v1 = graph.checkpoint(); // warm the adjacency cache first for accuracy
+// ... mutate the graph ...
+let v2 = graph.checkpoint();
+
+// Retrieve a historical snapshot by version number.
+let snapshot = graph.snapshot_as_of(v1)?;
+
+// All retained versions (oldest first) — feed this slice to the temporal
+// analysis functions.
+let versions = graph.snapshot_versions();
+
+// Chain metadata
+println!(
+    "retained: {} (oldest {:?}, newest {:?})",
+    graph.snapshot_version_count(),
+    graph.snapshot_oldest_version(),
+    graph.snapshot_newest_version(),
+);
+```
+
+### Free Functions
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `temporal_persistence_sweep` | `(versions: &[VersionedSnapshot]) -> Vec<TemporalPersistencePoint>` | One measurement point per version: β₀ (component count), largest SCC size, β₁ cycle-rank, and non-trivial SCC counts |
+| `scc_lineage_barcode` | `(versions: &[VersionedSnapshot]) -> Vec<LineageBarcode>` | Exact H₀ component barcode via stable membership-identity (Jaccard) matching. Replaces the deprecated `compute_temporal_barcode` |
+| `cycle_scc_barcode` | `(versions: &[VersionedSnapshot]) -> Vec<LineageBarcode>` | Circular-dependency lifecycle: tracks non-trivial SCCs (size ≥ 2) that each contain at least one directed cycle |
+| `cycle_rank_snapshot` | `(state: &SnapshotState) -> usize` | Cyclomatic number β₁ = E − V + W (independent undirected cycles) for a single snapshot |
+| `compute_temporal_barcode` *(deprecated)* | `(points: &[TemporalPersistencePoint]) -> Vec<TemporalBarcode>` | LIFO count-delta approximation; unreliable when components merge/split simultaneously. Use `scc_lineage_barcode` instead |
+
+```rust
+use sqlitegraph::temporal;
+
+let versions = graph.snapshot_versions();
+
+// 1. Scalar trajectory: β₀, β₁, and SCC sizes at each version.
+let sweep = temporal::temporal_persistence_sweep(&versions);
+
+// 2. Exact H₀ barcode — when connected components are born and die.
+let h0 = temporal::scc_lineage_barcode(&versions);
+
+// 3. Circular-dependency barcode — when cycles form and dissolve.
+let cycles = temporal::cycle_scc_barcode(&versions);
+
+// β₁ for the most recent retained snapshot alone.
+let latest = graph.snapshot_as_of(graph.snapshot_newest_version().unwrap()).unwrap();
+let beta1 = temporal::cycle_rank_snapshot(&latest.state);
+```
+
+### Structs
+
+#### `TemporalPersistencePoint`
+
+One measurement point in the temporal persistence sweep.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | `u64` | Version number at this measurement |
+| `active` | `usize` | Total nodes in this snapshot (V) |
+| `n_components` | `usize` | Number of strongly connected components (β₀) |
+| `largest_size` | `usize` | Size of the largest SCC |
+| `fraction_largest` | `f32` | `largest_size / active` (0.0 when `active == 0`) |
+| `cycle_rank` | `usize` | Cyclomatic number β₁ = E − V + W |
+| `n_nontrivial_sccs` | `usize` | Number of non-trivial SCCs (size ≥ 2) — cycle-containing |
+| `largest_nontrivial_size` | `usize` | Size of the largest non-trivial SCC, or 0 if none |
+
+#### `LineageBarcode`
+
+One bar in the exact lineage-tracked barcode (produced by `scc_lineage_barcode`
+and `cycle_scc_barcode`). Birth/death are determined by real membership lineage
+(Jaccard overlap), not by component-count deltas.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `birth_version` | `u64` | Version where this lineage first appeared |
+| `death_version` | `Option<u64>` | Last version seen, or `None` if it survived to the end of the sweep |
+| `birth_size` | `usize` | Member-set size when this lineage was born |
+| `peak_size` | `usize` | Peak member-set size across the lineage's life |
+| `final_size` | `usize` | Member-set size at the last observed version |
+| `versions_seen` | `usize` | Number of versions this lineage was observed (including birth) |
+
+#### `VersionedSnapshot`
+
+A versioned point-in-time snapshot (defined in `sqlitegraph::mvcc`, re-exported
+at the crate root).
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | `u64` | Monotonic version number assigned at checkpoint time (starts at 1) |
+| `created_at` | `SystemTime` | Wall-clock timestamp when this version was captured |
+| `state` | `Arc<SnapshotState>` | The immutable adjacency data for this version |
+
+#### `TemporalBarcode` *(deprecated)*
+
+One bar in the approximate LIFO barcode produced by the deprecated
+`compute_temporal_barcode`. Prefer `LineageBarcode` / `scc_lineage_barcode`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `birth_version` | `u64` | Version where this component first appeared |
+| `death_version` | `Option<u64>` | Last version seen, or `None` if it survived |
+| `peak_size` | `usize` | Largest size this component reached across its lifetime |
 
 ---
 

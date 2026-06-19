@@ -238,7 +238,362 @@ See [API.md](API.md#typeddigraph-api) for the full method reference.
 
 ---
 
-## 5. Testing
+## 5. Temporal Topology Analysis
+
+> Available since 3.3.0. The temporal topology module lets you watch how the
+> *shape* of your graph changes over time — when clusters appear, grow, merge,
+> vanish, and when circular dependencies form and dissolve.
+
+This section assumes you can create nodes and edges as shown in
+[Section 3. Core Operations](#3-core-operations). Every idea below is
+introduced as we go — no prior topology background is needed.
+
+### 5.1 What a "version chain" is, in plain terms
+
+Think of your graph as a living document that keeps getting edited. A
+**checkpoint** is like taking a photograph of the graph at one instant: it
+freezes every node and every edge exactly as they are right now. SQLiteGraph
+keeps these photographs in order, forming a **version chain** — a timeline of
+saved graph states, from oldest to newest.
+
+Each checkpoint gets a **version number**, which is just a counter that goes
+`1, 2, 3, …` and never goes backward. Version `1` is the first photograph you
+took, version `2` the next, and so on.
+
+Two things make this useful:
+
+- You can look at any old photograph later and see the graph exactly as it was
+  at that moment.
+- Because you have many photographs in order, you can watch how the graph's
+  structure *evolves* — which is what "temporal" analysis is about.
+
+By default SQLiteGraph does **not** keep old photographs — so there is zero
+overhead when you don't ask for it. You opt in by calling `checkpoint()`. The
+chain is also **bounded**: it keeps the most recent 64 versions by default, and
+when it fills up the oldest photograph is discarded.
+
+### 5.2 Taking a checkpoint
+
+Creating a checkpoint is a single call on your graph:
+
+```rust
+use sqlitegraph::SqliteGraph;
+
+let graph = SqliteGraph::open_in_memory()?;
+
+// ... insert nodes and edges here (see Section 3) ...
+
+// Take a photograph of the current graph state.
+let v1: u64 = graph.checkpoint();
+println!("Saved version {}", v1); // e.g. "Saved version 1"
+```
+
+`graph.checkpoint()` returns the version number it just assigned. That number is
+the "name" of this photograph — you'll use it to look the state up later.
+
+You can take as many as you like, interspersed with edits:
+
+```rust
+let v1 = graph.checkpoint(); // first photograph
+
+// ... make more edits: insert nodes/edges ...
+
+let v2 = graph.checkpoint(); // second photograph
+
+// ... more edits ...
+
+let v3 = graph.checkpoint(); // third photograph
+```
+
+**One requirement to keep in mind.** A checkpoint captures the in-memory
+adjacency cache — the fast lookup table of "who connects to whom." If you insert
+nodes and edges and then immediately checkpoint without ever reading from the
+graph, the cache may not be warmed yet and the photograph could be incomplete.
+Do a read first (for example a traversal or `graph.snapshot()`) to make sure the
+cache reflects all your writes, *then* checkpoint.
+
+### 5.3 Reading the graph as it was at a checkpoint
+
+Once you have a version number, two complementary approaches let you look back
+in time.
+
+**Option A — get the whole frozen state at once.**
+`graph.snapshot_as_of(version)` returns the saved photograph directly, as a
+`VersionedSnapshot`:
+
+```rust
+use sqlitegraph::VersionedSnapshot;
+
+// Look up version 1. Returns None if it was never taken or has been evicted.
+if let Some(snap): Option<VersionedSnapshot> = graph.snapshot_as_of(v1) {
+    println!(
+        "version {} had {} nodes and {} edges",
+        snap.version,
+        snap.state.node_count(),
+        snap.state.edge_count(),
+    );
+
+    // The adjacency ("who points to whom") lives in snap.state.
+    // For a single node:
+    if let Some(neighbors) = snap.state.get_outgoing(node_id) {
+        println!("node {} pointed at: {:?}", node_id, neighbors);
+    }
+}
+```
+
+You can also fetch **all** retained photographs at once, oldest first — this is
+the input the temporal analysis functions expect:
+
+```rust
+let history: Vec<VersionedSnapshot> = graph.snapshot_versions();
+println!("{} versions retained", history.len());
+```
+
+**Option B — pass the version number to a traversal.**
+Many read operations accept a `SnapshotId` (a thin wrapper around a version
+number). `SnapshotId::from_lsn(version)` builds one from a checkpoint version,
+so you can ask questions like "what could this node reach, *as of version N*?"
+
+Traversal methods (`neighbors`, `bfs`) live on the `GraphBackend` trait. On the
+SQLite backend that type is `SqliteGraphBackend`, and it exposes the inner
+`SqliteGraph` (where the version chain lives) through `.graph()`:
+
+```rust
+use sqlitegraph::SnapshotId;
+use sqlitegraph::backend::{
+    BackendDirection, GraphBackend, NeighborQuery, SqliteGraphBackend,
+};
+
+let backend = SqliteGraphBackend::in_memory()?;
+// ... insert nodes/edges, then warm the cache with a read ...
+let v1 = backend.graph().checkpoint();
+
+// Later: traverse the graph AS OF that checkpoint, not the current live state.
+let reached = backend.neighbors(
+    SnapshotId::from_lsn(v1),
+    node_id,
+    NeighborQuery {
+        direction: BackendDirection::Outgoing,
+        edge_type: None,
+    },
+)?;
+```
+
+> **Scope of historical reads.** The version chain stores adjacency (the
+> "who connects to whom" map), not full typed node/edge properties. So
+> traversal-style reads like `neighbors()` and `bfs()` work historically, while
+> property reads (such as `get_node()`) always read the current live state.
+
+### 5.4 Reading the whole timeline: the temporal topology module
+
+Now the interesting part. The `temporal` module takes a sequence of versions
+(what you got from `graph.snapshot_versions()`) and tells you how the graph's
+*topology* — its structural shape — changed across them. First, three
+plain-language concepts.
+
+**Strongly connected component (SCC).** In a directed graph, an SCC is a group
+of nodes where you can walk from *any* node in the group to *any other* node in
+the group by following the arrows — and come back. Picture a roundabout where
+every exit also loops back to every entrance: everyone can reach everyone. A
+node that isn't part of any such mutual-reachability group is an SCC of size 1
+all by itself.
+
+**Betti numbers (counts of structural features).**
+- **β₀** ("beta-zero") is simply *the number of SCCs*. If your graph splits
+  into 7 separate mutually-reachable groups, β₀ = 7.
+- **β₁** ("beta-one") is the **cyclomatic number**: how many independent loops
+  the graph has, computed as `edges − nodes + connected_pieces`. Think of it as
+  "how many extra connections beyond a simple tree." A tree has β₁ = 0; every
+  extra edge that closes a loop adds 1.
+
+**Persistent homology and barcodes.** "Persistent homology" is a formal name
+for a simple, powerful idea: follow a structural feature across the whole
+timeline and record **when it is born** (first appears) and **when it dies**
+(last seen). The result is a **barcode** — a list of bars, each like a life
+`birth → death`. A long bar means a structure was stable for a long time; a
+short bar means it came and went quickly. Here the "timeline" is the sequence of
+checkpoint versions (the version number acts as the time axis).
+
+The module ships four building blocks.
+
+#### 5.4.1 The SCC landscape at each version: `temporal_persistence_sweep`
+
+This is the overview. For every version it computes a `TemporalPersistencePoint`
+describing the graph at that moment: how many nodes, how many SCCs (β₀), the
+size of the biggest SCC, the cyclomatic number (β₁), and how many non-trivial
+SCCs (size ≥ 2) exist.
+
+```rust
+use sqlitegraph::{temporal_persistence_sweep, TemporalPersistencePoint};
+
+let versions = graph.snapshot_versions();
+let sweep: Vec<TemporalPersistencePoint> = temporal_persistence_sweep(&versions);
+
+for pt in &sweep {
+    println!(
+        "version {}: {} nodes, {} SCCs (β₀), β₁={}, {} non-trivial SCCs",
+        pt.version, pt.active, pt.n_components, pt.cycle_rank, pt.n_nontrivial_sccs,
+    );
+}
+```
+
+A `TemporalPersistencePoint` has these fields:
+
+| Field | Meaning |
+|-------|---------|
+| `version` | The version number this point describes |
+| `active` | Total nodes at this version |
+| `n_components` | Number of SCCs — this is β₀ |
+| `largest_size` | Size of the biggest SCC |
+| `fraction_largest` | `largest_size / active` (how dominant one SCC is) |
+| `cycle_rank` | β₁, the cyclomatic number (`edges − nodes + pieces`) |
+| `n_nontrivial_sccs` | How many SCCs have size ≥ 2 (each implies a directed cycle) |
+| `largest_nontrivial_size` | Size of the biggest size-≥-2 SCC |
+
+Read the `n_components` column over time to see your graph *fragmenting* (count
+rising — things are splitting apart) or *consolidating* (count falling — things
+are merging together).
+
+#### 5.4.2 Exact component lifetimes: `scc_lineage_barcode`
+
+The sweep tells you *how many* SCCs exist each version, but not *which is
+which*. `scc_lineage_barcode` goes further: it follows individual SCCs across
+versions and gives each one an exact `(birth, death)` bar. This is the precise
+0-dimensional persistent homology over your version chain.
+
+How it tells "this SCC is the same one as before" without giving them names: it
+compares the **membership** (the set of node IDs) of each SCC against the
+previous version's SCCs using **Jaccard similarity** — the fraction of shared
+members. If two SCCs at adjacent versions overlap a lot, they're treated as the
+same lineage; if an SCC appears with no overlap to anything before, a new
+lineage is *born*; if a lineage's members no longer appear, it *dies*.
+
+```rust
+use sqlitegraph::scc_lineage_barcode;
+
+let bars = scc_lineage_barcode(&versions);
+
+for bar in &bars {
+    let death = bar
+        .death_version
+        .map(|d| format!("died at version {}", d))
+        .unwrap_or_else(|| "still alive".to_string());
+    println!(
+        "born at version {} (size {}), peaked at {}, {} — seen {} versions",
+        bar.birth_version, bar.birth_size, bar.peak_size, death, bar.versions_seen,
+    );
+}
+```
+
+Each `LineageBarcode` has: `birth_version`, `death_version` (`None` if it
+survived to the latest checkpoint), `birth_size`, `peak_size`, `final_size`, and
+`versions_seen`. Plot these as horizontal bars on a version axis and you get the
+classic persistence barcode — long bars are stable components, short ones are
+fleeting.
+
+#### 5.4.3 Circular-dependency lifecycle: `cycle_scc_barcode`
+
+A **non-trivial SCC** (size ≥ 2) is special: because every node in it can reach
+every other, there is guaranteed to be at least one directed cycle inside it.
+For a code or dependency graph, a directed cycle is a **circular dependency**
+(A depends on B depends on … depends on A) — usually something you want to
+catch.
+
+`cycle_scc_barcode` is the same lineage-tracking machinery as
+`scc_lineage_barcode`, but it ignores lone nodes and only tracks SCCs of size
+≥ 2. Its bars are the birth and death of circular-dependency clusters over the
+life of your graph: when a cycle first appears, when it grows, and when a
+refactor finally breaks it.
+
+```rust
+use sqlitegraph::cycle_scc_barcode;
+
+let cycle_bars = cycle_scc_barcode(&versions);
+
+for bar in &cycle_bars {
+    println!(
+        "circular dependency: versions {}–{:?}, peak size {}",
+        bar.birth_version, bar.death_version, bar.peak_size,
+    );
+}
+```
+
+#### 5.4.4 The cyclomatic number at one moment: `cycle_rank_snapshot`
+
+Sometimes you don't want a whole timeline — you want β₁ for a single snapshot.
+`cycle_rank_snapshot` takes one `SnapshotState` (the `.state` inside any
+`VersionedSnapshot`) and returns `edges − nodes + connected_pieces`:
+
+```rust
+use sqlitegraph::cycle_rank_snapshot;
+
+if let Some(snap) = graph.snapshot_as_of(v2) {
+    let beta1: usize = cycle_rank_snapshot(&snap.state);
+    println!("β₁ (independent cycles) at version {} = {}", v2, beta1);
+}
+```
+
+**A useful distinction.** β₁ counts *undirected* cycles — any loop at all,
+including a two-way street (A→B and B→A). A *directed* cycle (a true circular
+dependency) is a stricter condition, and is exactly what `cycle_scc_barcode`
+reports via non-trivial SCCs. Pair the two: rising β₁ with few non-trivial SCCs
+means growing *structural* redundancy (lots of back-edges) but no real circular
+deps; both rising means real dependency cycles are forming.
+
+### 5.5 Putting it together: a full pass
+
+A complete temporal analysis is just "checkpoint as you go, then run the
+analysis on the history":
+
+```rust
+use sqlitegraph::{
+    SqliteGraph, temporal_persistence_sweep, scc_lineage_barcode, cycle_scc_barcode,
+};
+
+let graph = SqliteGraph::open_in_memory()?;
+
+// Build the graph over several stages, checkpointing after each meaningful
+// change. (Warm the cache with a read before each checkpoint — see 5.2.)
+let mut versions = Vec::new();
+versions.push(graph.checkpoint()); // stage 1
+// ... edits, then a read ...
+versions.push(graph.checkpoint()); // stage 2
+// ... edits, then a read ...
+versions.push(graph.checkpoint()); // stage 3
+
+// Load the full retained history (oldest first).
+let history = graph.snapshot_versions();
+
+// 1. Per-version landscape.
+let sweep = temporal_persistence_sweep(&history);
+// 2. Exact component lifetimes.
+let component_bars = scc_lineage_barcode(&history);
+// 3. Circular-dependency lifetimes.
+let cycle_bars = cycle_scc_barcode(&history);
+
+println!(
+    "{} sweep points, {} component bars, {} cycle bars",
+    sweep.len(),
+    component_bars.len(),
+    cycle_bars.len(),
+);
+```
+
+**Practical tips:**
+
+- Checkpoint at *meaningful* moments (a commit, a refactor, a release) rather
+  than after every tiny edit — the analysis is most readable when each version
+  represents a real state you care about.
+- Because the chain is bounded (default 64), checkpoint strategically if you
+  need to look far back. Query `graph.snapshot_version_count()` and
+  `graph.snapshot_oldest_version()` to see what's still retained.
+- For a quick "is the graph getting more or less tangled over time?" answer, the
+  `cycle_rank` (β₁) and `n_nontrivial_sccs` columns of the sweep are the two
+  numbers to watch.
+
+---
+
+## 6. Testing
 
 ### Running Tests
 
@@ -268,7 +623,7 @@ cargo test '*wal*'
 
 ---
 
-## 6. Performance
+## 7. Performance
 
 ### Native V3 Performance
 
@@ -371,7 +726,7 @@ Edge ID compression for storage efficiency:
 
 ---
 
-## 7. Error Handling
+## 8. Error Handling
 
 ### Common Error Types
 
@@ -404,7 +759,7 @@ RUST_LOG=debug cargo run --features debug,v3-forensics
 
 ---
 
-## 8. Vector Search (HNSW)
+## 9. Vector Search (HNSW)
 
 ### Basic HNSW Usage
 
@@ -455,7 +810,7 @@ sqlitegraph --backend sqlite --db mygraph.db hnsw list
 
 ---
 
-## 9. KV Store (Key-Value Storage)
+## 10. KV Store (Key-Value Storage)
 
 ### Overview
 
@@ -696,7 +1051,7 @@ not expose KV scan commands.
 
 ---
 
-## 10. Query API Enhancements
+## 11. Query API Enhancements
 
 ### Overview
 
@@ -897,7 +1252,7 @@ let (sub_id, rx) = graph.subscribe(region_filter)?;
 
 ---
 
-## 11. Developer Tools
+## 12. Developer Tools
 
 ### Introspection API
 
@@ -932,7 +1287,7 @@ sqlitegraph --backend sqlite --db mygraph.db list --kind User
 
 ---
 
-## 12. Safety & Integrity
+## 13. Safety & Integrity
 
 ### Safety Checks
 
@@ -956,7 +1311,7 @@ The Native V3 backend includes WAL recovery with:
 
 ---
 
-## 13. CLI Usage
+## 14. CLI Usage
 
 ### Available Commands
 
@@ -1000,7 +1355,7 @@ sqlitegraph --db mygraph.db --write hnsw delete --name embeddings
 
 ---
 
-## 14. Migration
+## 15. Migration
 
 ### SQLite to Native V3
 
@@ -1027,7 +1382,7 @@ let id = graph.insert_node(node_spec)?;
 
 ---
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 ### Common Issues
 
@@ -1058,7 +1413,7 @@ cargo check --features native-v3
 
 ---
 
-## 16. Pub/Sub Events
+## 17. Pub/Sub Events
 
 ### Overview
 

@@ -12,10 +12,30 @@ SQLite: stable, mature, and easy to inspect with standard tooling. Native V3:
 graph-oriented storage with cache, KV, pub/sub, and traversal features. See the
 benchmarks below for workload-specific behavior.
 
+## What's New in 3.3
+
+The 3.3 release adds a **temporal version chain** with persistent-homology
+topology analysis, a **bounded adjacency cache** (was unbounded — a memory
+leak under large traversals), and fixes **13 silently-broken criterion
+benchmarks**.
+
+- **Temporal topology (`sqlitegraph::temporal`)** — capture graph versions with
+  `checkpoint()`, read historical adjacency with `snapshot_as_of(n)`, and run
+  persistent-homology analysis over the version chain: exact H₀ component
+  lifetimes (`scc_lineage_barcode`), circular-dependency lifecycle
+  (`cycle_scc_barcode`), and β₁ cyclomatic-number trajectory
+  (`cycle_rank_snapshot`). `as_of` lookup: 24.7 ns at 1000 versions.
+- **Bounded LRU cache** — adjacency lists stored as `Arc<Vec<i64>>`; cache hit
+  at degree 1000 drops from ~131 ns to ~13 ns (–90 %).
+- **HNSW cosine guard** — zero-magnitude / non-finite vectors return a typed
+  error instead of panicking.
+
+See [CHANGELOG](https://github.com/oldnordic/sqlitegraph/blob/main/CHANGELOG.md) for full history.
+
 ## What's New in the 3.2 Line
 
-The current 3.2 release line builds on the 3.0 backend/model transition with
-concrete HNSW and traversal improvements:
+The 3.2 release line built on the 3.0 backend/model transition with concrete
+HNSW and traversal improvements:
 
 - `HnswIndex::batch_insert_vectors()` for lower-overhead bulk vector ingestion.
 - Transactional topology persistence for HNSW metadata and layers.
@@ -25,8 +45,6 @@ concrete HNSW and traversal improvements:
   components, so callers can avoid materializing full `Vec`s when they only
   need incremental results.
 - `parking_lot`-based lock cleanup across the HNSW path and related hot locks.
-
-See [CHANGELOG](https://github.com/oldnordic/sqlitegraph/blob/main/CHANGELOG.md) for full history.
 
 ## Backends
 
@@ -75,10 +93,10 @@ cargo bench --features native-v3 --bench sqlite_v3_curated
 ```toml
 [dependencies]
 # SQLite backend (default)
-sqlitegraph = "3.2"
+sqlitegraph = "3.3"
 
 # OR Native V3 backend (graph-oriented storage)
-sqlitegraph = { version = "3.2", features = ["native-v3"] }
+sqlitegraph = { version = "3.3", features = ["native-v3"] }
 ```
 
 ```rust
