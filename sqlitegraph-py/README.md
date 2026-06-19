@@ -1,10 +1,6 @@
 # sqlitegraph
 
-Python bindings to the [`sqlitegraph`](https://crates.io/crates/sqlitegraph)
-embedded graph database. Storage, graph algorithms, and HNSW vector search
-run in a reviewed Rust core; this package is the Pythonic surface.
-
-> Alpha — API subject to change before 1.0.
+Python bindings to [`sqlitegraph`](https://crates.io/crates/sqlitegraph) — an embedded graph database with 35+ graph algorithms and HNSW vector search. Rust core, no server required, single `.db` or `.graph` file.
 
 ## Install
 
