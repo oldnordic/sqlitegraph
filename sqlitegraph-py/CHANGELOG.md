@@ -3,6 +3,22 @@
 This file tracks releases of the `sqlitegraph` package on PyPI. The Rust
 crate of the same name has its own changelog at the repository root.
 
+## [0.5.3] - 2026-06-20
+
+### Security
+
+- **Bumped PyO3 0.28 → 0.29** to clear two advisories present in the 0.5.2
+  wheel: RUSTSEC-2026-0176 (out-of-bounds read in `PyList`/`PyTuple` nth
+  indexing) and RUSTSEC-2026-0177 (missing `Sync` bound on
+  `PyCFunction::new_closure`). No 0.28.x backport exists; the minor bump
+  was required. `numpy` tracked the bump (0.28 → 0.29).
+
+### Changed
+
+- Bundled core crate is now **sqlitegraph 3.3.0** — brings the temporal
+  topology API (`checkpoint`, `as_of`, `scc_lineage_barcode`,
+  `cycle_scc_barcode`) and the bounded HNSW cache fix to the Python wheel.
+
 ## [0.5.2] - 2026-06-07
 
 ### Changed
