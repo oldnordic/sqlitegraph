@@ -57,13 +57,18 @@ impl SnapshotId {
     ///
     /// # Backend Behavior
     ///
-    /// - **SQLite backend**: Uses SnapshotId(0) to indicate "current" (no historical snapshots)
-    /// - **Native-v3 backend**: May use SnapshotId(0) or use `new_incrementing()` for sequential snapshots
+    /// - **SQLite backend**: `SnapshotId(0)` reads the current committed state.
+    ///   A non-zero LSN resolves to a checkpointed MVCC version
+    ///   (see [`SqliteGraph::checkpoint`](crate::SqliteGraph::checkpoint)) and
+    ///   serves adjacency-only reads (`neighbors`, `bfs`) from the version chain.
+    /// - **Native-v3 backend**: Uses `SnapshotId(0)` or `new_incrementing()`.
     ///
     /// # Why SnapshotId(0)?
     ///
-    /// SQLite backend does not support historical snapshots (no AS OF queries or MVCC).
-    /// Only the current committed state is accessible, which we represent as SnapshotId(0).
+    /// `SnapshotId(0)` is the live/current state. Non-zero LSNs map to
+    /// checkpointed versions of the bounded MVCC version chain — adjacency-only
+    /// methods (`neighbors`, `bfs`) serve them; methods needing entity
+    /// properties or typed edges read the live graph only.
     ///
     /// # Example
     ///
