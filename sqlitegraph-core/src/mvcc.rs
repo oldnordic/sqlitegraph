@@ -33,6 +33,25 @@ pub const DEFAULT_MAX_HISTORY: usize = 64;
 ///
 /// This structure stores complete copies of adjacency maps to ensure
 /// true isolation - snapshots are unaffected by subsequent writes.
+///
+/// # Design boundary: adjacency-only
+///
+/// The version chain stores **untyped adjacency only** (`HashMap<i64, Vec<i64>>`)
+/// — node IDs and their edge lists, with no entity properties (kind/name/data),
+/// no edge types, and no key-value pairs. This is by design, not a gap:
+/// capturing the full entity/edge/KV payload per version would multiply memory
+/// cost roughly by the number of versions, defeating the bounded-retention goal.
+///
+/// As a consequence, historical reads (`SnapshotId(N)` where N > 0) serve only
+/// the two adjacency-only operations — [`SqliteGraphBackend::neighbors`] and
+/// [`SqliteGraphBackend::bfs`] — from this chain. Every other operation
+/// (`get_node`, `shortest_path`, `node_degree`, `k_hop`, `chain_query`,
+/// `pattern_search`, `kv_get`, the typed-edge `query_nodes_by_*`, etc.) needs
+/// property/typed-edge data that the chain does not carry, so they **reject
+/// historical snapshots by design** (see
+/// [`SqliteGraphBackend::require_live`](crate::backend::sqlite::impl_::SqliteGraphBackend))
+/// rather than returning incomplete or wrong data. Use `SnapshotId::current()`
+/// for those reads.
 #[derive(Debug, Clone)]
 pub struct SnapshotState {
     /// Immutable copy of outgoing adjacency map

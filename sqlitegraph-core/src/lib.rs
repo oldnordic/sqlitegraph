@@ -268,9 +268,9 @@ pub use query::GraphQuery;
 pub use recovery::{dump_graph_to_path, load_graph_from_path, load_graph_from_reader};
 pub use snapshot::SnapshotId;
 pub use temporal::{
-    TemporalBarcode, TemporalPersistencePoint, compute_temporal_barcode, temporal_persistence_sweep,
+    LineageBarcode, TemporalBarcode, TemporalPersistencePoint, compute_temporal_barcode,
+    cycle_rank_snapshot, cycle_scc_barcode, scc_lineage_barcode, temporal_persistence_sweep,
 };
-
 // Re-export backend implementations
 pub use backend::native::v3::V3Backend as NativeGraphBackend;
 pub use backend::{BackendDirection, ChainStep, GraphBackend};
