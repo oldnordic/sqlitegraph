@@ -532,7 +532,18 @@ impl MultiLayerNodeManager {
     pub fn new(config: HnswConfig) -> Result<Self, HnswError> {
         let max_layers = config.ml as usize;
         let mappings = LayerMappings::new(max_layers);
-        let distributor = LevelDistributor::new(config.m as f64, max_layers);
+        // Apply the config seed + distribution base so multilayer level
+        // assignment is deterministic. Without this the distributor defaults to
+        // StdRng::from_entropy() (see LevelDistributor::new), making layer
+        // counts vary across process invocations even when
+        // `multilayer_deterministic_seed` is set — the cause of the
+        // `test_multilayer_insert_layers_correct` flakiness. This mirrors the
+        // (previously dead-code) seeding in HnswIndex::with_storage.
+        let base_m = config
+            .multilayer_level_distribution_base
+            .unwrap_or(config.m) as f64;
+        let seed = config.multilayer_deterministic_seed.unwrap_or(42);
+        let distributor = LevelDistributor::new(base_m, max_layers).with_seed(seed);
         let vector_levels = HashMap::new();
 
         Ok(Self {
