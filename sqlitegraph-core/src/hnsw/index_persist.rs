@@ -557,18 +557,35 @@ impl HnswIndex {
     /// highest non-empty layer keeps the greedy descent valid.
     ///
     /// `remove_node` clears a deleted node's connections but leaves its key in
-    /// the layer map (a tombstone); the live set of record is `vector_cache`
-    /// (kept in sync — see `delete_vector`'s eviction). So only candidates
-    /// still present in `vector_cache` are eligible, which skips tombstones.
-    /// Returns `None` only when no living vector remains.
+    /// the layer map (a tombstone), so candidates are filtered against a
+    /// **live-set oracle**: `vector_cache` when populated, falling back to
+    /// `storage.list_vectors()` when the cache is empty (the memory-constrained
+    /// restore rebuilds the topology but lazy-loads the cache). The fallback
+    /// keeps the entry-point invariant *unconditional*. A deleted vector is
+    /// absent from both — `delete_vector` removes it from storage before
+    /// electing — so tombstones are skipped either way. The storage list is
+    /// fetched **once**, not per candidate. Returns `None` only when no living
+    /// vector remains.
     fn elect_entry_point(&self) -> Option<u64> {
+        // Live-set oracle source: the in-memory cache when populated, else
+        // storage (the constrained restore leaves `vector_cache` empty). Fetch
+        // the storage list ONCE — never `get_vector` per candidate (O(N) calls).
+        let storage_live: Option<std::collections::HashSet<u64>> = if self.vector_cache.is_empty() {
+            self.storage.list_vectors().ok().map(|v| v.into_iter().collect())
+        } else {
+            None
+        };
         for level in (0..self.layers.len()).rev() {
             let mut best: Option<u64> = None;
             for (&local_id, _) in self.layers[level].nodes_iter() {
                 let Ok(global) = self.get_global_id_for_layer(level, local_id) else {
                     continue;
                 };
-                if self.vector_cache.contains_key(&global) {
+                let is_live = match &storage_live {
+                    Some(set) => set.contains(&global),
+                    None => self.vector_cache.contains_key(&global),
+                };
+                if is_live {
                     best = Some(best.map_or(global, |b| b.min(global)));
                 }
             }
