@@ -1,5 +1,28 @@
 # SQLiteGraph Changelog
 
+## [3.3.1] - 2026-06-20
+
+### Fixed
+
+- **HNSW multilayer level assignment is now deterministic when
+  `multilayer_deterministic_seed` is set.** `MultiLayerNodeManager::new()`
+  created its `LevelDistributor` via `LevelDistributor::new()` (seeds from
+  `StdRng::from_entropy()`), silently ignoring the config seed. In multilayer
+  mode (`enable_multilayer: true`), `insert_vector_internal` delegates level
+  assignment to the manager, so the seeded distributor constructed in
+  `HnswIndex::with_storage` was dead code. Effect: layer node counts varied
+  across process invocations (observed 9, 5, 7, 5, 5 with seed=42 and 100
+  vectors), causing intermittent `test_multilayer_insert_layers_correct`
+  failures. Now applies `config.multilayer_deterministic_seed` and
+  `config.multilayer_level_distribution_base` consistently. After fix: 8 every
+  run, 1273 tests pass deterministically.
+- **HNSW `delete_vector` re-elects entry point.** Deleting the current entry
+  point left a non-empty index in an `IndexNotInitialized` state (permanently
+  unsearchable). Now evicts the deleted id from `vector_cache` and re-elects a
+  deterministic entry point (highest-layer, min global id among living nodes)
+  when the entry-point set empties while vectors survive. Also handles the
+  cache-empty restore edge case with a storage fallback. (PR #13 by @maeddesg)
+
 ## [3.3.0] - 2026-06-19
 
 The 3.3 release adds a temporal version chain (MVCC history) with

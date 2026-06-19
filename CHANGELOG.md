@@ -1,5 +1,15 @@
 # SQLiteGraph Changelog
 
+## [3.3.1] - 2026-06-20
+
+### Fixed
+
+- **HNSW multilayer level assignment deterministic** —
+  `MultiLayerNodeManager` ignored `multilayer_deterministic_seed`, seeding from
+  system entropy instead. Layer counts varied per process invocation; now fixed.
+- **HNSW `delete_vector` re-elects entry point** — deleting the entry point of a
+  non-empty index no longer leaves it permanently unsearchable. (PR #13)
+
 ## [3.3.0] - 2026-06-19
 
 The 3.3 release adds a temporal version chain (MVCC history) with
