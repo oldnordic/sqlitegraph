@@ -144,4 +144,68 @@ impl SqliteGraph {
     pub fn snapshot_contains_node(&self, node_id: i64) -> bool {
         self.current_snapshot_state().contains_node(node_id)
     }
+
+    // ── Temporal version chain ────────────────────────────────────────────
+
+    /// Capture the current graph state as a numbered version in the MVCC
+    /// version chain.
+    ///
+    /// This is the explicit "commit" step for temporal tracking. After calling
+    /// `checkpoint()`, the returned version number can be passed to
+    /// [`snapshot_as_of`](Self::snapshot_as_of) to retrieve an immutable view
+    /// of the graph at this point in time. Historical reads via
+    /// [`crate::snapshot::SnapshotId::from_lsn`] with this version number will
+    /// serve adjacency from this snapshot.
+    ///
+    /// By default the version chain is empty (zero overhead). Call
+    /// `checkpoint()` only when you want to retain a point-in-time view. The
+    /// chain is bounded — when full, the oldest version is evicted (default
+    /// capacity: 64 versions).
+    ///
+    /// # Cache Requirement
+    ///
+    /// Like [`acquire_snapshot`](Self::acquire_snapshot), this reads from the
+    /// in-memory adjacency cache. Warm the cache first for accurate snapshots.
+    ///
+    /// # Returns
+    ///
+    /// The assigned version number (starts at 1, monotonically increasing).
+    pub fn checkpoint(&self) -> u64 {
+        self.update_snapshot();
+        self.snapshot_manager.checkpoint()
+    }
+
+    /// Retrieve a historical snapshot by version number.
+    ///
+    /// Returns the [`VersionedSnapshot`](crate::mvcc::VersionedSnapshot) if the
+    /// version exists in the retained chain, or `None` if it was never
+    /// checkpointed or has been evicted by the bounded-retention policy.
+    pub fn snapshot_as_of(&self, version: u64) -> Option<crate::mvcc::VersionedSnapshot> {
+        self.snapshot_manager.as_of(version)
+    }
+
+    /// All retained versions (oldest first).
+    pub fn snapshot_versions(&self) -> Vec<crate::mvcc::VersionedSnapshot> {
+        self.snapshot_manager.versions()
+    }
+
+    /// Number of versions currently retained in the history chain.
+    pub fn snapshot_version_count(&self) -> usize {
+        self.snapshot_manager.version_count()
+    }
+
+    /// The oldest version number still retained, or `None` if the chain is empty.
+    pub fn snapshot_oldest_version(&self) -> Option<u64> {
+        self.snapshot_manager.oldest_version()
+    }
+
+    /// The newest version number still retained, or `None` if the chain is empty.
+    pub fn snapshot_newest_version(&self) -> Option<u64> {
+        self.snapshot_manager.newest_version()
+    }
+
+    /// Clear the version history (keeps the live state intact).
+    pub fn clear_snapshot_history(&self) {
+        self.snapshot_manager.clear_history();
+    }
 }

@@ -5,6 +5,7 @@
 
 use parking_lot::RwLock;
 use rusqlite::params;
+use std::sync::Arc;
 
 use crate::{
     SqliteGraphError,
@@ -96,19 +97,107 @@ impl Publisher {
 /// - AS OF queries or point-in-time recovery mechanisms
 /// - Multi-version concurrency control (MVCC) extensions
 ///
-/// These are not implemented in the current SQLite backend.
-fn validate_snapshot_for_sqlite(
-    snapshot_id: crate::snapshot::SnapshotId,
-) -> Result<(), SqliteGraphError> {
-    if snapshot_id.as_lsn() == 0 {
-        return Ok(());
+/// Resolved snapshot view for a read operation.
+///
+/// Returned by [`SqliteGraphBackend::resolve_snapshot`]. `Live` reads hit the
+/// current graph + SQLite. `Historical` reads serve adjacency from the MVCC
+/// version chain's immutable [`SnapshotState`].
+#[derive(Debug, Clone)]
+pub enum SnapshotView {
+    /// Read the live graph (SnapshotId(0) — current committed state).
+    Live,
+    /// Read a historical version from the MVCC version chain.
+    Historical(Arc<crate::mvcc::SnapshotState>),
+}
+
+impl SqliteGraphBackend {
+    /// Resolve a [`SnapshotId`] into a [`SnapshotView`].
+    ///
+    /// - `SnapshotId(0)` → `Live` (unchanged behavior: reads the current graph).
+    /// - `SnapshotId(N)` where N > 0 → `Historical` if version N exists in the
+    ///   snapshot manager's bounded history chain; otherwise an error.
+    /// - `SnapshotId::invalid()` → always an error.
+    ///
+    /// This replaces the old `validate_snapshot_for_sqlite` which accepted only
+    /// `SnapshotId(0)` and rejected everything else. Now historical reads are
+    /// served from the in-memory [`crate::mvcc::VersionedSnapshot`] chain.
+    fn resolve_snapshot(
+        &self,
+        snapshot_id: crate::snapshot::SnapshotId,
+    ) -> Result<SnapshotView, SqliteGraphError> {
+        let lsn = snapshot_id.as_lsn();
+
+        // Invalid sentinel.
+        if lsn == u64::MAX {
+            return Err(SqliteGraphError::query(
+                "invalid snapshot id (u64::MAX sentinel)",
+            ));
+        }
+
+        // Current / live.
+        if lsn == 0 {
+            return Ok(SnapshotView::Live);
+        }
+
+        // Historical: look up version N in the MVCC chain.
+        let versioned = self.graph.snapshot_manager.as_of(lsn).ok_or_else(|| {
+            SqliteGraphError::query(format!(
+                "snapshot version {} is not available (never checkpointed or evicted by \
+                     bounded retention; current range: {:?}–{:?})",
+                lsn,
+                self.graph.snapshot_manager.oldest_version(),
+                self.graph.snapshot_manager.newest_version()
+            ))
+        })?;
+
+        Ok(SnapshotView::Historical(versioned.state))
     }
-    Err(SqliteGraphError::query(format!(
-        "SQLite backend does not support historical snapshots (requested: {}). \
-        Only SnapshotId::current() (which returns SnapshotId(0)) is supported. \
-        Historical snapshot isolation requires AS OF queries or MVCC which are not implemented.",
-        snapshot_id.as_lsn()
-    )))
+
+    /// Require a live snapshot for methods that don't support historical reads.
+    ///
+    /// Adjacency-only methods (neighbors, bfs) serve historical reads from the
+    /// MVCC version chain. Methods that need entity properties, typed edges, or
+    /// key-value data can only read the live graph — this helper rejects
+    /// historical snapshots with an honest error.
+    fn require_live(
+        &self,
+        snapshot_id: crate::snapshot::SnapshotId,
+        method_name: &str,
+    ) -> Result<(), SqliteGraphError> {
+        match self.resolve_snapshot(snapshot_id)? {
+            SnapshotView::Live => Ok(()),
+            SnapshotView::Historical(_) => Err(SqliteGraphError::query(format!(
+                "historical snapshots are not supported for {}() — only neighbors() and bfs() \
+                 serve the MVCC version chain (adjacency-only). Use SnapshotId::current() for \
+                 live reads.",
+                method_name
+            ))),
+        }
+    }
+
+    /// Resolve a NeighborQuery against a historical [`SnapshotState`].
+    ///
+    /// The version chain stores untyped adjacency (`HashMap<i64, Vec<i64>>`),
+    /// so typed-edge queries (`edge_type = Some(..)`) are not supported and
+    /// return an error. Untyped directional queries are served directly.
+    fn historical_neighbors(
+        &self,
+        state: &crate::mvcc::SnapshotState,
+        node: i64,
+        direction: BackendDirection,
+        edge_type: &Option<String>,
+    ) -> Result<Vec<i64>, SqliteGraphError> {
+        if edge_type.is_some() {
+            return Err(SqliteGraphError::query(
+                "typed-edge queries are not supported for historical snapshots (the MVCC version \
+                 chain stores untyped adjacency only)",
+            ));
+        }
+        Ok(match direction {
+            BackendDirection::Outgoing => state.get_outgoing(node).cloned().unwrap_or_default(),
+            BackendDirection::Incoming => state.get_incoming(node).cloned().unwrap_or_default(),
+        })
+    }
 }
 
 /// SQLite-backed implementation of the GraphBackend trait.
@@ -275,7 +364,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         snapshot_id: crate::snapshot::SnapshotId,
         id: i64,
     ) -> Result<GraphEntity, SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "get_node")?;
         self.graph.get_entity(id)
     }
 
@@ -384,8 +473,12 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         node: i64,
         query: NeighborQuery,
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
-        self.query_neighbors(node, query.direction, &query.edge_type)
+        match self.resolve_snapshot(snapshot_id)? {
+            SnapshotView::Live => self.query_neighbors(node, query.direction, &query.edge_type),
+            SnapshotView::Historical(state) => {
+                self.historical_neighbors(&state, node, query.direction, &query.edge_type)
+            }
+        }
     }
 
     fn bfs(
@@ -394,16 +487,46 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         start: i64,
         depth: u32,
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
-        // Check query cache first
-        if let Some(cached_result) = self.graph.query_cache.get_bfs(start, depth) {
-            return Ok(cached_result);
+        match self.resolve_snapshot(snapshot_id)? {
+            SnapshotView::Live => {
+                // Check query cache first
+                if let Some(cached_result) = self.graph.query_cache.get_bfs(start, depth) {
+                    return Ok(cached_result);
+                }
+                // Cache miss - compute and cache the result
+                let result = bfs_neighbors(&self.graph, start, depth)?;
+                self.graph.query_cache.put_bfs(start, depth, result.clone());
+                Ok(result)
+            }
+            SnapshotView::Historical(state) => {
+                // BFS over historical adjacency — no caching (cold path).
+                if !state.contains_node(start) {
+                    return Err(SqliteGraphError::query(format!(
+                        "node {} does not exist in historical snapshot",
+                        start
+                    )));
+                }
+                let mut visited = Vec::new();
+                let mut seen = ahash::AHashSet::new();
+                let mut queue = std::collections::VecDeque::new();
+                queue.push_back((start, 0u32));
+                seen.insert(start);
+                while let Some((node, d)) = queue.pop_front() {
+                    visited.push(node);
+                    if d >= depth {
+                        continue;
+                    }
+                    if let Some(adj) = state.get_outgoing(node) {
+                        for &next in adj {
+                            if seen.insert(next) {
+                                queue.push_back((next, d + 1));
+                            }
+                        }
+                    }
+                }
+                Ok(visited)
+            }
         }
-
-        // Cache miss - compute and cache the result
-        let result = bfs_neighbors(&self.graph, start, depth)?;
-        self.graph.query_cache.put_bfs(start, depth, result.clone());
-        Ok(result)
     }
 
     fn shortest_path(
@@ -412,7 +535,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         start: i64,
         end: i64,
     ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "shortest_path")?;
         // Check query cache first
         if let Some(cached_result) = self.graph.query_cache.get_shortest_path(start, end) {
             return Ok(cached_result);
@@ -431,7 +554,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         snapshot_id: crate::snapshot::SnapshotId,
         node: i64,
     ) -> Result<(usize, usize), SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "node_degree")?;
         let out = self.graph.fetch_outgoing(node)?.len();
         let incoming = self.graph.fetch_incoming(node)?.len();
         Ok((out, incoming))
@@ -444,7 +567,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         depth: u32,
         direction: BackendDirection,
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "k_hop")?;
         // Check query cache first
         if let Some(cached_result) = self.graph.query_cache.get_k_hop(start, depth, direction) {
             return Ok(cached_result);
@@ -466,7 +589,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         direction: BackendDirection,
         allowed_edge_types: &[&str],
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "k_hop_filtered")?;
         // Check query cache first
         if let Some(cached_result) =
             self.graph
@@ -497,7 +620,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         direction: BackendDirection,
         allowed_edge_types: &[&str],
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "bfs_filtered")?;
         bfs_neighbors_filtered(&self.graph, start, depth, allowed_edge_types, direction)
     }
 
@@ -508,7 +631,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         end: i64,
         allowed_edge_types: &[&str],
     ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "shortest_path_filtered")?;
         shortest_path_filtered(&self.graph, start, end, allowed_edge_types)
     }
 
@@ -518,7 +641,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         start: i64,
         chain: &[crate::multi_hop::ChainStep],
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "chain_query")?;
         multi_hop::chain_query(&self.graph, start, chain)
     }
 
@@ -528,7 +651,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         start: i64,
         pattern: &PatternQuery,
     ) -> Result<Vec<PatternMatch>, SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "pattern_search")?;
         pattern::execute_pattern(&self.graph, start, pattern)
     }
 
@@ -686,7 +809,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         snapshot_id: crate::snapshot::SnapshotId,
         key: &[u8],
     ) -> Result<Option<crate::backend::native::types::KvValue>, crate::SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "kv_get")?;
         use std::time::SystemTime;
 
         // Initialize KV table if needed
@@ -852,7 +975,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         prefix: &[u8],
     ) -> Result<Vec<(Vec<u8>, crate::backend::native::types::KvValue)>, crate::SqliteGraphError>
     {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "kv_prefix_scan")?;
         self.ensure_kv_table()?;
         let conn = self.graph.connection();
 
@@ -890,7 +1013,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         snapshot_id: crate::snapshot::SnapshotId,
         kind: &str,
     ) -> Result<Vec<i64>, crate::SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "query_nodes_by_kind")?;
         let conn = self.graph.connection();
         let mut stmt = conn
             .prepare_cached("SELECT id FROM graph_entities WHERE kind = ?1")
@@ -910,7 +1033,7 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
         snapshot_id: crate::snapshot::SnapshotId,
         pattern: &str,
     ) -> Result<Vec<i64>, crate::SqliteGraphError> {
-        validate_snapshot_for_sqlite(snapshot_id)?;
+        self.require_live(snapshot_id, "query_nodes_by_name_pattern")?;
         let conn = self.graph.connection();
         let mut stmt = conn
             .prepare_cached("SELECT id FROM graph_entities WHERE name GLOB ?1")

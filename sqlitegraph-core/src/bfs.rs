@@ -25,7 +25,7 @@ pub fn bfs_neighbors(
         if depth >= max_depth {
             continue;
         }
-        for next in graph.fetch_outgoing(node)? {
+        for &next in graph.fetch_outgoing_shared(node)?.iter() {
             if seen.insert(next) {
                 queue.push_back((next, depth + 1));
             }
@@ -82,7 +82,7 @@ pub fn shortest_path(
     seen.insert(start);
     let mut found = false;
     while let Some(node) = queue.pop_front() {
-        for next in graph.fetch_outgoing(node)? {
+        for &next in graph.fetch_outgoing_shared(node)?.iter() {
             if seen.insert(next) {
                 parents.insert(next, node);
                 if next == end {

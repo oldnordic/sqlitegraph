@@ -182,3 +182,69 @@ required-features = ["native-v3"]
 name = "adaptive_page_simple"
 harness = false
 required-features = ["native-v3"]
+
+# Substrate read-path profile (Phase 0.0) — consumer sqlite path, no feature gate.
+[[bench]]
+name = "substrate_readpath"
+harness = false
+
+# Temporal version-chain benchmarks (Phase 0.3, Exp B) — as_of + sweep latency.
+[[bench]]
+name = "temporal_benchmarks"
+harness = false
+
+# Criterion benchmarks that were auto-discovered without harness = false — they
+# compiled but never executed their criterion_main! (libtest took over and ran
+# 0 tests). Wiring them explicitly fixes that silent no-op. All compile cleanly
+# against the current API (verified 2026-06-19).
+[[bench]]
+name = "adjlist_benchmark"
+harness = false
+
+[[bench]]
+name = "algo_benchmarks"
+harness = false
+
+[[bench]]
+name = "comparative_benchmark"
+harness = false
+
+[[bench]]
+name = "compression_benchmark"
+harness = false
+
+[[bench]]
+name = "mvcc_benchmarks"
+harness = false
+
+[[bench]]
+name = "native_disk_io"
+harness = false
+
+[[bench]]
+name = "read_path_benchmarks"
+harness = false
+
+[[bench]]
+name = "regression_memory"
+harness = false
+
+[[bench]]
+name = "regression_non_chain_patterns"
+harness = false
+
+[[bench]]
+name = "regression_pubsub_memory"
+harness = false
+
+[[bench]]
+name = "regression_pubsub_non_chain"
+harness = false
+
+[[bench]]
+name = "regression_pubsub_write_cost"
+harness = false
+
+[[bench]]
+name = "regression_write_cost"
+harness = false

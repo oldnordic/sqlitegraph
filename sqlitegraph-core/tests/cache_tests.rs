@@ -6,7 +6,7 @@ fn test_adjacency_cache_get_insert_clear() {
     let cache = AdjacencyCache::new();
     assert!(cache.get(1).is_none());
     cache.insert(1, vec![2, 3]);
-    assert_eq!(cache.get(1), Some(vec![2, 3]));
+    assert_eq!(cache.get(1).map(|a| a.to_vec()), Some(vec![2, 3]));
     cache.clear();
     assert!(cache.get(1).is_none());
 }

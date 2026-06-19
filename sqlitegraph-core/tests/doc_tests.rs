@@ -19,7 +19,17 @@ fn test_readme_contains_dsl_constraints() {
 #[test]
 fn test_readme_contains_regression_gate_explanation() {
     let readme = read("README.md");
-    assert!(readme.contains("Performance thresholds in sqlitegraph_bench.json"));
+    // The README documents that performance thresholds in sqlitegraph_bench.json
+    // gate releases. Check both phrases independently so the assertion isn't
+    // brittle about backtick/code-font formatting around the filename.
+    assert!(
+        readme.contains("Performance thresholds"),
+        "README should document the performance-threshold regression gate"
+    );
+    assert!(
+        readme.contains("sqlitegraph_bench.json"),
+        "README should reference the sqlitegraph_bench.json thresholds file"
+    );
 }
 
 #[test]

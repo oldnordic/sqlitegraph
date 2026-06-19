@@ -1,5 +1,125 @@
 # SQLiteGraph Changelog
 
+## [Unreleased]
+
+### Fixed
+- **AdjacencyCache is now bounded (was unbounded AHashMap)** — The
+  adjacency cache (`cache::AdjacencyCache`) was documented as an "LRU-K (K=2)"
+  cache with capacity and eviction, but the actual implementation was an
+  unbounded `AHashMap` with no capacity limit and no eviction: it grew
+  monotonically with every distinct node queried and was only cleared wholesale
+  on write invalidation. This was a correctness/memory bug — a traversal over a
+  large graph would accumulate every adjacency list in memory indefinitely. The
+  cache is now backed by the `lru` crate's `LruCache` with a fixed capacity
+  (default 8192 entries, configurable via `AdjacencyCache::with_capacity`).
+  The hit path uses `peek` (a shared read lock) rather than `get` (an exclusive
+  write lock that would refresh recency), so effective eviction order is
+  insertion-order (FIFO), not access-order (LRU). This was a deliberate
+  tradeoff: the read-lock hit path matches the old `AHashMap` cost profile and
+  avoided a measured BFS regression, while the correctness property — bounded
+  memory — holds regardless. (The cache is invalidated wholesale on every
+  write, and the default capacity exceeds any single traversal's working set,
+  so FIFO vs LRU rarely matters here.) The fictional "LRU-K" doc has been
+  rewritten to describe what actually runs.
+
+### Changed
+- **Cache values stored as `Arc<Vec<i64>>` (zero-copy hits on hot paths)** —
+  Adjacency lists are now stored as `Arc<Vec<i64>>` inside the cache. A cache
+  *hit* hands the caller a cheaply-cloned `Arc` (one atomic refcount bump)
+  instead of copying the `Vec<i64>`. This eliminates the O(degree) copy that
+  previously dominated hit cost for high-degree "hub" nodes. Two new
+  `pub(crate)` methods, `fetch_outgoing_shared` / `fetch_incoming_shared`,
+  return the `Arc` directly; the existing `fetch_outgoing` /
+  `fetch_incoming` (and all public APIs) still return `Vec<i64>` by cloning
+  out of the `Arc`, preserving the existing contract. BFS traversal
+  (`bfs_neighbors`, `bfs_shortest_path`) now uses the `_shared` variants for
+  zero-copy per-step adjacency reads. Measured hit cost at degree 1000 drops
+  from ~131 ns to ~13 ns (–90 %); degree 100 drops from ~24 ns to ~13 ns
+  (–47 %). The real consumer traversal path (BFS) improved ~4 %. The remaining
+  cost floor is the `RwLock` acquire/release pair (~13 ns), tracked as a
+  follow-up (lock-free container).
+
+### Added
+- `AdjacencyCache::with_capacity(NonZeroUsize)` constructor for explicit
+  capacity control.
+- `DEFAULT_CACHE_CAPACITY` constant (8192).
+- 5 cache unit tests (hit-returns-Arc, clear-resets-counters,
+  capacity-bounds-with-LRU-eviction, inner-snapshot-clones-all, remove-single).
+- **Temporal version chain (MVCC history)** — `SqliteGraph::checkpoint()`
+  captures the current adjacency state as a numbered version in a bounded
+  history chain (default capacity: 64 versions). `SqliteGraph::snapshot_as_of(n)`
+  retrieves an immutable `VersionedSnapshot` by version number. The chain uses
+  binary search for version lookup (`as_of`) and `as_of_at(timestamp)` for
+  wall-clock time queries. This is the first time-axis on the sqlite-backend:
+  before this, `validate_snapshot_for_sqlite` rejected every snapshot id except
+  `SnapshotId::current()`.
+- **Historical reads routed through the version chain** — `neighbors()` and
+  `bfs()` with `SnapshotId::from_lsn(n)` now serve adjacency from the retained
+  version N instead of erroring. Methods that need entity properties or typed
+  edges (`get_node`, `shortest_path`, `kv_get`, etc.) honestly reject
+  historical snapshots with a clear error (the version chain stores untyped
+  adjacency only).
+- **Temporal topology module (`sqlitegraph::temporal`)** — SCC persistence
+  barcode over the version chain. `temporal_persistence_sweep()` runs Tarjan's
+  SCC at each version; `compute_temporal_barcode()` derives component
+  birth/death lifetimes (discrete 0-D persistent homology with version as the
+  filtration parameter). Ported from geographdb's
+  `temporal_persistence_sweep`/`compute_temporal_barcode`
+  (`geographdb-core/src/algorithms/persistence.rs`); the geographdb version
+  operates on 4D graphs with spatial filters, this one on in-memory adjacency.
+- New re-exports: `VersionedSnapshot`, `TemporalPersistencePoint`,
+  `TemporalBarcode`, `temporal_persistence_sweep`, `compute_temporal_barcode`.
+- 10 temporal unit tests + 5 temporal integration tests (checkpoint/historical
+  neighbors, historical BFS, uncheckpointed-version error, live-only rejection,
+  version-chain metadata).
+- `benches/temporal_benchmarks.rs` — `as_of` latency over {10, 100, 1000}
+  versions and sweep latency over {10, 50, 100} (Phase 0.3 decision gate).
+
+### Fixed
+- **13 criterion benchmarks were silently broken (compiled but never ran)** —
+  `read_path_benchmarks`, `mvcc_benchmarks`, `algo_benchmarks`,
+  `adjlist_benchmark`, `comparative_benchmark`, `compression_benchmark`,
+  `native_disk_io`, and the six `regression_*` benches were auto-discovered by
+  Cargo without explicit `[[bench]]` entries, so they used the default
+  `harness = true`. That made libtest take over the binary: `criterion_main!`
+  never ran and `cargo bench --bench <name>` reported `0 tests`. Each now has
+  an explicit `[[bench]] name = "…" harness = false` entry, so criterion
+  actually executes them. (Found while wiring `read_path_benchmarks.rs`, the
+  Phase-0.3 target — the bug was not isolated to that one file.)
+- Removed dead `analyze_compression_patterns` + its `#[cfg(test)] mod` from
+  `compression_benchmark.rs` — under `harness = false` the test module never
+  compiles for bench builds, leaving the function orphaned.
+- Corrected the stale module doc in `read_path_benchmarks.rs` ("Native V2
+  backend" → native backend via `V3Backend`).
+
+## [3.2.6] - 2026-06-19
+
+### Fixed
+- **HNSW no longer panics on zero-magnitude / non-finite vectors (Cosine
+  indexes)** — Added a `ZeroMagnitudeVector` variant to `HnswIndexError` and a
+  shared `distance_metric::validate_vector_for_metric` guard called from all
+  four public entry points: `insert_vector`, `insert_vector_internal`,
+  `batch_insert_vectors`, and `search`. Previously a degenerate vector reached
+  the SIMD cosine kernel, which panicked ("First vector has zero magnitude");
+  since a panic is not catchable by a caller's `Result` handling, a single bad
+  vector aborted an entire batch (root cause of atheneum `sync-wiki` aborting a
+  full-directory reindex). The guard fires only for `Cosine` — the sole metric
+  that divides by the norm — so the origin vector stays valid for Euclidean /
+  Manhattan / DotProduct.
+
+  Testing: 9 regression tests added. Focused unit coverage of the validator
+  (`test_validate_cosine_rejects_zero_vector`, `..._rejects_non_finite`,
+  `..._accepts_unit_and_tiny_vectors`, `test_validate_non_cosine_accepts_origin`)
+  in `distance_metric.rs`, and integration coverage proving the typed error
+  surfaces at the HNSW boundary
+  (`test_insert_vector_rejects_zero_magnitude`,
+  `test_insert_vector_rejects_non_finite_values`,
+  `test_batch_insert_rejects_zero_magnitude`,
+  `test_search_rejects_zero_magnitude_query`,
+  `test_non_cosine_metrics_accept_zero_magnitude`) in `index_api.rs`. Existing
+  `should_panic` tests on the raw SIMD kernel are unchanged (the panic is by
+  design there; the fix keeps degenerate vectors from ever reaching it).
+
 ## [3.2.5] - 2026-06-07
 
 ### Fixed

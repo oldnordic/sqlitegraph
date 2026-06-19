@@ -1,7 +1,12 @@
-//! Read path performance benchmarks for Native V2 backend.
+//! Read path performance benchmarks for the native backend.
 //!
 //! Comprehensive benchmark suite for validating read path optimizations
 //! from Phase 3 plans 03-01 (cache) and 03-02 (compression).
+//!
+//! These benchmarks open a graph via `GraphConfig::native()`, which resolves to
+//! the native-v3 backend (`V3Backend`). Each iteration rebuilds the graph from
+//! scratch (insert-on-every-iter), so these measure cold-build + read together,
+//! not steady-state read throughput — keep that in mind when reading the numbers.
 //!
 //! Benchmark categories:
 //! - Single node operations (lookup, neighbor iteration)

@@ -1,5 +1,7 @@
 //! Adjacency queries and cache management for SqliteGraph.
 
+use std::sync::Arc;
+
 use rusqlite::{OptionalExtension, params};
 
 use crate::{cache::AdjacencyCache, errors::SqliteGraphError};
@@ -131,7 +133,15 @@ impl SqliteGraph {
         ))
     }
 
-    pub(crate) fn fetch_outgoing(&self, id: i64) -> Result<Vec<i64>, SqliteGraphError> {
+    /// Outgoing neighbors of `id` as a shared, zero-copy handle.
+    ///
+    /// On a cache hit this returns a cheaply-cloned [`Arc`] (one refcount bump,
+    /// the `Vec<i64>` is never copied). On a miss it loads from SQLite, caches
+    /// the result as an `Arc`, and returns that same `Arc`. Use this on hot
+    /// traversal paths (BFS, multi-hop) where the adjacency list is iterated
+    /// once and then dropped — it avoids the O(degree) clone that
+    /// [`fetch_outgoing`](Self::fetch_outgoing) pays.
+    pub(crate) fn fetch_outgoing_shared(&self, id: i64) -> Result<Arc<Vec<i64>>, SqliteGraphError> {
         if let Some(cached) = self.outgoing_cache.get(id) {
             return Ok(cached);
         }
@@ -139,11 +149,16 @@ impl SqliteGraph {
             "SELECT to_id FROM graph_edges WHERE from_id=?1 ORDER BY to_id, edge_type, id",
             id,
         )?;
-        self.outgoing_cache.insert(id, result.clone());
-        Ok(result)
+        // `insert` wraps `result` in an `Arc` and returns that same `Arc`, so
+        // the cache and the caller share one allocation — no `Vec` copy.
+        Ok(self.outgoing_cache.insert(id, result))
     }
 
-    pub(crate) fn fetch_incoming(&self, id: i64) -> Result<Vec<i64>, SqliteGraphError> {
+    /// Incoming neighbors of `id` as a shared, zero-copy handle.
+    ///
+    /// See [`fetch_outgoing_shared`](Self::fetch_outgoing_shared) for the
+    /// rationale.
+    pub(crate) fn fetch_incoming_shared(&self, id: i64) -> Result<Arc<Vec<i64>>, SqliteGraphError> {
         if let Some(cached) = self.incoming_cache.get(id) {
             return Ok(cached);
         }
@@ -151,8 +166,25 @@ impl SqliteGraph {
             "SELECT from_id FROM graph_edges WHERE to_id=?1 ORDER BY from_id, edge_type, id",
             id,
         )?;
-        self.incoming_cache.insert(id, result.clone());
-        Ok(result)
+        Ok(self.incoming_cache.insert(id, result))
+    }
+
+    /// Outgoing neighbors of `id` as an owned `Vec`.
+    ///
+    /// Delegates to [`fetch_outgoing_shared`](Self::fetch_outgoing_shared) and
+    /// clones the `Vec` out of the shared `Arc`. This preserves the original
+    /// `Vec<i64>` return contract for callers that need an owned vector (graph
+    /// algorithms that store or filter the result). The clone is O(degree); on
+    /// hot traversal paths prefer `fetch_outgoing_shared`.
+    pub(crate) fn fetch_outgoing(&self, id: i64) -> Result<Vec<i64>, SqliteGraphError> {
+        Ok((*self.fetch_outgoing_shared(id)?).clone())
+    }
+
+    /// Incoming neighbors of `id` as an owned `Vec`.
+    ///
+    /// See [`fetch_outgoing`](Self::fetch_outgoing) for the rationale.
+    pub(crate) fn fetch_incoming(&self, id: i64) -> Result<Vec<i64>, SqliteGraphError> {
+        Ok((*self.fetch_incoming_shared(id)?).clone())
     }
 
     pub(crate) fn invalidate_caches(&self) {

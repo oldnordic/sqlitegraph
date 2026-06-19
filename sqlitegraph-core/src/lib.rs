@@ -261,12 +261,15 @@ pub use graph_opt::{
     GraphEdgeCreate, GraphEntityCreate, bulk_insert_edges, bulk_insert_entities, cache_stats,
 };
 pub use index::{add_label, add_property};
-pub use mvcc::{GraphSnapshot, SnapshotState};
+pub use mvcc::{GraphSnapshot, SnapshotState, VersionedSnapshot};
 pub use pattern_engine::{PatternTriple, TripleMatch, match_triples};
 pub use pattern_engine_cache::match_triples_fast;
 pub use query::GraphQuery;
 pub use recovery::{dump_graph_to_path, load_graph_from_path, load_graph_from_reader};
 pub use snapshot::SnapshotId;
+pub use temporal::{
+    TemporalBarcode, TemporalPersistencePoint, compute_temporal_barcode, temporal_persistence_sweep,
+};
 
 // Re-export backend implementations
 pub use backend::native::v3::V3Backend as NativeGraphBackend;
@@ -318,6 +321,10 @@ pub mod query; // Already exported above
 pub mod recovery; // Already exported above
 
 pub mod typed_digraph;
+
+/// Temporal topology analysis — SCC persistence barcode over the MVCC version
+/// chain (ported from geographdb's `temporal_persistence_sweep`).
+pub mod temporal;
 
 // Modules that need to remain public for specific use cases
 pub mod bench_gates; // Public for tests
