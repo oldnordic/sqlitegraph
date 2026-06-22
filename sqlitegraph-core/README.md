@@ -12,6 +12,31 @@ SQLite: stable, mature, and easy to inspect with standard tooling. Native V3:
 graph-oriented storage with cache, KV, pub/sub, and traversal features. See the
 benchmarks below for workload-specific behavior.
 
+## Technical Architecture
+
+**Dual backend**
+- SQLite backend — stable, mature, inspectable with standard tooling
+- Native V3 backend — graph-oriented storage with bounded adjacency cache, KV, pub/sub, and traversal primitives
+
+**Vector + graph queries**
+- HNSW vector similarity search (`HnswIndex`, batch insert, cosine guard)
+- Cypher-inspired query layer — `pattern_match`, structural graph queries
+- Graph algorithms — BFS, k-hop, shortest path, louvain community detection, SCC, A*
+
+**Concurrency & durability**
+- MVCC snapshot reads during traversal (`src/mvcc.rs`)
+- Write-ahead log, atomic batch commits
+- Bounded LRU adjacency cache (degree-1000 hit: ~131 ns → ~13 ns)
+
+**Temporal topology**
+- Version chains via `checkpoint()` / `snapshot_as_of(n)`
+- Persistent-homology analysis: H₀ component lifetimes (`scc_lineage_barcode`), β₁ cyclomatic trajectory (`cycle_rank_snapshot`), circular-dependency lifecycle (`cycle_scc_barcode`)
+
+**Bindings**
+- Python bindings via PyO3 / maturin (`sqlitegraph-py`)
+
+**Keyword index:** embedded graph database · HNSW vector search · Cypher · MVCC · write-ahead log · persistent homology · temporal versioning · louvain · SQLite · Native V3 · Python bindings · Rust
+
 ## What's New in 3.3
 
 The 3.3 release adds a **temporal version chain** with persistent-homology
