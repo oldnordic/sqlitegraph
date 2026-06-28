@@ -1,6 +1,17 @@
 # SQLiteGraph Changelog
 
-## [Unreleased] - 2026-06-27
+## [Unreleased]
+
+### Added
+- **Experimental CSR sharding & backend status** — Re-classified Native V3 backend status as **experimental** (all functional bugs should be reported).
+- **CSR sharding search optimization** — Optimized `get_outgoing_edges` in `SubgraphBuilder` from a linear scan to two $O(\log E)$ binary search partition points.
+- **HNSW vector deletion constraint** — Documented that dynamic deletion requires a full index rebuild.
+
+### Fixed
+- **V3Backend deadlock** — Resolved deadlocks in `update_node` and `delete_entity` by explicitly dropping the `node_store` write lock before calling `rebuild_indexes()`.
+- **HNSW benchmark timing** — Fixed the timed closures in `benches/native_v3_diagnostic_bench.rs` and `benches/native_v3_features_bench.rs` to return `ctx`, preventing database teardown/destruction overhead from polluting measured query/search latency.
+
+## [3.4.0] - 2026-06-27
 
 ### Added — Cypher Backend-Agnostic Support
 

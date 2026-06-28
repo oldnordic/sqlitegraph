@@ -66,6 +66,7 @@ let graph = SqliteGraph::open_in_memory()?;
 
 ### Native V3 Backend
 
+**Status**: Experimental. Functional bugs should be reported.
 **Use**: Large graphs, traversal-heavy workloads
 
 ```rust
@@ -78,6 +79,7 @@ let graph = V3Backend::create("graph.graph")?;
 
 || Characteristic | SQLite Backend | Native V3 Backend |
 ||----------------|----------------|-------------------|
+|| **Status** | Stable | Experimental (all functional bugs should be reported) |
 || **Performance** | Standard SQLite | See [benchmarks](#benchmarks) for workload-specific behavior |
 || **Transactions** | Full ACID | Atomic commits, WAL |
 || **Memory Usage** | SQLite overhead | Configurable buffers |

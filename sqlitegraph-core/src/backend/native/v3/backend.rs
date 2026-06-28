@@ -1155,6 +1155,44 @@ impl V3Backend {
         indexes.contains_key(index_name)
     }
 
+    /// Return the number of embeddings tracked for an HNSW index.
+    pub fn hnsw_embedding_count(&self, index_name: &str) -> Result<usize, SqliteGraphError> {
+        let indexes = self.hnsw_indexes.read();
+        let metadata = indexes.get(index_name).ok_or_else(|| {
+            SqliteGraphError::validation(format!("HNSW index not found: {}", index_name))
+        })?;
+
+        #[cfg(feature = "turbovec")]
+        {
+            return Ok(*metadata.embedding_count.lock().unwrap());
+        }
+
+        #[cfg(not(feature = "turbovec"))]
+        {
+            let hnsw = metadata.hnsw_index.lock().unwrap();
+            Ok(hnsw.vector_count())
+        }
+    }
+
+    /// Return whether the turbovec sidecar is already built for an HNSW index.
+    pub fn hnsw_turbovec_ready(&self, index_name: &str) -> Result<bool, SqliteGraphError> {
+        let indexes = self.hnsw_indexes.read();
+        let metadata = indexes.get(index_name).ok_or_else(|| {
+            SqliteGraphError::validation(format!("HNSW index not found: {}", index_name))
+        })?;
+
+        #[cfg(feature = "turbovec")]
+        {
+            Ok(metadata.turbovec_index.lock().unwrap().is_some())
+        }
+
+        #[cfg(not(feature = "turbovec"))]
+        {
+            let _ = metadata;
+            Ok(false)
+        }
+    }
+
     /// Get an HNSW index by name (returns Arc clone for thread safety)
     ///
     /// # Arguments
@@ -1507,6 +1545,44 @@ impl V3Backend {
             .into_iter()
             .map(|(id, dist)| (id as i64, dist))
             .collect())
+    }
+
+    /// Return a shared neighbor slice without cloning into a `Vec`.
+    ///
+    /// This is intended for focused benchmarking of the edge-store hot path.
+    pub fn neighbors_shared(
+        &self,
+        snapshot_id: SnapshotId,
+        node: i64,
+        query: NeighborQuery,
+    ) -> Result<Arc<[i64]>, SqliteGraphError> {
+        Self::require_current_snapshot(snapshot_id)?;
+        let edge_store = self.edge_store.read();
+
+        if let Some(ref edge_type) = query.edge_type {
+            let dir = match query.direction {
+                BackendDirection::Outgoing => EdgeDirection::Outgoing,
+                BackendDirection::Incoming => EdgeDirection::Incoming,
+            };
+            edge_store
+                .neighbors_filtered(node, dir, edge_type)
+                .map_err(map_v3_error)
+        } else {
+            match query.direction {
+                BackendDirection::Outgoing => edge_store.outgoing(node).map_err(map_v3_error),
+                BackendDirection::Incoming => edge_store.incoming(node).map_err(map_v3_error),
+            }
+        }
+    }
+
+    /// Return current edge-cache hit and miss counters.
+    pub fn edge_cache_stats(&self) -> (u64, u64, u64, u64, usize) {
+        self.edge_store.read().cache_stats()
+    }
+
+    /// Reset edge-cache counters without evicting cached rows.
+    pub fn reset_edge_cache_stats(&self) {
+        self.edge_store.read().reset_stats();
     }
 
     /// Get node by ID (internal method)
@@ -2728,6 +2804,7 @@ impl GraphBackend for V3Backend {
         node_store
             .update_node(node_id, updated_record)
             .map_err(map_v3_error)?;
+        drop(node_store);
 
         // Invalidate cache entry
         self.node_cache.invalidate(node_id);
@@ -2759,6 +2836,7 @@ impl GraphBackend for V3Backend {
         let next_version = self.next_graph_version();
         let mut node_store = self.node_store.write();
         node_store.delete_node(id).map_err(map_v3_error)?;
+        drop(node_store);
 
         // Invalidate cache entry
         self.node_cache.invalidate(id);

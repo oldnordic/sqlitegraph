@@ -18,6 +18,79 @@ use sqlitegraph::snapshot::SnapshotId;
 mod bench_utils;
 use bench_utils::create_v3_bench_context;
 
+fn populate_hnsw_index(
+    vector_count: usize,
+    dimension: usize,
+) -> (bench_utils::V3BenchContext, Vec<f32>) {
+    let ctx = create_v3_bench_context(&format!("hnsw_{}.db", vector_count));
+
+    ctx.backend
+        .create_hnsw_index("test_index", dimension, 4)
+        .expect("Failed to create HNSW index");
+
+    let query_vec: Vec<f32> = (0..dimension).map(|i| i as f32 * 0.01).collect();
+
+    for i in 0..vector_count {
+        let vec: Vec<f32> = (0..dimension)
+            .map(|j| (j as f32 * 0.01 + i as f32).cos())
+            .collect();
+        let metadata = serde_json::json!({ "id": i, "node_id": i });
+
+        ctx.backend
+            .insert_hnsw_vector("test_index", &vec, Some(metadata))
+            .expect("Failed to insert vector");
+    }
+
+    assert_eq!(
+        ctx.backend
+            .hnsw_embedding_count("test_index")
+            .expect("Failed to inspect HNSW count"),
+        vector_count,
+        "Benchmark setup must insert the full vector population"
+    );
+
+    (ctx, query_vec)
+}
+
+fn populate_csr_graph(
+    db_name: &str,
+    nodes: usize,
+    edges_per_node: usize,
+) -> (bench_utils::V3BenchContext, Vec<i64>) {
+    let ctx = create_v3_bench_context(db_name);
+    let mut node_ids = Vec::new();
+
+    for i in 0..nodes {
+        let node_id = ctx
+            .backend
+            .insert_node(NodeSpec {
+                kind: "Node".to_string(),
+                name: format!("node_{}", i),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .expect("Failed to insert node");
+        node_ids.push(node_id);
+    }
+
+    for i in 0..nodes.saturating_sub(1) {
+        let from = node_ids[i];
+        for j in 0..edges_per_node {
+            let to = node_ids[(i + j + 1) % node_ids.len()];
+            ctx.backend
+                .insert_edge(EdgeSpec {
+                    from,
+                    to,
+                    edge_type: "LINKS".to_string(),
+                    data: serde_json::json!({}),
+                })
+                .expect("Failed to insert edge");
+        }
+    }
+
+    (ctx, node_ids)
+}
+
 /// Benchmark: SQL Layer - Node property lookup
 pub fn bench_sql_node_properties(c: &mut Criterion) {
     let mut group = c.benchmark_group("sql_node_properties");
@@ -56,6 +129,7 @@ pub fn bench_sql_node_properties(c: &mut Criterion) {
                             .expect("Failed to get properties");
                         black_box(props);
                     }
+                    ctx
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -123,6 +197,7 @@ pub fn bench_sql_edge_attributes(c: &mut Criterion) {
                             .expect("Failed to get attributes");
                         black_box(attrs);
                     }
+                    ctx
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -132,13 +207,41 @@ pub fn bench_sql_edge_attributes(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: HNSW - Vector search
-pub fn bench_hnsw_vector_search(c: &mut Criterion) {
-    let mut group = c.benchmark_group("hnsw_vector_search");
+/// Benchmark: HNSW - cold first search after population
+pub fn bench_hnsw_vector_search_cold_first(c: &mut Criterion) {
+    let mut group = c.benchmark_group("hnsw_vector_search_cold_first");
     group.measurement_time(Duration::from_secs(8));
     group.sample_size(10);
 
-    // Test scales: 1K (pre-turbovec), 5K (cliff location), 10K (post-cliff), 50K (turbovec scaling)
+    for (vector_count, dimension) in [(1000, 64usize), (5000, 64), (10000, 64), (50000, 64)] {
+        let name = format!("{}_{}", vector_count, dimension);
+        group.throughput(Throughput::Elements(vector_count as u64));
+
+        group.bench_function(name, |b| {
+            b.iter_batched(
+                || populate_hnsw_index(vector_count, dimension),
+                |(ctx, query_vec)| {
+                    let results = ctx
+                        .backend
+                        .hnsw_vector_search("test_index", &query_vec, 10)
+                        .expect("Search failed");
+                    black_box(results);
+                    ctx
+                },
+                criterion::BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
+/// Benchmark: HNSW - warm steady-state search after explicit pre-warm
+pub fn bench_hnsw_vector_search_warm(c: &mut Criterion) {
+    let mut group = c.benchmark_group("hnsw_vector_search_warm");
+    group.measurement_time(Duration::from_secs(8));
+    group.sample_size(10);
+
     for (vector_count, dimension) in [(1000, 64usize), (5000, 64), (10000, 64), (50000, 64)] {
         let name = format!("{}_{}", vector_count, dimension);
         group.throughput(Throughput::Elements(vector_count as u64));
@@ -146,40 +249,33 @@ pub fn bench_hnsw_vector_search(c: &mut Criterion) {
         group.bench_function(name, |b| {
             b.iter_batched(
                 || {
-                    let ctx = create_v3_bench_context(&format!("hnsw_{}.db", vector_count));
+                    let (ctx, query_vec) = populate_hnsw_index(vector_count, dimension);
 
-                    ctx.backend
-                        .create_hnsw_index("test_index", dimension, 4)
-                        .expect("Failed to create HNSW index");
-
-                    let query_vec: Vec<f32> = (0..dimension).map(|i| i as f32 * 0.01).collect();
-
-                    // Phase 1: Insert all vectors (includes turbovec build at threshold - NOT MEASURED)
-                    for i in 0..vector_count {
-                        let vec: Vec<f32> = (0..dimension)
-                            .map(|j| (j as f32 * 0.01 + i as f32).cos())
-                            .collect();
-                        let metadata = serde_json::json!({"id": i});
-
-                        ctx.backend
-                            .insert_hnsw_vector("test_index", &vec, Some(metadata))
-                            .expect("Failed to insert vector");
-                    }
-
-                    // Phase 2: Warm the index with dummy search (trigger any lazy builds)
                     let warm_vec: Vec<f32> =
                         (0..dimension).map(|i| (i as f32 * 0.01).sin()).collect();
-                    let _ = ctx.backend.hnsw_vector_search("test_index", &warm_vec, 10);
+                    let _ = ctx
+                        .backend
+                        .hnsw_vector_search("test_index", &warm_vec, 10)
+                        .expect("Warm search failed");
+
+                    if vector_count > 1000 {
+                        assert!(
+                            ctx.backend
+                                .hnsw_turbovec_ready("test_index")
+                                .expect("Failed to inspect turbovec state"),
+                            "Warm HNSW benchmark must enter measurement with turbovec built"
+                        );
+                    }
 
                     (ctx, query_vec)
                 },
                 |(ctx, query_vec)| {
-                    // Phase 3: Measure search only with warm index (THIS IS WHAT WE MEASURE)
                     let results = ctx
                         .backend
                         .hnsw_vector_search("test_index", &query_vec, 10)
                         .expect("Search failed");
                     black_box(results);
+                    ctx
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -189,9 +285,9 @@ pub fn bench_hnsw_vector_search(c: &mut Criterion) {
     group.finish();
 }
 
-/// Benchmark: CSR - Neighbor query performance
-pub fn bench_csr_neighbors(c: &mut Criterion) {
-    let mut group = c.benchmark_group("csr_neighbors");
+/// Benchmark: CSR - shared-slice hot path without wrapper clone
+pub fn bench_csr_neighbors_shared(c: &mut Criterion) {
+    let mut group = c.benchmark_group("csr_neighbors_shared");
     group.measurement_time(Duration::from_secs(4));
     group.sample_size(10);
 
@@ -202,53 +298,82 @@ pub fn bench_csr_neighbors(c: &mut Criterion) {
         group.bench_function(name, |b| {
             b.iter_batched(
                 || {
-                    let ctx = create_v3_bench_context("csr.db");
-                    let mut node_ids = Vec::new();
-
-                    for i in 0..nodes {
-                        let node_id = ctx
-                            .backend
-                            .insert_node(NodeSpec {
-                                kind: "Node".to_string(),
-                                name: format!("node_{}", i),
-                                file_path: None,
-                                data: serde_json::json!({}),
-                            })
-                            .expect("Failed to insert node");
-                        node_ids.push(node_id);
-                    }
-
-                    for i in 0..nodes.saturating_sub(1) {
-                        let from = node_ids[i];
-                        for j in 0..edges_per_node {
-                            let to = node_ids[(i + j + 1) % node_ids.len()];
-                            ctx.backend
-                                .insert_edge(EdgeSpec {
-                                    from,
-                                    to,
-                                    edge_type: "LINKS".to_string(),
-                                    data: serde_json::json!({}),
-                                })
-                                .expect("Failed to insert edge");
-                        }
-                    }
-
-                    (ctx, node_ids)
-                },
-                |(ctx, node_ids)| {
+                    let (ctx, node_ids) =
+                        populate_csr_graph("csr_shared.db", nodes, edges_per_node);
                     let center = node_ids[node_ids.len() / 2];
+                    let query = sqlitegraph::backend::NeighborQuery {
+                        direction: sqlitegraph::backend::BackendDirection::Outgoing,
+                        edge_type: None,
+                    };
+
+                    let warm = ctx
+                        .backend
+                        .neighbors_shared(SnapshotId::current(), center, query.clone())
+                        .expect("Failed to warm shared neighbor path");
+                    assert!(
+                        !warm.is_empty(),
+                        "Shared CSR benchmark must warm a non-empty row"
+                    );
+                    ctx.backend.reset_edge_cache_stats();
+
+                    (ctx, center, query)
+                },
+                |(ctx, center, query)| {
                     let neighbors = ctx
                         .backend
-                        .neighbors(
-                            SnapshotId::current(),
-                            center,
-                            sqlitegraph::backend::NeighborQuery {
-                                direction: sqlitegraph::backend::BackendDirection::Outgoing,
-                                edge_type: None,
-                            },
-                        )
+                        .neighbors_shared(SnapshotId::current(), center, query)
+                        .expect("Failed to get shared neighbors");
+                    black_box(neighbors.len());
+                    ctx
+                },
+                criterion::BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
+/// Benchmark: CSR - backend wrapper path including Arc-to-Vec clone
+pub fn bench_csr_neighbors_wrapper(c: &mut Criterion) {
+    let mut group = c.benchmark_group("csr_neighbors_wrapper");
+    group.measurement_time(Duration::from_secs(4));
+    group.sample_size(10);
+
+    for (nodes, edges_per_node) in [(1000usize, 5usize), (1000, 20), (10000, 5), (10000, 20)] {
+        let name = format!("sparse_{}_{}", nodes, edges_per_node);
+        group.throughput(Throughput::Elements(nodes as u64));
+
+        group.bench_function(name, |b| {
+            b.iter_batched(
+                || {
+                    let (ctx, node_ids) =
+                        populate_csr_graph("csr_wrapper.db", nodes, edges_per_node);
+                    let center = node_ids[node_ids.len() / 2];
+                    let query = sqlitegraph::backend::NeighborQuery {
+                        direction: sqlitegraph::backend::BackendDirection::Outgoing,
+                        edge_type: None,
+                    };
+
+                    let warm = ctx
+                        .backend
+                        .neighbors_shared(SnapshotId::current(), center, query.clone())
+                        .expect("Failed to warm shared neighbor path");
+                    assert!(
+                        !warm.is_empty(),
+                        "Wrapper CSR benchmark must warm a non-empty row"
+                    );
+                    ctx.backend.reset_edge_cache_stats();
+
+                    (ctx, center, query)
+                },
+                |(ctx, center, query)| {
+                    let neighbors = ctx
+                        .backend
+                        .neighbors(SnapshotId::current(), center, query)
                         .expect("Failed to get neighbors");
                     black_box(neighbors.len());
+                    ctx
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -295,6 +420,7 @@ pub fn bench_mvcc_snapshot_overhead(c: &mut Criterion) {
                             .expect("Failed to get node");
                         black_box(node);
                     }
+                    ctx
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -347,6 +473,7 @@ pub fn bench_mvcc_snapshot_overhead(c: &mut Criterion) {
                             .get_node(SnapshotId::from_lsn(snapshot_lsn), node_id);
                         black_box(());
                     }
+                    ctx
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -396,6 +523,7 @@ pub fn bench_pubsub_event_delivery(c: &mut Criterion) {
                             .expect("Should receive event");
                         black_box(event);
                     }
+                    ctx
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -482,6 +610,7 @@ pub fn bench_all_features_integration(c: &mut Criterion) {
                         .expect("Failed to get neighbors");
 
                     black_box(neighbors.len());
+                    ctx
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -495,8 +624,10 @@ criterion_group!(
     native_v3_features,
     bench_sql_node_properties,
     bench_sql_edge_attributes,
-    bench_hnsw_vector_search,
-    bench_csr_neighbors,
+    bench_hnsw_vector_search_cold_first,
+    bench_hnsw_vector_search_warm,
+    bench_csr_neighbors_shared,
+    bench_csr_neighbors_wrapper,
     bench_mvcc_snapshot_overhead,
     bench_pubsub_event_delivery,
     bench_all_features_integration,

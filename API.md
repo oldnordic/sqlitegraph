@@ -14,7 +14,7 @@ This document provides a quick overview of the current public API surface.
 | Backend | Status | Module | Best For |
 |---------|--------|--------|----------|
 | **SQLite** | ✅ Stable | `backend::sqlite` | Debuggable, SQL ecosystem |
-| **Native V3** | ✅ Stable | `backend::native::v3` | Graph-oriented storage, KV, pub/sub |
+| **Native V3** | ⚠️ Experimental | `backend::native::v3` | Graph-oriented storage, KV, pub/sub (Bugs should be reported) |
 
 ---
 
@@ -115,7 +115,7 @@ let storage = SQLiteVectorStorage::new(index_id, conn);
 
 ## Native V3 Backend API
 
-**Status:** Stable, recommended for new projects
+**Status:** Experimental. Functional bugs should be reported.
 
 ```rust
 use sqlitegraph::backend::native::v3::V3Backend;

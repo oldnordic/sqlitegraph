@@ -103,7 +103,7 @@ HNSW and traversal improvements:
 
 | Feature | SQLite | Native V3 |
 |---------|--------|-----------|
-| Status | Stable | Stable |
+| Status | Stable | Experimental (Bugs should be reported) |
 | Storage | `.db` file | `.graph` file |
 | Capacity model | Storage-limited | Storage-limited |
 | Graph algorithms | 35+ | 35+ |

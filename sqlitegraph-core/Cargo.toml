@@ -267,3 +267,7 @@ harness = false
 [[bench]]
 name = "native_v3_features_bench"
 harness = false
+
+[[bench]]
+name = "native_v3_diagnostic_bench"
+harness = false

@@ -322,6 +322,8 @@ impl SemanticLayer {
     }
 
     /// Remove an embedding (turbovec version - stub for API compatibility).
+    ///
+    /// Note: deletion requires full index rebuild — call rebuild_hnsw_index() after removals.
     #[cfg(feature = "turbovec")]
     pub fn remove_embedding(&mut self, _token_id: u32) -> bool {
         // HNSW doesn't support efficient deletion
@@ -436,13 +438,13 @@ impl SemanticLayer {
     /// Used during incremental fine-tune to update only displaced embeddings.
     ///
     /// **Note**: HNSW doesn't support efficient deletion. This method is a no-op
-    /// that maintains API compatibility. For production, consider rebuilding index
-    /// or using a versioning strategy with multiple indexes.
+    /// that maintains API compatibility. Deletion requires full index rebuild —
+    /// call rebuild_hnsw_index() after removals.
     #[cfg(not(feature = "turbovec"))]
     pub fn remove_embedding(&mut self, _token_id: u32) -> bool {
         // HNSW doesn't support efficient deletion
         // In production, would need to rebuild index or use versioning
-        // For now, return true to maintain API compatibility
+        // For now, return false to maintain API compatibility
         false
     }
 

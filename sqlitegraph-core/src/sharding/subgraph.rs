@@ -170,15 +170,12 @@ impl SubgraphBuilder {
         // Get the shard
         let shard = &self.shards.get(*shard_id)?;
 
-        // Collect edges from this shard that start with source_id
-        let edges: Vec<CsrEdge> = shard
-            .edges
-            .iter()
-            .filter(|edge| edge.src == source_id)
-            .cloned()
-            .collect();
+        // Binary search the contiguous range of edges for source_id
+        let start_idx = shard.edges.partition_point(|edge| edge.src < source_id);
+        let end_idx =
+            shard.edges[start_idx..].partition_point(|edge| edge.src == source_id) + start_idx;
 
-        Some(edges)
+        Some(shard.edges[start_idx..end_idx].to_vec())
     }
 
     /// Get shard statistics for debugging.

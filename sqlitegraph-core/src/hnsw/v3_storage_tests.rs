@@ -4,7 +4,7 @@
 //! using V3Backend's KV store as the underlying storage.
 
 use crate::backend::native::v3::V3Backend;
-use crate::hnsw::storage::{VectorBatch, VectorStorage};
+use crate::hnsw::storage::VectorBatch;
 use serde_json::json;
 use tempfile::TempDir;
 
