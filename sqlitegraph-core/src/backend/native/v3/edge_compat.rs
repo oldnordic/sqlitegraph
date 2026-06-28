@@ -175,17 +175,56 @@ impl V3EdgeCluster {
         self.edges.push(edge);
     }
 
+    /// Add a weighted edge to the cluster
+    pub fn add_edge_weighted(&mut self, dst: i64, edge_type: Option<String>, weight: f32) {
+        let edge_data = {
+            let et_bytes = edge_type.as_ref().map(|s| s.as_bytes()).unwrap_or(&[]);
+            let mut data = Vec::with_capacity(6 + et_bytes.len());
+            data.push(0x80); // Format flag for weighted edge
+            data.extend_from_slice(&weight.to_be_bytes());
+            data.push(et_bytes.len() as u8);
+            data.extend_from_slice(et_bytes);
+            data
+        };
+
+        let edge = CompactEdgeRecord::new(dst, 0, edge_data);
+        self.edges.push(edge);
+    }
+
     /// Extract edge type from edge data
     /// Returns None if edge_data is empty (no edge_type stored)
     fn extract_edge_type(edge_data: &[u8]) -> Option<String> {
         if edge_data.is_empty() {
             return None;
         }
-        let type_len = edge_data[0] as usize;
-        if edge_data.len() < 1 + type_len {
-            return None;
+        if edge_data[0] == 0x80 {
+            // Weighted format: [0x80: 1 byte] [weight: 4 bytes] [type_len: 1 byte] [type_bytes...]
+            if edge_data.len() < 6 {
+                return None;
+            }
+            let type_len = edge_data[5] as usize;
+            if edge_data.len() < 6 + type_len {
+                return None;
+            }
+            Some(String::from_utf8_lossy(&edge_data[6..6 + type_len]).to_string())
+        } else {
+            // Legacy format: [type_len: 1 byte] [type_bytes...]
+            let type_len = edge_data[0] as usize;
+            if edge_data.len() < 1 + type_len {
+                return None;
+            }
+            Some(String::from_utf8_lossy(&edge_data[1..1 + type_len]).to_string())
         }
-        Some(String::from_utf8_lossy(&edge_data[1..1 + type_len]).to_string())
+    }
+
+    /// Extract edge weight from edge data
+    /// Returns 1.0 if not specified (legacy or not provided)
+    fn extract_edge_weight(edge_data: &[u8]) -> f32 {
+        if edge_data.len() >= 5 && edge_data[0] == 0x80 {
+            f32::from_be_bytes([edge_data[1], edge_data[2], edge_data[3], edge_data[4]])
+        } else {
+            1.0
+        }
     }
 
     /// Get destination node IDs
@@ -482,6 +521,8 @@ pub struct V3EdgeStore {
     /// In-memory cache of neighbor lists - using Arc<[i64]> for zero-copy reads
     /// This matches SQLite's AdjacencyCache pattern but with Arc for zero-copy
     cache: RwLock<HashMap<(i64, Direction), Arc<[i64]>>>,
+    /// In-memory cache of weighted neighbors
+    cache_weighted: RwLock<HashMap<(i64, Direction), Arc<[(i64, f32)]>>>,
     /// Edge type storage: (src, dst, dir) -> edge_type string
     ///
     /// SEMANTIC CONSTRAINT: Key is (src, dst, dir), NOT edge_id.
@@ -555,6 +596,7 @@ impl V3EdgeStore {
             btree: parking_lot::RwLock::new(btree),
             wal: wal.map(|w| Arc::new(RwLock::new(w))),
             cache: RwLock::new(HashMap::new()),
+            cache_weighted: RwLock::new(HashMap::new()),
             edge_types: RwLock::new(HashMap::new()),
             cache_hits: AtomicU64::new(0),
             cache_misses: AtomicU64::new(0),
@@ -581,6 +623,7 @@ impl V3EdgeStore {
             btree: parking_lot::RwLock::new(btree),
             wal: wal.map(|w| Arc::new(RwLock::new(w))),
             cache: RwLock::new(HashMap::new()),
+            cache_weighted: RwLock::new(HashMap::new()),
             edge_types: RwLock::new(HashMap::new()),
             cache_hits: AtomicU64::new(0),
             cache_misses: AtomicU64::new(0),
@@ -606,6 +649,7 @@ impl V3EdgeStore {
             btree: parking_lot::RwLock::new(btree),
             wal: wal.map(|w| Arc::new(RwLock::new(w))),
             cache: RwLock::new(HashMap::new()),
+            cache_weighted: RwLock::new(HashMap::new()),
             edge_types: RwLock::new(HashMap::new()),
             cache_hits: AtomicU64::new(0),
             cache_misses: AtomicU64::new(0),
@@ -825,6 +869,20 @@ impl V3EdgeStore {
             cache.insert(cache_key, Arc::from(vec![dst]));
         }
 
+        // Also update weighted cache with default weight 1.0
+        {
+            let mut cache_weighted = self.cache_weighted.write();
+            if let Some(neighbors) = cache_weighted.get_mut(&cache_key) {
+                let mut vec = neighbors.to_vec();
+                if !vec.iter().any(|(n, _)| *n == dst) {
+                    vec.push((dst, 1.0));
+                    *neighbors = Arc::from(vec);
+                }
+            } else {
+                cache_weighted.insert(cache_key, Arc::from(vec![(dst, 1.0)]));
+            }
+        }
+
         // Store edge type in HashMap AND pass to cluster for durable storage
         // NOTE: If an edge already exists between (src, dst, dir) with a different type,
         // this will overwrite the previous type. This is a known semantic limitation.
@@ -911,6 +969,7 @@ impl V3EdgeStore {
     /// Also clears edge_types HashMap to ensure consistency
     pub fn clear_cache(&self) {
         self.cache.write().clear();
+        self.cache_weighted.write().clear();
         self.edge_types.write().clear();
         self.cache_hits.store(0, Ordering::Relaxed);
         self.cache_misses.store(0, Ordering::Relaxed);
@@ -957,6 +1016,193 @@ impl V3EdgeStore {
         self.cache_misses.store(0, Ordering::Relaxed);
         self.hit_time_ns.store(0, Ordering::Relaxed);
         self.miss_time_ns.store(0, Ordering::Relaxed);
+    }
+
+    /// Get weighted neighbors from cache - returns Arc<[(i64, f32)]> for zero-copy!
+    pub fn neighbors_weighted(&self, src: i64, dir: Direction) -> NativeResult<Arc<[(i64, f32)]>> {
+        let key = (src, dir);
+
+        // First check in-memory cache
+        {
+            let cache = self.cache_weighted.read();
+            if let Some(neighbors) = cache.get(&key) {
+                return Ok(neighbors.clone());
+            }
+        }
+
+        // Cache miss - try to load from disk if we have a db_path
+        if let Some(ref db_path) = self.db_path
+            && let Ok(neighbors) = self.load_neighbors_weighted_from_disk(src, dir, db_path)
+        {
+            if !neighbors.is_empty() {
+                // Cache the loaded neighbors
+                let mut cache = self.cache_weighted.write();
+                cache.insert(key, neighbors.clone());
+                return Ok(neighbors);
+            }
+        }
+
+        Ok(Arc::from([]))
+    }
+
+    /// Load weighted neighbors from disk
+    fn load_neighbors_weighted_from_disk(
+        &self,
+        src: i64,
+        dir: Direction,
+        db_path: &PathBuf,
+    ) -> NativeResult<Arc<[(i64, f32)]>> {
+        use crate::backend::native::v3::constants::V3_HEADER_SIZE;
+        use std::fs::File;
+        use std::io::Read;
+
+        let key = edge_key(src, dir);
+        let btree = self.btree.read();
+
+        let page_id = match btree.lookup(key) {
+            Ok(Some(pid)) => pid,
+            Ok(None) | Err(_) => return Ok(Arc::from([])),
+        };
+        drop(btree);
+
+        let offset = V3_HEADER_SIZE + (page_id - 1) * (self.page_size as u64);
+
+        let mut file = match File::open(db_path) {
+            Ok(f) => f,
+            Err(_) => return Ok(Arc::from([])),
+        };
+
+        if file.seek(SeekFrom::Start(offset)).is_err() {
+            return Ok(Arc::from([]));
+        }
+
+        let mut buffer = vec![0u8; self.page_size as usize];
+        match file.read(&mut buffer) {
+            Ok(n) if n > 0 => match V3EdgeCluster::deserialize(&buffer, page_id) {
+                Ok(cluster) => {
+                    let mut edge_types = self.edge_types.write();
+                    let mut neighbors = Vec::with_capacity(cluster.edges.len());
+                    for e in &cluster.edges {
+                        let edge_type = V3EdgeCluster::extract_edge_type(&e.edge_data);
+                        if let Some(et) = edge_type {
+                            edge_types.insert((src, e.neighbor_id, dir), et);
+                        }
+                        let weight = V3EdgeCluster::extract_edge_weight(&e.edge_data);
+                        neighbors.push((e.neighbor_id, weight));
+                    }
+                    Ok(Arc::from(neighbors.into_boxed_slice()))
+                }
+                Err(_) => Ok(Arc::from([])),
+            },
+            _ => Ok(Arc::from([])),
+        }
+    }
+
+    /// Get weighted neighbors filtered by edge type
+    pub fn neighbors_weighted_filtered(
+        &self,
+        src: i64,
+        dir: Direction,
+        edge_type: &str,
+    ) -> NativeResult<Arc<[(i64, f32)]>> {
+        let all_neighbors = self.neighbors_weighted(src, dir)?;
+
+        let edge_types = self.edge_types.read();
+        let filtered: Vec<(i64, f32)> = all_neighbors
+            .iter()
+            .filter(|&&(dst, _)| {
+                edge_types
+                    .get(&(src, dst, dir))
+                    .map(|stored_type| stored_type == edge_type)
+                    .unwrap_or(false)
+            })
+            .copied()
+            .collect();
+
+        Ok(Arc::from(filtered.into_boxed_slice()))
+    }
+
+    /// Insert a weighted edge
+    pub fn insert_edge_weighted(
+        &self,
+        src: i64,
+        dst: i64,
+        dir: Direction,
+        edge_type: Option<String>,
+        weight: f32,
+    ) -> NativeResult<()> {
+        let cache_key = (src, dir);
+
+        // Update unweighted cache
+        {
+            let mut cache = self.cache.write();
+            if let Some(neighbors) = cache.get_mut(&cache_key) {
+                let mut vec: Vec<i64> = neighbors.to_vec();
+                if !vec.contains(&dst) {
+                    vec.push(dst);
+                    *neighbors = Arc::from(vec);
+                }
+            } else {
+                cache.insert(cache_key, Arc::from(vec![dst]));
+            }
+        }
+
+        // Update weighted cache
+        {
+            let mut cache_weighted = self.cache_weighted.write();
+            if let Some(neighbors) = cache_weighted.get_mut(&cache_key) {
+                let mut vec = neighbors.to_vec();
+                if let Some(pos) = vec.iter().position(|(n, _)| *n == dst) {
+                    vec[pos].1 = weight;
+                } else {
+                    vec.push((dst, weight));
+                }
+                *neighbors = Arc::from(vec);
+            } else {
+                cache_weighted.insert(cache_key, Arc::from(vec![(dst, weight)]));
+            }
+        }
+
+        if let Some(ref edge_type_str) = edge_type {
+            let mut edge_types = self.edge_types.write();
+            edge_types.insert((src, dst, dir), edge_type_str.clone());
+        } else {
+            let mut edge_types = self.edge_types.write();
+            edge_types.remove(&(src, dst, dir));
+        }
+
+        // Mark cluster as dirty
+        let page_id = {
+            let mut dirty = self.dirty_clusters.write();
+            dirty.entry(cache_key).or_insert_with(|| {
+                let key = edge_key(src, dir);
+                let btree = self.btree.read();
+                let page_id_to_use = match btree.lookup(key) {
+                    Ok(Some(pid)) => pid,
+                    Ok(None) | Err(_) => {
+                        drop(btree);
+                        let mut allocator = self.allocator.write();
+                        match allocator.allocate() {
+                            Ok(pid) => pid,
+                            Err(_) => 0,
+                        }
+                    }
+                };
+                V3EdgeCluster::new(src, dir, page_id_to_use)
+            });
+
+            let cluster = dirty.get_mut(&cache_key).unwrap();
+            let cluster_page_id = cluster.page_id;
+            cluster.add_edge_weighted(dst, edge_type, weight);
+            cluster_page_id
+        };
+
+        if let Some(ref wal) = self.wal {
+            let mut wal_guard = wal.write();
+            let _ = wal_guard.edge_insert(src, dst, dir as u8, page_id);
+        }
+
+        Ok(())
     }
 
     /// Flush dirty clusters to disk
@@ -1903,6 +2149,86 @@ mod tests {
         // Check third edge (no type)
         assert_eq!(edges_with_types[2].0, 4);
         assert_eq!(edges_with_types[2].1, None);
+    }
+
+    #[test]
+    fn test_weighted_edges() {
+        use crate::backend::{BackendDirection, EdgeSpec, GraphBackend, NeighborQuery, NodeSpec};
+
+        let temp_dir = tempfile::TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.graph");
+        let backend = crate::backend::native::v3::V3Backend::create(&db_path).unwrap();
+
+        // Create nodes
+        backend
+            .insert_node(NodeSpec {
+                kind: "Node".to_string(),
+                name: "n1".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        backend
+            .insert_node(NodeSpec {
+                kind: "Node".to_string(),
+                name: "n2".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        let n1_id = backend.entity_ids().unwrap()[0];
+        let n2_id = backend.entity_ids().unwrap()[1];
+
+        // 1. Insert a weighted edge via standard insert_edge by passing weight inside data
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1_id,
+                to: n2_id,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({ "weight": 2.5 }),
+            })
+            .unwrap();
+
+        // Query weighted neighbors
+        let query = NeighborQuery {
+            direction: BackendDirection::Outgoing,
+            edge_type: None,
+        };
+        let neighbors = backend
+            .neighbors_weighted(crate::SnapshotId::current(), n1_id, query.clone())
+            .unwrap();
+        assert_eq!(neighbors.len(), 1);
+        assert_eq!(neighbors[0].0, n2_id);
+        assert_eq!(neighbors[0].1, 2.5);
+
+        // Query filtered weighted neighbors
+        let query_filtered = NeighborQuery {
+            direction: BackendDirection::Outgoing,
+            edge_type: Some("CALLS".to_string()),
+        };
+        let neighbors_filt = backend
+            .neighbors_weighted(crate::SnapshotId::current(), n1_id, query_filtered)
+            .unwrap();
+        assert_eq!(neighbors_filt.len(), 1);
+        assert_eq!(neighbors_filt[0].1, 2.5);
+
+        // 2. Insert via batch_insert_edges_with_weights
+        backend
+            .batch_insert_edges_with_weights(vec![(n2_id, n1_id, 4.2, Some("RETURNS".to_string()))])
+            .unwrap();
+
+        let query_incoming = NeighborQuery {
+            direction: BackendDirection::Outgoing,
+            edge_type: Some("RETURNS".to_string()),
+        };
+        let neighbors_incoming = backend
+            .neighbors_weighted(crate::SnapshotId::current(), n2_id, query_incoming)
+            .unwrap();
+        assert_eq!(neighbors_incoming.len(), 1);
+        assert_eq!(neighbors_incoming[0].0, n1_id);
+        assert_eq!(neighbors_incoming[0].1, 4.2);
     }
 
     //========================================================================

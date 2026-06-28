@@ -1575,6 +1575,43 @@ impl V3Backend {
         }
     }
 
+    /// Return shared (neighbor_id, weight) pairs without allocating per call.
+    pub fn neighbors_weighted_shared(
+        &self,
+        snapshot_id: SnapshotId,
+        node: i64,
+        query: NeighborQuery,
+    ) -> Result<Arc<[(i64, f32)]>, SqliteGraphError> {
+        Self::require_current_snapshot(snapshot_id)?;
+        let edge_store = self.edge_store.read();
+
+        let dir = match query.direction {
+            BackendDirection::Outgoing => EdgeDirection::Outgoing,
+            BackendDirection::Incoming => EdgeDirection::Incoming,
+        };
+
+        if let Some(ref edge_type) = query.edge_type {
+            edge_store
+                .neighbors_weighted_filtered(node, dir, edge_type)
+                .map_err(map_v3_error)
+        } else {
+            edge_store
+                .neighbors_weighted(node, dir)
+                .map_err(map_v3_error)
+        }
+    }
+
+    /// Return (neighbor_id, weight) pairs for the given node.
+    pub fn neighbors_weighted(
+        &self,
+        snapshot_id: SnapshotId,
+        node: i64,
+        query: NeighborQuery,
+    ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
+        let shared = self.neighbors_weighted_shared(snapshot_id, node, query)?;
+        Ok(shared.to_vec())
+    }
+
     /// Return current edge-cache hit and miss counters.
     pub fn edge_cache_stats(&self) -> (u64, u64, u64, u64, usize) {
         self.edge_store.read().cache_stats()
@@ -1718,6 +1755,24 @@ impl V3Backend {
     /// ```
     pub fn begin_batch(&self) -> WriteBatchGuard<'_> {
         WriteBatchGuard::new(self)
+    }
+
+    /// Bulk insert a list of weighted edges within a single write batch transaction
+    pub fn batch_insert_edges_with_weights(
+        &self,
+        edges: Vec<(i64, i64, f32, Option<String>)>,
+    ) -> Result<(), SqliteGraphError> {
+        let mut batch = self.begin_batch();
+        for (src, dst, weight, edge_type) in edges {
+            let spec = EdgeSpec {
+                from: src,
+                to: dst,
+                edge_type: edge_type.unwrap_or_default(),
+                data: serde_json::json!({ "weight": weight }),
+            };
+            batch.insert_edge(spec)?;
+        }
+        batch.commit()
     }
 
     /// Execute raw SQL query against V3Backend's SQL Layer
@@ -2321,16 +2376,30 @@ impl V3Backend {
             Some(edge.edge_type.clone())
         };
 
+        let weight = edge
+            .data
+            .get("weight")
+            .and_then(|v| v.as_f64())
+            .map(|w| w as f32)
+            .unwrap_or(1.0);
+
         edge_store
-            .insert_edge(
+            .insert_edge_weighted(
                 edge.from,
                 edge.to,
                 EdgeDirection::Outgoing,
                 edge_type.clone(),
+                weight,
             )
             .map_err(map_v3_error)?;
         edge_store
-            .insert_edge(edge.to, edge.from, EdgeDirection::Incoming, edge_type)
+            .insert_edge_weighted(
+                edge.to,
+                edge.from,
+                EdgeDirection::Incoming,
+                edge_type,
+                weight,
+            )
             .map_err(map_v3_error)?;
 
         // Update header edge count (but don't sync yet)
