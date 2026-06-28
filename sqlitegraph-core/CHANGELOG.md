@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Added
+- **Weighted Neighbor Retrieval** — Added `neighbors_weighted` and `neighbors_weighted_shared` to `V3Backend` and `V3EdgeStore` to retrieve adjacency lists with edge weights (`f32`) for pathformer's walk routing.
+- **Bulk Weighted Edge Insertion** — Added `batch_insert_edges_with_weights` to `V3Backend` to ingest a list of weighted edges in a single transaction.
+- **Durable Binary Weight Serialization** — Stored edge weights inside the compact edge record's `edge_data` using a backward-compatible `0x80` flagged binary layout.
 - **Experimental CSR sharding & backend status** — Re-classified Native V3 backend status as **experimental** (all functional bugs should be reported).
 - **CSR sharding search optimization** — Optimized `get_outgoing_edges` in `SubgraphBuilder` from a linear scan to two $O(\log E)$ binary search partition points.
 - **HNSW vector deletion constraint** — Documented that dynamic deletion requires a full index rebuild.
