@@ -335,6 +335,7 @@ pub mod dsl; // Public for examples
 pub mod hnsw;
 pub mod inference; // Sparse inference engine
 pub mod pattern; // Public for binary // HNSW vector search capabilities
+pub mod sharding; // CSR sharded graph for prompt-local traversal
 
 // Dependency monitoring module (feature-gated)
 #[cfg(feature = "dependency-monitoring")]

@@ -94,4 +94,22 @@ impl CliClient {
         let ids = self.backend().entity_ids()?;
         Ok(ids.len())
     }
+
+    /// Get backend type enum
+    pub fn backend_type(&self) -> super::cli::BackendType {
+        match self {
+            Self::Sqlite(_) => super::cli::BackendType::Sqlite,
+            #[cfg(feature = "native-v3")]
+            Self::V3(_) => super::cli::BackendType::V3,
+        }
+    }
+
+    /// Get V3 backend reference (if V3 backend)
+    #[cfg(feature = "native-v3")]
+    pub fn v3_backend(&self) -> Option<&sqlitegraph::backend::native::v3::V3Backend> {
+        match self {
+            Self::Sqlite(_) => None,
+            Self::V3(b) => Some(b.as_ref()),
+        }
+    }
 }

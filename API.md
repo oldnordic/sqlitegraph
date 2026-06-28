@@ -1,7 +1,7 @@
 # SQLiteGraph API Reference
 
-**Version:** 3.2.x
-**Last Updated:** 2026-06-07
+**Version:** 3.4.x
+**Last Updated:** 2026-06-27
 
 The complete API documentation is available at **[docs.rs/sqlitegraph](https://docs.rs/sqlitegraph)**.
 
@@ -29,6 +29,7 @@ This document provides a quick overview of the current public API surface.
 - [KV Store API](#kv-store-api)
 - [Pub/Sub API](#pubsub-api)
 - [Temporal Topology API](#temporal-topology-api)
+- [MVCC Snapshot Tracking API](#mvcc-snapshot-tracking-api)
 
 ---
 
@@ -691,6 +692,124 @@ One bar in the approximate LIFO barcode produced by the deprecated
 | `birth_version` | `u64` | Version where this component first appeared |
 | `death_version` | `Option<u64>` | Last version seen, or `None` if it survived |
 | `peak_size` | `usize` | Largest size this component reached across its lifetime |
+
+---
+
+## MVCC Snapshot Tracking API
+
+**Status:** Stable (v3.4), available in both SQLite and Native V3 backends
+
+Named snapshots with metadata tracking and optimized time-travel queries using pre-aggregated statistics.
+
+### Core Types
+
+```rust
+use sqlitegraph::graph::SnapshotMetadata;
+
+pub struct SnapshotMetadata {
+    pub snapshot_id: String,
+    pub timestamp: i64,
+    pub description: Option<String>,
+}
+```
+
+### Snapshot Management
+
+```rust
+use sqlitegraph::SqliteGraph;
+
+let graph = SqliteGraph::open_in_memory()?;
+
+// Create named snapshot with optional description
+let timestamp = graph.create_snapshot("snapshot_001")?;
+let timestamp = graph.create_snapshot_with_description("snapshot_002", Some("Weekly backup"))?;
+
+// List all snapshots (sorted by created_at DESC)
+let snapshots = graph.list_snapshots()?;
+for snapshot in snapshots {
+    println!("Snapshot {}: {} ({:?})",
+        snapshot.snapshot_id,
+        snapshot.timestamp,
+        snapshot.description
+    );
+}
+
+// Delete snapshot (cascades to snapshot_stats)
+graph.delete_snapshot("snapshot_001")?;
+```
+
+### Batch Insert with Snapshot Tagging
+
+```rust
+use sqlitegraph::graph::{GraphEntity, GraphEdge};
+
+let snapshot_id = "batch_001";
+graph.create_snapshot(snapshot_id)?;
+
+// Insert entities with snapshot tagging
+let entities = vec![
+    GraphEntity {
+        id: 0,
+        kind: "User".to_string(),
+        name: "Alice".to_string(),
+        file_path: None,
+        data: serde_json::json!({"age": 30}),
+    },
+    GraphEntity {
+        id: 0,
+        kind: "User".to_string(),
+        name: "Bob".to_string(),
+        file_path: None,
+        data: serde_json::json!({"age": 31}),
+    },
+];
+graph.batch_insert_entities_with_snapshot(&entities, snapshot_id)?;
+
+// Insert edges with snapshot tagging
+let edges = vec![
+    GraphEdge {
+        id: 0,
+        from_id: alice_id,
+        to_id: bob_id,
+        edge_type: "KNOWS".to_string(),
+        data: serde_json::json!({"since": 2020}),
+    },
+];
+graph.batch_insert_edges_with_snapshot(&edges, snapshot_id)?;
+```
+
+### Time-Travel Queries
+
+```rust
+use sqlitegraph::graph::GraphStats;
+
+// Query graph state as of timestamp (uses pre-aggregated stats - O(1) not O(N))
+let stats: GraphStats = graph.query_as_of(timestamp)?;
+
+println!("As of {}: {} entities, {} edges",
+    timestamp,
+    stats.total_entities,
+    stats.total_edges
+);
+
+// Pre-aggregated stats table (snapshot_stats) enables:
+// - O(1) time-travel queries (no COUNT(*) scans)
+// - Multi-dimensional queries (snapshot_id, created_at)
+// - Partition-ready schema for horizontal scaling
+```
+
+### Performance Characteristics
+
+**Small datasets (<10K entities):** Negligible difference (SQL optimizer handles both)
+
+**Medium datasets (10K-1M entities):**
+- Pre-aggregated stats: ~10-100x faster for time-travel
+- `query_as_of()` uses single indexed lookup vs full table scan
+
+**Large datasets (>1M entities):**
+- Eliminates COUNT(*) table scans entirely
+- Enables horizontal partitioning by snapshot ranges
+- Composite `(snapshot_id, created_at)` indexes support multi-dimensional queries
 
 ---
 

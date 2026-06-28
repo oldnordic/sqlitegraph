@@ -85,10 +85,14 @@ sqlitegraph --backend v3 --db mygraph.db [command]
 
 ### Query Commands (Read-Only)
 ```bash
-# Cypher-inspired queries
-sqlitegraph query "MATCH (n:User) RETURN n.name"
-sqlitegraph query "MATCH (a)-[:CALLS]->(b) RETURN a, b"
-sqlitegraph query "MATCH (n {role: 'admin'}) RETURN n"
+# Cypher-inspired queries (works with both backends)
+# SQLite backend (default, always available)
+sqlitegraph --backend sqlite query "MATCH (n:User) RETURN n.name"
+sqlitegraph --backend sqlite query "MATCH (a)-[:CALLS]->(b) RETURN a, b"
+
+# Native-v3 backend (requires --features native-v3 at compile time)
+sqlitegraph --backend v3 query "MATCH (n:User) RETURN n.name"
+sqlitegraph --backend v3 query "MATCH (n {role: 'admin'}) RETURN n"
 
 # Graph traversal
 sqlitegraph bfs --start 1 --depth 3

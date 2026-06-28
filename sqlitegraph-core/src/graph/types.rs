@@ -20,6 +20,30 @@ pub struct GraphEdge {
     pub data: serde_json::Value,
 }
 
+/// Graph statistics for MVCC queries.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GraphStats {
+    /// Total number of entities in the graph
+    pub total_entities: i64,
+    /// Total number of edges in the graph
+    pub total_edges: i64,
+    /// Entity counts grouped by kind (optional, can be empty)
+    pub entity_counts: Vec<(String, i64)>,
+    /// Edge counts grouped by type (optional, can be empty)
+    pub edge_counts: Vec<(String, i64)>,
+}
+
+/// Snapshot metadata for MVCC tracking.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SnapshotMetadata {
+    /// Unique snapshot identifier
+    pub snapshot_id: String,
+    /// Unix timestamp when snapshot was created
+    pub timestamp: i64,
+    /// Snapshot description (optional)
+    pub description: Option<String>,
+}
+
 pub fn validate_entity(entity: &GraphEntity) -> Result<(), SqliteGraphError> {
     if entity.kind.trim().is_empty() {
         return Err(SqliteGraphError::invalid_input("entity kind must be set"));

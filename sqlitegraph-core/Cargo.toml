@@ -1,6 +1,6 @@
 [package]
 name = "sqlitegraph"
-version = "3.3.1"
+version = "3.4.0"
 edition = "2024"
 rust-version = "1.89"
 description = "Embedded graph database with full ACID transactions, HNSW vector search, dual backend support, and comprehensive graph algorithms library"
@@ -25,6 +25,7 @@ path = "src/lib.rs"
 
 [dependencies]
 rusqlite = { version = "0.31", features = ["bundled"] }
+chrono = "0.4"
 r2d2 = "0.8"
 r2d2_sqlite = "0.24"
 thiserror = "1"
@@ -43,6 +44,7 @@ rayon = "1.10"
 petgraph = "0.6"
 sha2 = "0.10"
 regex = "1"
+turbovec = { version = "0.9", optional = true }
 
 [dependencies.lru]
 version = "0.12"
@@ -64,7 +66,10 @@ default = ["sqlite-backend"]
 
 # Backend selection
 sqlite-backend = []          # SQLite backend (mature, ACID transactions)
-native-v3 = []                # Native V3 backend (B+Tree index, unlimited capacity - experimental)
+native-v3 = []                # Native V3 backend (B+Tree index, unlimited capacity - stable)
+
+# Optimization features
+turbovec = ["dep:turbovec"]   # Turbovec SIMD search for large-scale embeddings (requires OpenBLAS)
 
 # Development/debug features
 debug = []                   # Enable debug/info logging (disabled in release for zero overhead)
@@ -247,4 +252,18 @@ harness = false
 
 [[bench]]
 name = "regression_write_cost"
+
+# CSR sharding benchmarks
+[[bench]]
+name = "csr_sharding_benchmark"
+harness = false
+
+# Native-v3 scale testing
+[[bench]]
+name = "native_v3_scale_benchmark"
+harness = false
+
+# Native-v3 comprehensive feature benchmarks
+[[bench]]
+name = "native_v3_features_bench"
 harness = false

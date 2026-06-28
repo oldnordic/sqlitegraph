@@ -20,12 +20,12 @@
 
 use serde_json::Value;
 
+use crate::PatternTriple;
 use crate::backend::{BackendDirection, EdgeSpec, GraphBackend, NodeSpec};
 use crate::graph::GraphEntity;
 use crate::multi_hop::{ChainStep, chain_query};
 use crate::pattern::{NodeConstraint, PatternLeg, PatternQuery, execute_pattern};
 use crate::snapshot::SnapshotId;
-use crate::{PatternTriple, SqliteGraphBackend, match_triples};
 
 // ── Public types ─────────────────────────────────────────────
 
@@ -1185,7 +1185,7 @@ fn parse_node(s: &str) -> Result<NodePattern, String> {
 ///
 /// Returns an error if execution fails (parse-time errors are surfaced via
 /// [`parse`]).
-pub fn execute(backend: &SqliteGraphBackend, query: &CypherQuery) -> Result<Value, String> {
+pub fn execute<B: GraphBackend>(backend: &B, query: &CypherQuery) -> Result<Value, String> {
     match &query.statement {
         Statement::Match => execute_match(backend, query),
         Statement::CreateNode { var, label, props } => {
@@ -1206,7 +1206,7 @@ pub fn execute(backend: &SqliteGraphBackend, query: &CypherQuery) -> Result<Valu
     }
 }
 
-fn execute_match(backend: &SqliteGraphBackend, query: &CypherQuery) -> Result<Value, String> {
+fn execute_match<B: GraphBackend>(backend: &B, query: &CypherQuery) -> Result<Value, String> {
     match &query.pattern {
         Pattern::Node(node_pat) => execute_node_match(backend, node_pat, query),
         Pattern::Edge(from_pat, rel_type, to_pat) => {
@@ -1223,8 +1223,8 @@ fn execute_match(backend: &SqliteGraphBackend, query: &CypherQuery) -> Result<Va
     }
 }
 
-fn execute_node_match(
-    backend: &SqliteGraphBackend,
+fn execute_node_match<B: GraphBackend>(
+    backend: &B,
     node_pat: &NodePattern,
     query: &CypherQuery,
 ) -> Result<Value, String> {
@@ -1270,15 +1270,13 @@ fn execute_node_match(
     }))
 }
 
-fn execute_edge_match(
-    backend: &SqliteGraphBackend,
+fn execute_edge_match<B: GraphBackend>(
+    backend: &B,
     from_pat: &NodePattern,
     rel_type: &str,
     to_pat: &NodePattern,
     query: &CypherQuery,
 ) -> Result<Value, String> {
-    let graph = backend.graph();
-
     // For incoming direction we swap the pattern's start/end roles when matching.
     let (start_pat, end_pat) = match query.direction {
         EdgeDirection::Incoming => (to_pat, from_pat),
@@ -1299,7 +1297,7 @@ fn execute_edge_match(
         pattern = pattern.end_property(key, value);
     }
 
-    let triples = match_triples(graph, &pattern).map_err(|e| e.to_string())?;
+    let triples = backend.match_triples(&pattern).map_err(|e| e.to_string())?;
     let snapshot = SnapshotId::current();
 
     let mut filtered = Vec::new();
@@ -1336,12 +1334,14 @@ fn execute_edge_match(
     }))
 }
 
-fn execute_multi_hop(
-    backend: &SqliteGraphBackend,
+fn execute_multi_hop<B: GraphBackend>(
+    backend: &B,
     legs: &[EdgeLeg],
     query: &CypherQuery,
 ) -> Result<Value, String> {
-    let graph = backend.graph();
+    let graph = backend
+        .get_graph_ref()
+        .ok_or_else(|| "Graph introspection failed".to_string())?;
     let snapshot = SnapshotId::current();
     let start_pat = legs[0].from.clone();
     let end_pat = legs.last().expect("multi-hop has >=1 leg").to.clone();
@@ -1404,8 +1404,8 @@ fn execute_multi_hop(
     }))
 }
 
-fn execute_star(
-    backend: &SqliteGraphBackend,
+fn execute_star<B: GraphBackend>(
+    backend: &B,
     legs: &[EdgeLeg],
     query: &CypherQuery,
 ) -> Result<Value, String> {
@@ -1414,7 +1414,6 @@ fn execute_star(
     if legs.is_empty() {
         return Err("star pattern must have at least one leg".into());
     }
-    let graph = backend.graph();
     let snapshot = SnapshotId::current();
 
     /// A partial result row: variable name → bound node id, plus the per-var
@@ -1444,7 +1443,7 @@ fn execute_star(
         for (key, value) in &end_pat.props {
             pattern = pattern.end_property(key, value);
         }
-        let triples = match_triples(graph, &pattern).map_err(|e| e.to_string())?;
+        let triples = backend.match_triples(&pattern).map_err(|e| e.to_string())?;
 
         let mut bindings: Vec<Binding> = Vec::with_capacity(triples.len());
         for triple in triples {
@@ -1583,8 +1582,8 @@ fn where_clauses_match_multi(
     })
 }
 
-fn execute_variable_depth(
-    backend: &SqliteGraphBackend,
+fn execute_variable_depth<B: GraphBackend>(
+    backend: &B,
     rel_type: &str,
     min_hops: usize,
     max_hops: usize,
@@ -1665,8 +1664,8 @@ fn execute_variable_depth(
     }))
 }
 
-fn execute_create_node(
-    backend: &SqliteGraphBackend,
+fn execute_create_node<B: GraphBackend>(
+    backend: &B,
     var: &str,
     label: Option<&str>,
     props: &[(String, String)],
@@ -1696,8 +1695,8 @@ fn execute_create_node(
     Ok(serde_json::json!({"id": id}))
 }
 
-fn execute_create_edge(
-    backend: &SqliteGraphBackend,
+fn execute_create_edge<B: GraphBackend>(
+    backend: &B,
     from_id: i64,
     to_id: i64,
     rel_type: &str,
@@ -1713,8 +1712,8 @@ fn execute_create_edge(
     Ok(serde_json::json!({"id": id}))
 }
 
-fn execute_set(
-    backend: &SqliteGraphBackend,
+fn execute_set<B: GraphBackend>(
+    backend: &B,
     query: &CypherQuery,
     _var: &str,
     field: &str,
@@ -1767,8 +1766,8 @@ fn execute_set(
     Ok(serde_json::json!({"updated": updated}))
 }
 
-fn execute_delete(
-    backend: &SqliteGraphBackend,
+fn execute_delete<B: GraphBackend>(
+    backend: &B,
     query: &CypherQuery,
     _var: &str,
 ) -> Result<Value, String> {
@@ -1781,17 +1780,16 @@ fn execute_delete(
     Ok(serde_json::json!({"deleted": deleted}))
 }
 
-fn execute_call_vector_query(
-    backend: &SqliteGraphBackend,
+fn execute_call_vector_query<B: GraphBackend>(
+    backend: &B,
     index_name: &str,
     k: usize,
     vector: &[f32],
 ) -> Result<Value, String> {
-    let graph = backend.graph();
-    let raw_results = graph
-        .get_hnsw_index_ref(index_name, |idx| idx.search(vector, k))
-        .map_err(|e| format!("CALL: graph error: {e}"))?
-        .map_err(|e| format!("CALL: hnsw search failed: {e}"))?;
+    let snapshot = SnapshotId::current();
+    let raw_results = backend
+        .vector_search(snapshot, index_name, vector, k)
+        .map_err(|e| format!("CALL: vector search failed: {e}"))?;
 
     let rows: Vec<Value> = raw_results
         .into_iter()
@@ -1805,8 +1803,8 @@ fn execute_call_vector_query(
 }
 
 /// For SET/DELETE: collect node IDs that match the MATCH clause.
-fn collect_match_targets(
-    backend: &SqliteGraphBackend,
+fn collect_match_targets<B: GraphBackend>(
+    backend: &B,
     query: &CypherQuery,
 ) -> Result<Vec<i64>, String> {
     let snapshot = SnapshotId::current();

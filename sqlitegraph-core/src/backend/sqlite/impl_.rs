@@ -1047,6 +1047,38 @@ impl crate::backend::GraphBackend for SqliteGraphBackend {
 
         Ok(node_ids)
     }
+
+    fn match_triples(
+        &self,
+        pattern: &crate::pattern_engine::PatternTriple,
+    ) -> Result<Vec<crate::pattern_engine::TripleMatch>, crate::SqliteGraphError> {
+        crate::pattern_engine::match_triples(&self.graph, pattern)
+    }
+
+    fn vector_search(
+        &self,
+        _snapshot: crate::snapshot::SnapshotId,
+        index_name: &str,
+        vector: &[f32],
+        k: usize,
+    ) -> Result<Vec<(i64, f32)>, crate::SqliteGraphError> {
+        let raw_results = self
+            .graph
+            .get_hnsw_index_ref(index_name, |idx| idx.search(vector, k))
+            .map_err(|e| {
+                crate::SqliteGraphError::query(format!("HNSW index '{}': {}", index_name, e))
+            })?
+            .map_err(|e| crate::SqliteGraphError::query(format!("HNSW search failed: {}", e)))?;
+
+        Ok(raw_results
+            .into_iter()
+            .map(|(id, dist)| (id as i64, dist))
+            .collect())
+    }
+
+    fn get_graph_ref(&self) -> Option<&crate::graph::SqliteGraph> {
+        Some(&self.graph)
+    }
 }
 
 /// Convert KvValue to serde_json::Value for serialization

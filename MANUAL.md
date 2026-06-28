@@ -1,6 +1,6 @@
 # SQLiteGraph Manual
 
-Usage guide for SQLiteGraph in the current 3.2 release line, with dual backend
+Usage guide for SQLiteGraph in the current 3.4 release line, with dual backend
 architecture (SQLite and Native V3).
 
 > Looking for the Python wrapper? See
@@ -18,10 +18,18 @@ architecture (SQLite and Native V3).
 
 ```toml
 [dependencies]
-sqlitegraph = "3.2"
+sqlitegraph = "3.4"
 
 # For Native V3 backend
-sqlitegraph = { version = "3.2", features = ["native-v3"] }
+sqlitegraph = { version = "3.4", features = ["native-v3"] }
+```
+
+**System Requirements** (for native-v3 turbovec optimization):
+- **Arch Linux**: `sudo pacman -S blas-openblas`
+- **Ubuntu/Debian**: `sudo apt-get install libopenblas-dev`
+- **Fedora/RHEL**: `sudo dnf install openblas-devel`
+
+*Note*: OpenBLAS is only required for large-scale embedding datasets (>1K vectors). Small datasets use HNSW-only search with no external dependencies.
 ```
 
 ### Basic Usage

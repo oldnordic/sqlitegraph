@@ -6,12 +6,13 @@ use std::sync::Arc;
 
 use parking_lot::Mutex;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 use crate::{
     cache::{AdjacencyCache, CacheStats},
     config::SqliteConfig,
     errors::SqliteGraphError,
+    graph::{GraphEdge, GraphEntity},
     hnsw::HnswIndex,
     introspection::{EdgeCount, GraphIntrospection, IntrospectError},
     mvcc::SnapshotManager,
@@ -22,6 +23,7 @@ use crate::{
 use super::{
     metrics::{GraphMetrics, StatementTracker},
     pool::PoolManager,
+    types::{GraphStats, SnapshotMetadata, validate_edge, validate_entity},
 };
 
 /// Embedded SQLite-backed graph database.
@@ -509,5 +511,358 @@ impl SqliteGraph {
                 .filter(|name| !name.is_empty() && name != ":memory:")
             })
         }
+    }
+
+    // ── MVCC Operations (Native-v3) ───────────────────────────────────────────
+
+    /// Execute a closure with access to a SQLite connection.
+    ///
+    /// This provides direct SQL access for MVCC operations that need
+    /// to interact with native-v3 schema (CSR shards, HNSW snapshots, etc.).
+    ///
+    /// # Arguments
+    /// * `f` - Closure that receives a Connection and returns a Result
+    ///
+    /// # Returns
+    /// The Result from the closure, or a connection error
+    pub fn with_connection<F, R>(&self, f: F) -> Result<R, SqliteGraphError>
+    where
+        F: FnOnce(&Connection) -> Result<R, SqliteGraphError>,
+    {
+        if self.pool.is_in_memory() {
+            let conn = self.pool.direct_connection().ok_or_else(|| {
+                SqliteGraphError::connection("In-memory connection unavailable".to_string())
+            })?;
+            f(conn)
+        } else {
+            let conn = self
+                .pool
+                .get()
+                .map_err(|e| SqliteGraphError::connection(e.to_string()))?;
+            f(&conn)
+        }
+    }
+
+    /// Batch insert entities with MVCC snapshot isolation.
+    ///
+    /// All inserts are tagged with the given snapshot_id for consistent reads.
+    /// This uses native-v3 MVCC schema (graph_entities.snapshot_id).
+    ///
+    /// # Arguments
+    /// * `entities` - Entities to insert
+    /// * `snapshot_id` - Snapshot identifier for this batch
+    ///
+    /// # Returns
+    /// Vector of assigned entity IDs
+    pub fn batch_insert_entities_with_snapshot(
+        &self,
+        entities: &[GraphEntity],
+        snapshot_id: &str,
+    ) -> Result<Vec<i64>, SqliteGraphError> {
+        if entities.is_empty() {
+            return Ok(Vec::new());
+        }
+        for entity in entities {
+            validate_entity(entity)?;
+        }
+
+        let timestamp = chrono::Utc::now().timestamp();
+
+        let ids = self.with_connection(|conn| {
+            conn.execute_batch("BEGIN")
+                .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+            let mut ids = Vec::with_capacity(entities.len());
+            let result: Result<(), SqliteGraphError> = (|| {
+                let mut entity_stmt = conn
+                    .prepare_cached(
+                        "INSERT INTO graph_entities(kind, name, file_path, data, snapshot_id, created_at)
+                         VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                    )
+                    .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+                let mut label_stmt = conn
+                    .prepare_cached(
+                        "INSERT OR IGNORE INTO graph_labels(entity_id, label) VALUES(?1, ?2)",
+                    )
+                    .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+                for entity in entities {
+                    let data = serde_json::to_string(&entity.data)
+                        .map_err(|e| SqliteGraphError::invalid_input(e.to_string()))?;
+
+                    entity_stmt
+                        .execute(params![
+                            entity.kind.as_str(),
+                            entity.name.as_str(),
+                            entity.file_path.as_deref(),
+                            data,
+                            snapshot_id,
+                            timestamp,
+                        ])
+                        .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+                    let id = conn.last_insert_rowid();
+                    if !entity.kind.is_empty() {
+                        label_stmt
+                            .execute(params![id, entity.kind.as_str()])
+                            .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+                    }
+                    ids.push(id);
+                }
+
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+                Ok(())
+            })();
+
+            match result {
+                Ok(_) => Ok(ids),
+                Err(e) => {
+                    conn.execute_batch("ROLLBACK")
+                        .map_err(|e2| SqliteGraphError::QueryError(e2.to_string()))?;
+                    Err(e)
+                }
+            }
+        })?;
+
+        // Update snapshot_stats table (scale optimization)
+        let _ = self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO snapshot_stats (snapshot_id, entity_count, edge_count, created_at, updated_at)
+                 VALUES (?1, ?2, 0, ?3, ?3)
+                 ON CONFLICT(snapshot_id) DO UPDATE SET
+                 entity_count = entity_count + ?2,
+                 updated_at = ?3",
+                params![snapshot_id, ids.len() as i64, timestamp],
+            )
+            .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+            Ok(())
+        });
+
+        Ok(ids)
+    }
+
+    /// Batch insert edges with MVCC snapshot isolation.
+    ///
+    /// All inserts are tagged with the given snapshot_id for consistent reads.
+    /// This uses native-v3 MVCC schema (graph_edges.snapshot_id).
+    ///
+    /// # Arguments
+    /// * `edges` - Edges to insert
+    /// * `snapshot_id` - Snapshot identifier for this batch
+    ///
+    /// # Returns
+    /// Vector of assigned edge IDs
+    pub fn batch_insert_edges_with_snapshot(
+        &self,
+        edges: &[GraphEdge],
+        snapshot_id: &str,
+    ) -> Result<Vec<i64>, SqliteGraphError> {
+        if edges.is_empty() {
+            return Ok(Vec::new());
+        }
+        for edge in edges {
+            validate_edge(edge)?;
+            if !self.entity_exists(edge.from_id)? || !self.entity_exists(edge.to_id)? {
+                return Err(SqliteGraphError::invalid_input(
+                    "edge endpoints must reference existing entities",
+                ));
+            }
+        }
+
+        let timestamp = chrono::Utc::now().timestamp();
+
+        let ids = self.with_connection(|conn| {
+            conn.execute_batch("BEGIN")
+                .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+            let mut ids = Vec::with_capacity(edges.len());
+            let insert_result: Result<(), SqliteGraphError> = (|| {
+                let mut stmt = conn
+                    .prepare_cached(
+                        "INSERT INTO graph_edges(from_id, to_id, edge_type, data, snapshot_id, created_at)
+                         VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                    )
+                    .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+                for edge in edges {
+                    let data = serde_json::to_string(&edge.data)
+                        .map_err(|e| SqliteGraphError::invalid_input(e.to_string()))?;
+
+                    stmt.execute(params![
+                        edge.from_id,
+                        edge.to_id,
+                        edge.edge_type.as_str(),
+                        data,
+                        snapshot_id,
+                        timestamp,
+                    ])
+                    .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+                    ids.push(conn.last_insert_rowid());
+                }
+
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+                Ok(())
+            })();
+
+            match insert_result {
+                Ok(_) => Ok(ids),
+                Err(e) => {
+                    conn.execute_batch("ROLLBACK")
+                        .map_err(|e2| SqliteGraphError::QueryError(e2.to_string()))?;
+                    Err(e)
+                }
+            }
+        })?;
+
+        // Update snapshot_stats table (scale optimization)
+        let _ = self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO snapshot_stats (snapshot_id, entity_count, edge_count, created_at, updated_at)
+                 VALUES (?1, 0, ?2, ?3, ?3)
+                 ON CONFLICT(snapshot_id) DO UPDATE SET
+                 edge_count = edge_count + ?2,
+                 updated_at = ?3",
+                params![snapshot_id, ids.len() as i64, timestamp],
+            )
+            .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+            Ok(())
+        });
+
+        Ok(ids)
+    }
+
+    /// Time-travel query: read graph state as of a specific timestamp.
+    ///
+    /// Returns only entities/edges visible at or before the given time.
+    /// Uses pre-aggregated snapshot_stats table for O(1) lookups (scale optimization).
+    ///
+    /// # Arguments
+    /// * `timestamp` - Unix timestamp to query state as-of
+    ///
+    /// # Returns
+    /// GraphStats with entity and edge counts
+    pub fn query_as_of(&self, timestamp: i64) -> Result<GraphStats, SqliteGraphError> {
+        let stats = self.with_connection(|conn| {
+            // Use pre-aggregated stats for O(1) lookup instead of COUNT(*) scan
+            let (entity_count, edge_count): (i64, i64) = conn
+                .query_row(
+                    "SELECT COALESCE(SUM(entity_count), 0), COALESCE(SUM(edge_count), 0)
+                     FROM snapshot_stats
+                     WHERE created_at <= ?1",
+                    [timestamp],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap_or((0, 0));
+
+            Ok(GraphStats {
+                total_entities: entity_count,
+                total_edges: edge_count,
+                entity_counts: vec![],
+                edge_counts: vec![],
+            })
+        })?;
+
+        Ok(stats)
+    }
+
+    /// Create a named snapshot for consistent reads.
+    ///
+    /// Returns the snapshot timestamp. This creates a snapshot record
+    /// in native-v3 MVCC schema (snapshots table).
+    ///
+    /// # Arguments
+    /// * `snapshot_id` - Unique identifier for this snapshot
+    ///
+    /// # Returns
+    /// Unix timestamp when snapshot was created
+    pub fn create_snapshot(&self, snapshot_id: &str) -> Result<i64, SqliteGraphError> {
+        use chrono::Utc;
+        let timestamp = Utc::now().timestamp();
+
+        self.with_connection(|conn| {
+            conn.execute(
+                "INSERT INTO snapshots (snapshot_id, created_at) VALUES (?1, ?2)
+                 ON CONFLICT(snapshot_id) DO UPDATE SET created_at=?2",
+                rusqlite::params![snapshot_id, timestamp],
+            )
+            .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+            Ok(())
+        })?;
+
+        Ok(timestamp)
+    }
+
+    /// Get current graph version from CSR shards.
+    ///
+    /// Returns the highest version number across all CSR shards.
+    /// Used to track graph rebuilds in native-v3 storage.
+    ///
+    /// # Returns
+    /// Current graph version (0 if no CSR shards exist)
+    pub fn get_graph_version(&self) -> Result<i64, SqliteGraphError> {
+        let version = self.with_connection(|conn| {
+            let max_version: i64 = conn
+                .query_row("SELECT MAX(version) FROM csr_shards", [], |row| row.get(0))
+                .unwrap_or(0);
+            Ok(max_version)
+        })?;
+
+        Ok(version)
+    }
+
+    /// List all snapshots with metadata.
+    ///
+    /// Returns snapshot records sorted by creation time (newest first).
+    ///
+    /// # Returns
+    /// Vector of snapshot metadata
+    pub fn list_snapshots(&self) -> Result<Vec<SnapshotMetadata>, SqliteGraphError> {
+        let snapshots = self.with_connection(|conn| {
+            let mut stmt = conn
+                .prepare("SELECT snapshot_id, created_at, description FROM snapshots ORDER BY created_at DESC")
+                .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+            let mut out = Vec::new();
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok(SnapshotMetadata {
+                        snapshot_id: row.get(0)?,
+                        timestamp: row.get(1)?,
+                        description: row.get(2)?,
+                    })
+                })
+                .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+
+            for row in rows {
+                match row {
+                    Ok(meta) => out.push(meta),
+                    Err(e) => return Err(SqliteGraphError::QueryError(e.to_string())),
+                }
+            }
+            Ok(out)
+        })?;
+
+        Ok(snapshots)
+    }
+
+    /// Delete a snapshot and its metadata.
+    ///
+    /// This removes the snapshot record but does NOT cascade-delete entities/edges
+    /// tagged with this snapshot_id (they remain visible with their original snapshot).
+    ///
+    /// # Arguments
+    /// * `snapshot_id` - Snapshot identifier to delete
+    pub fn delete_snapshot(&self, snapshot_id: &str) -> Result<(), SqliteGraphError> {
+        self.with_connection(|conn| {
+            conn.execute("DELETE FROM snapshots WHERE snapshot_id=?1", [snapshot_id])
+                .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+            Ok(())
+        })
     }
 }

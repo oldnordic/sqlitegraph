@@ -5,13 +5,16 @@
 //! `sqlitegraph::cypher`.
 
 use serde_json::Value;
-use sqlitegraph::backend::SqliteGraphBackend;
+use sqlitegraph::backend::GraphBackend;
 
 /// Parse and execute a Cypher-inspired query string.
 ///
 /// Delegates to `sqlitegraph::cypher::parse` and `sqlitegraph::cypher::execute`.
 /// Returns a JSON value with `{"results": [...], "count": N}`.
-pub fn run(backend: &SqliteGraphBackend, query_str: &str) -> anyhow::Result<Value> {
+///
+/// This function is generic over the GraphBackend trait, allowing it to work
+/// with both SQLite and native-v3 backends.
+pub fn run<B: GraphBackend>(backend: &B, query_str: &str) -> anyhow::Result<Value> {
     let query =
         sqlitegraph::cypher::parse(query_str).map_err(|e| anyhow::anyhow!("parse error: {e}"))?;
     let result = sqlitegraph::cypher::execute(backend, &query)
