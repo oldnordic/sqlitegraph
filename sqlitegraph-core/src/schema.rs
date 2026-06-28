@@ -94,6 +94,69 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
             "INSERT INTO graph_meta_history(version) VALUES(6)",
         ],
     },
+    MigrationStep {
+        target_version: 7,
+        statements: &[
+            // MVCC: Add conflict resolution to csr_manifest (only if missing)
+            "ALTER TABLE csr_manifest ADD COLUMN conflict_resolution TEXT NOT NULL DEFAULT 'last-write-wins'",
+            // MVCC: Add versioning to csr_shards (only if missing)
+            "ALTER TABLE csr_shards ADD COLUMN version INTEGER NOT NULL DEFAULT 1",
+            "ALTER TABLE csr_shards ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE csr_shards ADD COLUMN visible_at INTEGER NOT NULL DEFAULT 0",
+            // MVCC: Add snapshot isolation to hnsw_vectors (only if missing)
+            "ALTER TABLE hnsw_vectors ADD COLUMN snapshot_id TEXT NOT NULL DEFAULT 'default'",
+            "ALTER TABLE hnsw_vectors ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0",
+            // MVCC: Add read cursor tracking to consumer_group_state (only if missing)
+            "ALTER TABLE consumer_group_state ADD COLUMN read_cursor INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE consumer_group_state ADD COLUMN cursor_snapshot TEXT NOT NULL DEFAULT 'default'",
+            "INSERT INTO graph_meta_history(version) VALUES(7)",
+        ],
+    },
+    MigrationStep {
+        target_version: 8,
+        statements: &[
+            // MVCC: Create snapshots table for tracking named snapshots
+            "CREATE TABLE IF NOT EXISTS snapshots (
+                snapshot_id TEXT PRIMARY KEY,
+                created_at INTEGER NOT NULL,
+                description TEXT
+            )",
+            // MVCC: Add snapshot_id to graph_entities for batch tracking
+            "ALTER TABLE graph_entities ADD COLUMN snapshot_id TEXT NOT NULL DEFAULT 'default'",
+            // MVCC: Add snapshot_id to graph_edges for batch tracking
+            "ALTER TABLE graph_edges ADD COLUMN snapshot_id TEXT NOT NULL DEFAULT 'default'",
+            // MVCC: Add created_at to graph_entities for time-travel queries
+            "ALTER TABLE graph_entities ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0",
+            // MVCC: Add created_at to graph_edges for time-travel queries
+            "ALTER TABLE graph_edges ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0",
+            // Indexes for snapshot queries
+            "CREATE INDEX IF NOT EXISTS idx_graph_entities_snapshot ON graph_entities(snapshot_id)",
+            "CREATE INDEX IF NOT EXISTS idx_graph_edges_snapshot ON graph_edges(snapshot_id)",
+            "CREATE INDEX IF NOT EXISTS idx_graph_entities_created ON graph_entities(created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_graph_edges_created ON graph_edges(created_at)",
+            "INSERT INTO graph_meta_history(version) VALUES(8)",
+        ],
+    },
+    MigrationStep {
+        target_version: 9,
+        statements: &[
+            // SCALE: Create pre-aggregated snapshot stats table
+            "CREATE TABLE IF NOT EXISTS snapshot_stats (
+                snapshot_id TEXT PRIMARY KEY,
+                entity_count INTEGER NOT NULL DEFAULT 0,
+                edge_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                FOREIGN KEY (snapshot_id) REFERENCES snapshots(snapshot_id) ON DELETE CASCADE
+            )",
+            // SCALE: Composite index for (snapshot_id, created_at) queries
+            "CREATE INDEX IF NOT EXISTS idx_graph_entities_snapshot_created ON graph_entities(snapshot_id, created_at)",
+            "CREATE INDEX IF NOT EXISTS idx_graph_edges_snapshot_created ON graph_edges(snapshot_id, created_at)",
+            // SCALE: Index for time-range queries
+            "CREATE INDEX IF NOT EXISTS idx_snapshot_stats_created_at ON snapshot_stats(created_at)",
+            "INSERT INTO graph_meta_history(version) VALUES(9)",
+        ],
+    },
 ];
 
 pub const SCHEMA_VERSION: i64 = BASE_SCHEMA_VERSION + MIGRATION_STEPS.len() as i64;
@@ -109,6 +172,7 @@ pub struct MigrationReport {
 pub fn ensure_schema(conn: &Connection) -> Result<(), SqliteGraphError> {
     ensure_base_schema(conn)?;
     ensure_meta(conn)?;
+    ensure_native_v3_tables(conn)?; // Initialize native-v3 infrastructure
     run_pending_migrations(conn, false)?;
     Ok(())
 }
@@ -205,8 +269,18 @@ pub fn run_pending_migrations(
         .map_err(|e| SqliteGraphError::schema(e.to_string()))?;
     let result: Result<(), SqliteGraphError> = (|| {
         for sql in statements.iter().copied() {
-            conn.execute(sql, [])
-                .map_err(|e| SqliteGraphError::schema(e.to_string()))?;
+            // Ignore duplicate column errors for MVCC migration (v7)
+            match conn.execute(sql, []) {
+                Ok(_) => {}
+                Err(e) => {
+                    // Check if this is a duplicate column error (already exists in new schema)
+                    if e.to_string().contains("duplicate column name") {
+                        // Column already exists - skip, this is expected for v7 migration
+                        continue;
+                    }
+                    return Err(SqliteGraphError::schema(e.to_string()));
+                }
+            }
         }
         conn.execute(
             "UPDATE graph_meta SET schema_version=?1 WHERE id=1",
@@ -265,5 +339,179 @@ fn ensure_meta(conn: &Connection) -> Result<(), SqliteGraphError> {
             .map_err(|e| SqliteGraphError::schema(e.to_string()))?;
         }
     }
+    Ok(())
+}
+
+/// Initialize native-v3 infrastructure tables (CSR, HNSW, FTS5, property filters, consumer groups).
+fn ensure_native_v3_tables(conn: &Connection) -> Result<(), SqliteGraphError> {
+    // CSR manifest for sharding metadata
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS csr_manifest (
+            shard_id INTEGER PRIMARY KEY,
+            source_start INTEGER NOT NULL,
+            source_end INTEGER NOT NULL,
+            node_count INTEGER NOT NULL,
+            edge_count INTEGER NOT NULL,
+            conflict_resolution TEXT NOT NULL DEFAULT 'last-write-wins',
+            created_at INTEGER NOT NULL
+        )",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!("Failed to create csr_manifest table: {}", e))
+    })?;
+
+    // CSR shards for fast traversal (MVCC: versioned reads)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS csr_shards (
+            shard_id INTEGER NOT NULL,
+            node_id INTEGER NOT NULL,
+            shard_data BLOB,
+            version INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            visible_at INTEGER NOT NULL,
+            PRIMARY KEY (shard_id, node_id, version)
+        )",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!("Failed to create csr_shards table: {}", e))
+    })?;
+
+    // HNSW vectors table (MVCC: snapshot isolation)
+    // NOTE: HNSW tables (hnsw_indexes, hnsw_vectors, hnsw_layers, hnsw_entry_points)
+    // are created by migration v3, not here. The native-v3 schema below was removed
+    // because it created incompatible tables that broke existing HNSW tests.
+    // Migration v3 creates the schema with id/metadata columns that HNSW code expects.
+
+    // FTS5 content table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS token_content (
+            token_id INTEGER PRIMARY KEY,
+            content_type TEXT NOT NULL,
+            content_text TEXT NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!("Failed to create token_content table: {}", e))
+    })?;
+
+    // FTS5 virtual table for full-text search
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS token_content_fts USING fts5(
+            token_id,
+            content_type,
+            content_text,
+            tokenize='porter'
+        )",
+        [],
+    )
+    .map_err(|e| SqliteGraphError::SchemaError(format!("Failed to create FTS5 table: {}", e)))?;
+
+    // FTS5 triggers for automatic synchronization
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS token_content_insert AFTER INSERT ON token_content BEGIN
+              INSERT INTO token_content_fts(rowid, token_id, content_type, content_text)
+              VALUES (new.rowid, new.token_id, new.content_type, new.content_text);
+             END",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!("Failed to create FTS5 insert trigger: {}", e))
+    })?;
+
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS token_content_delete AFTER DELETE ON token_content BEGIN
+              DELETE FROM token_content_fts WHERE rowid = old.rowid;
+             END",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!("Failed to create FTS5 delete trigger: {}", e))
+    })?;
+
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS token_content_update AFTER UPDATE ON token_content BEGIN
+              DELETE FROM token_content_fts WHERE rowid = old.rowid;
+              INSERT INTO token_content_fts(rowid, token_id, content_type, content_text)
+              VALUES (new.rowid, new.token_id, new.content_type, new.content_text);
+             END",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!("Failed to create FTS5 update trigger: {}", e))
+    })?;
+
+    // Property filters table for rich attribute queries
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS token_attributes (
+            token_id INTEGER NOT NULL,
+            attr_name TEXT NOT NULL,
+            attr_type TEXT NOT NULL,
+            attr_value TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (token_id, attr_name)
+        )",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!("Failed to create token_attributes table: {}", e))
+    })?;
+
+    // Indexes for attribute query performance
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_token_attributes_name ON token_attributes(attr_name)",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!(
+            "Failed to create token_attributes name index: {}",
+            e
+        ))
+    })?;
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_token_attributes_name_value ON token_attributes(attr_name, attr_value)",
+        [],
+    ).map_err(|e| SqliteGraphError::SchemaError(
+        format!("Failed to create token_attributes name/value index: {}", e)
+    ))?;
+
+    // Consumer groups for reliable pub/sub
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS consumer_groups (
+            name TEXT PRIMARY KEY,
+            created_at INTEGER NOT NULL
+        )",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!("Failed to create consumer_groups table: {}", e))
+    })?;
+
+    // Consumer group state tracking (MVCC: read cursor isolation)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS consumer_group_state (
+            group_name TEXT NOT NULL,
+            topic TEXT NOT NULL,
+            last_offset INTEGER NOT NULL DEFAULT 0,
+            read_cursor INTEGER NOT NULL DEFAULT 0,
+            cursor_snapshot TEXT NOT NULL DEFAULT 'default',
+            pending_offsets TEXT,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (group_name, topic),
+            FOREIGN KEY (group_name) REFERENCES consumer_groups(name) ON DELETE CASCADE
+        )",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!(
+            "Failed to create consumer_group_state table: {}",
+            e
+        ))
+    })?;
+
     Ok(())
 }

@@ -37,6 +37,34 @@ benchmarks below for workload-specific behavior.
 
 **Keyword index:** embedded graph database · HNSW vector search · Cypher · MVCC · write-ahead log · persistent homology · temporal versioning · louvain · SQLite · Native V3 · Python bindings · Rust
 
+## What's New in 3.4
+
+The 3.4 release adds **MVCC snapshot tracking** and **scale optimizations** for
+time-travel queries, eliminating expensive COUNT(*) table scans on large
+datasets.
+
+- **MVCC snapshot tracking (v8)** — named snapshots (`create_snapshot()`,
+  `list_snapshots()`, `delete_snapshot()`), batch insert with snapshot tagging
+  (`batch_insert_entities_with_snapshot()`, `batch_insert_edges_with_snapshot()`),
+  and time-travel queries (`query_as_of(timestamp)`) filter by `created_at` for
+  historical graph state.
+- **Scale optimization (v9)** — pre-aggregated `snapshot_stats` table for O(1)
+  time-travel vs O(N) COUNT(*) scans, composite indexes on `(snapshot_id,
+  created_at)` for multi-dimensional queries, partition-ready schema design.
+
+See [CHANGELOG](https://github.com/oldnordic/sqlitegraph/blob/main/CHANGELOG.md) for full history.
+
+## System Requirements
+
+**Rust**: 1.89 or later (edition 2024)
+
+**System Libraries (for native-v3 turbovec optimization)**:
+- **Arch Linux**: `sudo pacman -S blas-openblas`
+- **Ubuntu/Debian**: `sudo apt-get install libopenblas-dev`
+- **Fedora/RHEL**: `sudo dnf install openblas-devel`
+
+*Optional*: OpenBLAS is only required for large-scale embedding datasets (>1K vectors) where turbovec optimization activates. Small datasets use HNSW-only search with no external dependencies.
+
 ## What's New in 3.3
 
 The 3.3 release adds a **temporal version chain** with persistent-homology
@@ -75,7 +103,7 @@ HNSW and traversal improvements:
 
 | Feature | SQLite | Native V3 |
 |---------|--------|-----------|
-| Status | Stable | Stable |
+| Status | Stable | Experimental (Bugs should be reported) |
 | Storage | `.db` file | `.graph` file |
 | Capacity model | Storage-limited | Storage-limited |
 | Graph algorithms | 35+ | 35+ |
@@ -83,6 +111,8 @@ HNSW and traversal improvements:
 | Pub/Sub | Yes | Yes |
 | LRU Cache | No | Yes |
 | Parallel BFS | No | Yes |
+| MVCC snapshots | Yes (v8) | Yes (v8) |
+| Time-travel queries | Yes (optimized v9) | Yes (optimized v9) |
 
 ## Benchmarks
 
@@ -118,10 +148,10 @@ cargo bench --features native-v3 --bench sqlite_v3_curated
 ```toml
 [dependencies]
 # SQLite backend (default)
-sqlitegraph = "3.3"
+sqlitegraph = "3.4"
 
 # OR Native V3 backend (graph-oriented storage)
-sqlitegraph = { version = "3.3", features = ["native-v3"] }
+sqlitegraph = { version = "3.4", features = ["native-v3"] }
 ```
 
 ```rust
@@ -176,8 +206,9 @@ Available in the current 3.x line. See [API.md](API.md#typeddigraph-api) for the
 ```bash
 cargo install sqlitegraph-cli
 
-# Query
-sqlitegraph --db graph.db query "MATCH (n:User) RETURN n.name"
+# Query (works with both SQLite and native-v3 backends)
+sqlitegraph --backend sqlite --db graph.db query "MATCH (n:User) RETURN n.name"
+sqlitegraph --backend v3 --db graph.db query "MATCH (n:User) RETURN n.name"
 
 # Algorithms
 sqlitegraph --db graph.db bfs --start 1 --depth 3
@@ -214,9 +245,9 @@ rm -f /tmp/sqlitegraph-demo.db
 
 sqlitegraph --db /tmp/sqlitegraph-demo.db --write insert --kind User --name Alice --data '{"age":30}'
 sqlitegraph --db /tmp/sqlitegraph-demo.db --write insert --kind User --name Bob --data '{"age":31}'
-sqlitegraph --db /tmp/sqlitegraph-demo.db --write query 'CREATE (1)-[:KNOWS]->(2)'
+sqlitegraph --backend sqlite --db /tmp/sqlitegraph-demo.db --write query 'CREATE (1)-[:KNOWS]->(2)'
 
-sqlitegraph --db /tmp/sqlitegraph-demo.db query 'MATCH (a:User)-[:KNOWS]->(b:User) RETURN a.name, b.name'
+sqlitegraph --backend sqlite --db /tmp/sqlitegraph-demo.db query 'MATCH (a:User)-[:KNOWS]->(b:User) RETURN a.name, b.name'
 sqlitegraph --db /tmp/sqlitegraph-demo.db algo scc
 ```
 

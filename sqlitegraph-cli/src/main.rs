@@ -52,10 +52,28 @@ fn main() -> Result<()> {
 }
 
 fn run_query(client: &sqlitegraph_cli::client::CliClient, query_str: &str) -> Result<()> {
+    match client.backend_type() {
+        sqlitegraph_cli::cli::BackendType::Sqlite => run_query_sqlite(client, query_str),
+        #[cfg(feature = "native-v3")]
+        sqlitegraph_cli::cli::BackendType::V3 => run_query_v3(client, query_str),
+    }
+}
+
+fn run_query_sqlite(client: &sqlitegraph_cli::client::CliClient, query_str: &str) -> Result<()> {
     let sqlite_backend = client
         .sqlite_backend()
         .context("Cypher queries require SQLite backend")?;
     let result = sqlitegraph_cli::query::run(sqlite_backend, query_str)?;
+    println!("{}", serde_json::to_string_pretty(&result)?);
+    Ok(())
+}
+
+#[cfg(feature = "native-v3")]
+fn run_query_v3(client: &sqlitegraph_cli::client::CliClient, query_str: &str) -> Result<()> {
+    let v3_backend = client
+        .v3_backend()
+        .context("Cypher queries require native-v3 backend")?;
+    let result = sqlitegraph_cli::query::run(v3_backend, query_str)?;
     println!("{}", serde_json::to_string_pretty(&result)?);
     Ok(())
 }

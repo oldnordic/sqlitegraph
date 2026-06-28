@@ -60,7 +60,7 @@ unsafe impl Send for V3VectorStorageHandle {}
 unsafe impl Sync for V3VectorStorageHandle {}
 
 impl V3VectorStorageHandle {
-    fn new(backend: &V3Backend, index_name: impl Into<String>) -> Self {
+    pub fn new(backend: &V3Backend, index_name: impl Into<String>) -> Self {
         Self {
             backend_ptr: backend as *const V3Backend,
             index_name: index_name.into(),

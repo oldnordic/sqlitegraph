@@ -164,4 +164,4 @@ mod types;
 
 pub use adjacency::{ConnectionWrapper, StatementWrapper};
 pub use metrics::{GraphMetricsSnapshot, InstrumentedConnection};
-pub use types::{GraphEdge, GraphEntity};
+pub use types::{GraphEdge, GraphEntity, GraphStats, SnapshotMetadata};

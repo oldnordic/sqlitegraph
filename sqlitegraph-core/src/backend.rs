@@ -102,6 +102,7 @@ use crate::{
     SqliteGraphError,
     graph::GraphEntity,
     pattern::{PatternMatch, PatternQuery},
+    pattern_engine::{PatternTriple, TripleMatch},
     snapshot::SnapshotId,
 };
 ///
@@ -306,6 +307,61 @@ pub trait GraphBackend {
         start: i64,
         pattern: &PatternQuery,
     ) -> Result<Vec<PatternMatch>, SqliteGraphError>;
+
+    /// Match triples based on a pattern triple
+    ///
+    /// Provides pattern matching capability for Cypher queries.
+    /// Default implementation returns unsupported operation error.
+    ///
+    /// # Arguments
+    /// * `pattern` - The pattern triple to match
+    ///
+    /// # Returns
+    /// Vector of triple matches with start_id, end_id, and edge_id
+    fn match_triples(&self, pattern: &PatternTriple) -> Result<Vec<TripleMatch>, SqliteGraphError> {
+        Err(SqliteGraphError::unsupported(format!(
+            "match_triples not implemented for pattern: {:?}",
+            pattern
+        )))
+    }
+
+    /// Search HNSW vector index for nearest neighbors
+    ///
+    /// Provides vector similarity search capability for Cypher queries.
+    /// Default implementation returns unsupported operation error.
+    ///
+    /// # Arguments
+    /// * `_snapshot` - Snapshot ID for read isolation
+    /// * `index_name` - Name of the HNSW index to search
+    /// * `_vector` - Query vector
+    /// * `_k` - Number of nearest neighbors to return
+    ///
+    /// # Returns
+    /// Vector of (node_id, distance) tuples for the k nearest neighbors
+    fn vector_search(
+        &self,
+        _snapshot: SnapshotId,
+        index_name: &str,
+        _vector: &[f32],
+        _k: usize,
+    ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
+        Err(SqliteGraphError::unsupported(format!(
+            "vector_search not implemented for index '{}'",
+            index_name
+        )))
+    }
+
+    /// Get reference to underlying SqliteGraph (if available)
+    ///
+    /// Returns None for non-SQLite backends (e.g., native-v3).
+    /// This method enables backend-agnostic introspection while
+    /// maintaining compatibility with SQLite-specific features.
+    ///
+    /// # Returns
+    /// Some(&SqliteGraph) for SQLite backends, None otherwise
+    fn get_graph_ref(&self) -> Option<&crate::graph::SqliteGraph> {
+        None
+    }
 
     /// Trigger WAL checkpoint for backends that support write-ahead logging
     ///
@@ -777,5 +833,23 @@ where
         pattern: &str,
     ) -> Result<Vec<i64>, SqliteGraphError> {
         (*self).query_nodes_by_name_pattern(snapshot_id, pattern)
+    }
+
+    fn match_triples(&self, pattern: &PatternTriple) -> Result<Vec<TripleMatch>, SqliteGraphError> {
+        (*self).match_triples(pattern)
+    }
+
+    fn vector_search(
+        &self,
+        snapshot: SnapshotId,
+        index_name: &str,
+        vector: &[f32],
+        k: usize,
+    ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
+        (*self).vector_search(snapshot, index_name, vector, k)
+    }
+
+    fn get_graph_ref(&self) -> Option<&crate::graph::SqliteGraph> {
+        (*self).get_graph_ref()
     }
 }

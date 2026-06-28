@@ -940,6 +940,25 @@ impl V3EdgeStore {
         println!("  Avg miss time: {} ns", avg_miss_ns);
     }
 
+    /// Return cache statistics for focused benchmarking and profiling.
+    pub fn cache_stats(&self) -> (u64, u64, u64, u64, usize) {
+        (
+            self.cache_hits.load(Ordering::Relaxed),
+            self.cache_misses.load(Ordering::Relaxed),
+            self.hit_time_ns.load(Ordering::Relaxed),
+            self.miss_time_ns.load(Ordering::Relaxed),
+            self.cache.read().len(),
+        )
+    }
+
+    /// Reset cache timing counters without evicting cached neighbor slices.
+    pub fn reset_stats(&self) {
+        self.cache_hits.store(0, Ordering::Relaxed);
+        self.cache_misses.store(0, Ordering::Relaxed);
+        self.hit_time_ns.store(0, Ordering::Relaxed);
+        self.miss_time_ns.store(0, Ordering::Relaxed);
+    }
+
     /// Flush dirty clusters to disk
     ///
     /// IMPLEMENTATION:
