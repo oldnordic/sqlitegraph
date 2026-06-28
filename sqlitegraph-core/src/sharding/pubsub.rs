@@ -100,9 +100,6 @@ pub type SubscriberCallback = Box<dyn Fn(&Change) + Send>;
 
 /// Subscriber to change notifications.
 pub struct Subscriber {
-    /// Unique subscriber ID
-    id: usize,
-
     /// Topics to subscribe to
     topics: Vec<String>,
 
@@ -112,12 +109,8 @@ pub struct Subscriber {
 
 impl Subscriber {
     /// Create a new subscriber.
-    pub fn new(id: usize, topics: Vec<String>, callback: SubscriberCallback) -> Self {
-        Self {
-            id,
-            topics,
-            callback,
-        }
+    pub fn new(topics: Vec<String>, callback: SubscriberCallback) -> Self {
+        Self { topics, callback }
     }
 
     /// Check if subscriber is interested in a topic.
@@ -176,7 +169,7 @@ impl PubSub {
         let id = *id_guard;
         *id_guard = id + 1;
 
-        let subscriber = Subscriber::new(id, topics, callback);
+        let subscriber = Subscriber::new(topics, callback);
 
         let mut subscribers = self.subscribers.lock().unwrap();
         subscribers.insert(id, subscriber);
@@ -405,6 +398,12 @@ impl PubSub {
     }
 }
 
+impl Default for PubSub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Default topic for graph changes.
 pub const DEFAULT_TOPIC: &str = "graph.*";
 
@@ -413,8 +412,6 @@ pub const NODE_TOPIC: &str = "graph.node";
 
 /// Topic for edge operations.
 pub const EDGE_TOPIC: &str = "graph.edge";
-
-/// Topic for shard operations.
 
 #[cfg(test)]
 mod tests {

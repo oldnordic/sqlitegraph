@@ -2013,20 +2013,20 @@ impl V3Backend {
         // Emit NodeChanged event (only if there are subscribers)
         {
             let pub_guard = self.publisher.read();
-            if let Some(ref publisher) = *pub_guard {
-                if publisher.has_subscribers() {
-                    let current_lsn = if let Some(ref wal) = self.wal {
-                        wal.read().committed_lsn()
-                    } else {
-                        *self.current_snapshot_version.read()
-                    };
-                    publisher.emit(
-                        crate::backend::native::v3::pubsub::types::PubSubEvent::NodeChanged {
-                            node_id,
-                            snapshot_id: current_lsn,
-                        },
-                    );
-                }
+            if let Some(ref publisher) = *pub_guard
+                && publisher.has_subscribers()
+            {
+                let current_lsn = if let Some(ref wal) = self.wal {
+                    wal.read().committed_lsn()
+                } else {
+                    *self.current_snapshot_version.read()
+                };
+                publisher.emit(
+                    crate::backend::native::v3::pubsub::types::PubSubEvent::NodeChanged {
+                        node_id,
+                        snapshot_id: current_lsn,
+                    },
+                );
             }
         }
 
@@ -2266,22 +2266,22 @@ impl V3Backend {
         // Emit EdgeChanged event (only if there are subscribers)
         {
             let pub_guard = self.publisher.read();
-            if let Some(ref publisher) = *pub_guard {
-                if publisher.has_subscribers() {
-                    let current_lsn = if let Some(ref wal) = self.wal {
-                        wal.read().committed_lsn()
-                    } else {
-                        *self.current_snapshot_version.read()
-                    };
-                    publisher.emit(
-                        crate::backend::native::v3::pubsub::types::PubSubEvent::EdgeChanged {
-                            edge_id,
-                            from_node: edge.from,
-                            to_node: edge.to,
-                            snapshot_id: current_lsn,
-                        },
-                    );
-                }
+            if let Some(ref publisher) = *pub_guard
+                && publisher.has_subscribers()
+            {
+                let current_lsn = if let Some(ref wal) = self.wal {
+                    wal.read().committed_lsn()
+                } else {
+                    *self.current_snapshot_version.read()
+                };
+                publisher.emit(
+                    crate::backend::native::v3::pubsub::types::PubSubEvent::EdgeChanged {
+                        edge_id,
+                        from_node: edge.from,
+                        to_node: edge.to,
+                        snapshot_id: current_lsn,
+                    },
+                );
             }
         }
 
@@ -2498,7 +2498,7 @@ impl SqlValue {
             rusqlite::types::ValueRef::Integer(i) => SqlValue::Integer(*i),
             rusqlite::types::ValueRef::Real(r) => SqlValue::Real(*r),
             rusqlite::types::ValueRef::Text(t) => {
-                let text = std::str::from_utf8(t).unwrap_or_else(|_| "<invalid utf8>");
+                let text = std::str::from_utf8(t).unwrap_or("<invalid utf8>");
                 SqlValue::Text(text.to_owned())
             }
             rusqlite::types::ValueRef::Blob(b) => SqlValue::Blob(b.to_vec()),

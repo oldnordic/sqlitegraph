@@ -6,7 +6,6 @@
 use std::sync::{Arc, Mutex};
 
 use crate::sharding::*;
-use Change;
 
 /// Test CSR shard reading with real graph data.
 #[test]

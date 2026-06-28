@@ -3,7 +3,6 @@
 //! Validates CSR consistency across CRUD operations, property store sync,
 //! and pub/sub notifications.
 
-use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 

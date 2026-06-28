@@ -4,7 +4,6 @@
 //! Implementation must pass all specs before being considered complete.
 
 use crate::sharding::Change;
-use crate::sharding::PubSub;
 
 /// Consumer group message with offset tracking.
 #[derive(Debug, Clone)]
@@ -24,6 +23,7 @@ pub struct ConsumerGroup {
 #[cfg(test)]
 mod specs {
     use super::*;
+    use crate::sharding::PubSub;
 
     /// Spec: Create consumer group.
     #[test]

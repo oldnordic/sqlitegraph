@@ -4,10 +4,8 @@
 //! enabling subgraph construction without full-graph traversal overhead.
 
 mod bidirectional;
-mod data_tests;
 mod filters_spec;
 mod fts5_spec;
-mod integration_tests;
 mod manifest;
 mod property;
 mod pubsub;
@@ -17,12 +15,17 @@ mod shard;
 mod streams_spec;
 mod subgraph;
 
+#[cfg(test)]
+mod data_tests;
+#[cfg(test)]
+mod integration_tests;
+
 pub use bidirectional::BidirectionalIndex;
 pub use filters_spec::{AttrFilter, Attribute};
 pub use fts5_spec::ContentMatch;
 pub use manifest::{Manifest, ShardMetadata};
 pub use property::PropertyStore;
-pub use pubsub::{Change, ChangeType, PubSub, Subscriber};
+pub use pubsub::{Change, ChangeType, DEFAULT_TOPIC, EDGE_TOPIC, NODE_TOPIC, PubSub, Subscriber};
 pub use reader::ShardReader;
 pub use semantic::{KnnResult, SemanticLayer};
 pub use shard::{CsrEdge, CsrShard};

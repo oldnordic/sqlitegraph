@@ -3,8 +3,6 @@
 //! Tests define expected behavior for typed attribute storage and filtering.
 //! Implementation must pass all specs before being considered complete.
 
-use crate::sharding::PropertyStore;
-
 /// Typed attribute value.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Attribute {
@@ -34,6 +32,7 @@ pub enum AttrFilter {
 #[cfg(test)]
 mod specs {
     use super::*;
+    use crate::sharding::PropertyStore;
 
     /// Spec: Set and retrieve string attribute.
     #[test]

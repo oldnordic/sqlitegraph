@@ -3,7 +3,6 @@
 //! `SubgraphBuilder` constructs a local subgraph from prompt tokens using sharded CSR.
 //! This enables efficient generation without loading the full graph into memory.
 
-use std::collections::hash_set;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::sharding::reader::ShardReader;
@@ -56,6 +55,12 @@ impl Subgraph {
     /// Return the number of edges in this subgraph.
     pub fn edge_count(&self) -> usize {
         self.edges.len()
+    }
+}
+
+impl Default for Subgraph {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -195,8 +200,6 @@ impl SubgraphBuilder {
 mod tests {
     use super::*;
     use crate::sharding::shard::CsrShard;
-    use std::fs::File;
-    use std::io::Write;
     use std::path::PathBuf;
     use tempfile::TempDir;
 

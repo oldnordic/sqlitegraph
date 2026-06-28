@@ -736,9 +736,7 @@ impl PropertyStore {
         match filter {
             crate::sharding::filters_spec::AttrFilter::Equals(name, value) => {
                 let (attr_type, val_str) = self.attr_to_sql(value);
-                let sql = format!(
-                    "SELECT DISTINCT token_id FROM token_attributes WHERE attr_name = ?1 AND attr_type = ?2 AND attr_value = ?3"
-                );
+                let sql = "SELECT DISTINCT token_id FROM token_attributes WHERE attr_name = ?1 AND attr_type = ?2 AND attr_value = ?3".to_string();
                 let params: Vec<Box<dyn rusqlite::ToSql>> = vec![
                     Box::new(name.to_string()),
                     Box::new(attr_type),
@@ -747,25 +745,21 @@ impl PropertyStore {
                 Ok((sql, params))
             }
             crate::sharding::filters_spec::AttrFilter::GreaterThan(name, value) => {
-                let sql = format!(
-                    "SELECT DISTINCT token_id FROM token_attributes WHERE attr_name = ?1 AND attr_type = 'float' AND CAST(attr_value AS REAL) > ?2"
-                );
+                let sql = "SELECT DISTINCT token_id FROM token_attributes WHERE attr_name = ?1 AND attr_type = 'float' AND CAST(attr_value AS REAL) > ?2".to_string();
                 let params: Vec<Box<dyn rusqlite::ToSql>> =
                     vec![Box::new(name.to_string()), Box::new(*value)];
                 Ok((sql, params))
             }
             crate::sharding::filters_spec::AttrFilter::LessThan(name, value) => {
-                let sql = format!(
-                    "SELECT DISTINCT token_id FROM token_attributes WHERE attr_name = ?1 AND attr_type IN ('float', 'integer') AND CAST(attr_value AS REAL) < ?2"
-                );
+                let sql = "SELECT DISTINCT token_id FROM token_attributes WHERE attr_name = ?1 AND attr_type IN ('float', 'integer') AND CAST(attr_value AS REAL) < ?2".to_string();
                 let params: Vec<Box<dyn rusqlite::ToSql>> =
                     vec![Box::new(name.to_string()), Box::new(*value)];
                 Ok((sql, params))
             }
             crate::sharding::filters_spec::AttrFilter::In(name, values) => {
-                let mut sql = format!(
+                let mut sql =
                     "SELECT DISTINCT token_id FROM token_attributes WHERE attr_name = ?1 AND ("
-                );
+                        .to_string();
                 let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(name.to_string())];
                 let mut conditions = Vec::new();
 

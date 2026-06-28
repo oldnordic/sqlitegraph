@@ -3,8 +3,6 @@
 //! Tests define expected behavior for content indexing and search.
 //! Implementation must pass all specs before being considered complete.
 
-use crate::sharding::PropertyStore;
-
 /// Content match result from FTS5 search.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContentMatch {
@@ -16,7 +14,7 @@ pub struct ContentMatch {
 
 #[cfg(test)]
 mod specs {
-    use super::*;
+    use crate::sharding::PropertyStore;
 
     /// Spec: Basic FTS5 index and search functionality.
     #[test]

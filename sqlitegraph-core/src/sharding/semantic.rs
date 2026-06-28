@@ -311,12 +311,11 @@ impl SemanticLayer {
         // Brute-force search through HNSW to check if token_id exists
         // In production, maintain a separate HashSet for O(1) lookup
         for i in 1..=hnsw.vector_count() {
-            if let Ok(Some((_, metadata))) = hnsw.get_vector(i as u64) {
-                if let Some(id) = metadata.get("token_id").and_then(|v| v.as_u64()) {
-                    if id == token_id as u64 {
-                        return true;
-                    }
-                }
+            if let Ok(Some((_, metadata))) = hnsw.get_vector(i as u64)
+                && let Some(id) = metadata.get("token_id").and_then(|v| v.as_u64())
+                && id == token_id as u64
+            {
+                return true;
             }
         }
         false
@@ -422,12 +421,11 @@ impl SemanticLayer {
         // Brute-force search through HNSW to check if token_id exists
         // In production, maintain a separate HashSet for O(1) lookup
         for i in 1..=hnsw.vector_count() {
-            if let Ok(Some((_, metadata))) = hnsw.get_vector(i as u64) {
-                if let Some(id) = metadata.get("token_id").and_then(|v| v.as_u64()) {
-                    if id == token_id as u64 {
-                        return true;
-                    }
-                }
+            if let Ok(Some((_, metadata))) = hnsw.get_vector(i as u64)
+                && let Some(id) = metadata.get("token_id").and_then(|v| v.as_u64())
+                && id == token_id as u64
+            {
+                return true;
             }
         }
         false

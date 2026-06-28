@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use crate::sharding::reader::ShardReader;
-use crate::sharding::shard::{CsrEdge, CsrShard};
+use crate::sharding::shard::CsrEdge;
 
 /// Bidirectional index supporting forward and reverse edge queries.
 ///
@@ -121,8 +121,6 @@ impl BidirectionalIndex {
 mod tests {
     use super::*;
     use crate::sharding::shard::CsrShard;
-    use std::path::PathBuf;
-    use tempfile::TempDir;
 
     fn create_test_shards() -> Vec<CsrShard> {
         let mut shards = Vec::new();
@@ -186,7 +184,7 @@ mod tests {
                 index
                     .forward
                     .entry(edge.src)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(edge.clone());
 
                 let reverse_edge = CsrEdge {
@@ -198,7 +196,7 @@ mod tests {
                 index
                     .reverse
                     .entry(edge.dst)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(reverse_edge);
             }
         }
@@ -221,7 +219,7 @@ mod tests {
                 index
                     .forward
                     .entry(edge.src)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(edge.clone());
 
                 let reverse_edge = CsrEdge {
@@ -233,7 +231,7 @@ mod tests {
                 index
                     .reverse
                     .entry(edge.dst)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(reverse_edge);
             }
         }
@@ -267,7 +265,7 @@ mod tests {
                 index
                     .forward
                     .entry(edge.src)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(edge.clone());
 
                 let reverse_edge = CsrEdge {
@@ -279,7 +277,7 @@ mod tests {
                 index
                     .reverse
                     .entry(edge.dst)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(reverse_edge);
             }
         }
@@ -315,7 +313,7 @@ mod tests {
                 index
                     .forward
                     .entry(edge.src)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(edge.clone());
 
                 let reverse_edge = CsrEdge {
@@ -327,7 +325,7 @@ mod tests {
                 index
                     .reverse
                     .entry(edge.dst)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(reverse_edge);
             }
         }
@@ -359,7 +357,7 @@ mod tests {
                 index
                     .forward
                     .entry(edge.src)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(edge.clone());
 
                 let reverse_edge = CsrEdge {
@@ -371,7 +369,7 @@ mod tests {
                 index
                     .reverse
                     .entry(edge.dst)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(reverse_edge);
             }
         }
