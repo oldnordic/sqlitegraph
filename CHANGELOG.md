@@ -1,5 +1,14 @@
 # SQLiteGraph Changelog
 
+## [3.5.0] - 2026-06-29
+
+### Added
+- **Async Graph Backend Interface** — Introduced `AsyncGraphBackend` in `sqlitegraph-core/src/backend.rs` to allow non-blocking concurrent node and neighbor lookups using Rust's native async/await.
+- **Owned-Buffer io_uring I/O Coordinator** — Added `AsyncFileCoordinator` in `sqlitegraph-core/src/backend/native/v3/async_io/coordinator.rs` executing asynchronous file read/write operations using Linux `io_uring` (via `rio`) with a thread-pool fallback for other platforms.
+- **Async storage subsystems** — Implemented async B+Tree traversal and lock-free read paths in `BTreeManager`, `NodeStore`, and `V3EdgeStore` to enable concurrent reads without holding read locks across await points.
+- **Parallel Async Traversals** — Added parallel asynchronous graph traversals (`bfs_async` and `k_hop_async`) in `sqlitegraph-core/src/algo/async_traversal.rs` that execute concurrent neighbor fetches across the I/O thread pool.
+- **Async Integration Tests** — Created integration test suites verifying correctness of concurrent coordinator I/O and parallel async traversals.
+
 ## [3.4.6] - 2026-06-29
 
 ### Added

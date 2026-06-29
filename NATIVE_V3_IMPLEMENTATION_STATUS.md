@@ -66,6 +66,14 @@ Native-v3 backend now provides **full feature parity** with SQLite backend for c
 - `warm_neighbors_for_sources()` bulk-warms weighted adjacency caches for known source sets
 - Large-graph reopen durability remains intact after compaction
 
+### ✅ Async & io_uring I/O Engine (COMPLETE)
+**Status:** Fully implemented with Linux `io_uring` support (via `rio`) and pread thread-pool fallback.
+- `AsyncGraphBackend` trait interface returning Send futures.
+- `AsyncFileCoordinator` owned-buffer coordinator for safe async I/O.
+- Lock-free async read paths for B+Tree, node, and edge stores.
+- Concurrent async BFS and K-Hop traversals.
+- Async traversal tests (`tests/v3_async_traversal_tests.rs`) and coordinator tests (`tests/v3_async_coordinator_tests.rs`).
+
 ## Feature Support Matrix
 
 | Feature | SQLite Backend | Native-v3 Backend | Status |
@@ -82,6 +90,7 @@ Native-v3 backend now provides **full feature parity** with SQLite backend for c
 | Transaction Management | ✅ | ✅ | **NEW** |
 | Property filtering | ✅ | ✅ | Complete |
 | Label filtering | ✅ | ✅ | Complete |
+| Async Graph API & Traversals | ❌ | ✅ | **NEW** |
 
 ## CLI Usage
 

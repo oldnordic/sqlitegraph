@@ -31,8 +31,8 @@ use crate::backend::native::v3::name_index::NameIndex;
 use crate::backend::native::v3::storage::AdaptivePageManager;
 use crate::backend::native::v3::wal::{V3WALPaths, V3WALRecord, WALWriter};
 use crate::backend::native::v3::{
-    KindIndex, KvStore, KvValue, NodeCache, NodeRecordV3, NodeStore, PageAllocator,
-    PersistentHeaderV3, Publisher, V3_HEADER_SIZE, V3EdgeStore,
+    AsyncFileCoordinator, KindIndex, KvStore, KvValue, NodeCache, NodeRecordV3, NodeStore,
+    PageAllocator, PersistentHeaderV3, Publisher, V3_HEADER_SIZE, V3EdgeStore,
 };
 use crate::backend::{
     BackendDirection, ChainStep, EdgeSpec, GraphBackend, NeighborQuery, NodeSpec, PatternMatch,
@@ -65,6 +65,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct V3Backend {
     /// Database file path
     db_path: PathBuf,
+    /// Async coordinator for non-blocking I/O
+    async_coordinator: std::sync::OnceLock<Arc<AsyncFileCoordinator>>,
     /// SQLite connection for property storage (SQL Layer)
     sqlite_conn: Arc<Mutex<Connection>>,
     /// BTreeManager for node_id → page_id lookups
@@ -774,6 +776,7 @@ impl V3Backend {
 
         Ok(Self {
             db_path,
+            async_coordinator: std::sync::OnceLock::new(),
             sqlite_conn: Arc::new(Mutex::new(sqlite_conn)),
             btree: RwLock::new(node_btree),
             node_store: RwLock::new(node_store),
@@ -948,6 +951,7 @@ impl V3Backend {
 
         let backend = Self {
             db_path: db_path.clone(),
+            async_coordinator: std::sync::OnceLock::new(),
             sqlite_conn: Arc::new(Mutex::new(sqlite_conn)),
             btree: RwLock::new(btree),
             node_store: RwLock::new(node_store),
@@ -4425,5 +4429,218 @@ mod tests {
         // Invalid snapshot should fail
         let invalid = SnapshotId::invalid();
         assert!(V3Backend::require_current_snapshot(invalid).is_err());
+    }
+}
+
+impl V3Backend {
+    /// Get or create the async file coordinator
+    pub fn get_async_coordinator(&self) -> Result<Arc<AsyncFileCoordinator>, SqliteGraphError> {
+        if let Some(coord) = self.async_coordinator.get() {
+            return Ok(Arc::clone(coord));
+        }
+        let coord = AsyncFileCoordinator::create(&self.db_path)?;
+        let arc = Arc::new(coord);
+        let _ = self.async_coordinator.set(Arc::clone(&arc));
+        Ok(self.async_coordinator.get().cloned().unwrap())
+    }
+
+    async fn get_node_internal_async(
+        &self,
+        node_id: i64,
+        async_coordinator: &AsyncFileCoordinator,
+    ) -> Result<Option<NodeRecordV3>, SqliteGraphError> {
+        if let Some(record) = self.node_cache.get(node_id) {
+            return Ok(Some(record));
+        }
+
+        let (btree_manager, page_cache, unpacked_page_cache) = {
+            let store = self.node_store.read();
+            (
+                store.btree_manager().clone(),
+                Arc::clone(store.page_cache_ref()),
+                Arc::clone(store.unpacked_page_cache_ref()),
+            )
+        };
+
+        if let Some(record) = crate::backend::native::v3::node::store::lookup_node_async(
+            &btree_manager,
+            &page_cache,
+            &unpacked_page_cache,
+            node_id,
+            async_coordinator,
+        )
+        .await?
+        {
+            self.node_cache.insert(node_id, record.clone());
+            Ok(Some(record))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+impl crate::backend::AsyncGraphBackend for V3Backend {
+    fn get_node(
+        &self,
+        snapshot_id: SnapshotId,
+        id: i64,
+    ) -> impl std::future::Future<Output = Result<GraphEntity, SqliteGraphError>> + Send {
+        async move {
+            let mut deleted_before_present: Option<u64> = None;
+
+            // MVCC check: if snapshot is historical (non-zero LSN), verify node existed at that time
+            if snapshot_id.0 != 0 {
+                let conn = self.sqlite_conn.lock();
+                let mut stmt = conn.prepare(
+                    "SELECT created_version, updated_version, deleted_version FROM node_properties WHERE node_id = ?1"
+                )
+                    .map_err(|e| SqliteGraphError::connection(format!("Failed to prepare query: {}", e)))?;
+
+                let mut rows = stmt
+                    .query([id])
+                    .map_err(|e| SqliteGraphError::connection(format!("Failed to query: {}", e)))?;
+
+                if let Some(row) = rows.next().map_err(|e| {
+                    SqliteGraphError::connection(format!("Failed to fetch row: {}", e))
+                })? {
+                    let created_version: u64 = row.get(0).map_err(|e| {
+                        SqliteGraphError::connection(format!(
+                            "Failed to get created_version: {}",
+                            e
+                        ))
+                    })?;
+                    let updated_version: Option<u64> = row.get(1).map_err(|e| {
+                        SqliteGraphError::connection(format!(
+                            "Failed to get updated_version: {}",
+                            e
+                        ))
+                    })?;
+                    let deleted_version: Option<u64> = row.get(2).map_err(|e| {
+                        SqliteGraphError::connection(format!(
+                            "Failed to get deleted_version: {}",
+                            e
+                        ))
+                    })?;
+
+                    if created_version > snapshot_id.0 {
+                        return Err(SqliteGraphError::query(format!(
+                            "Node {} not found in snapshot",
+                            id
+                        )));
+                    }
+
+                    if let Some(version) = updated_version
+                        && snapshot_id.0 < version
+                    {
+                        return Err(SqliteGraphError::query(format!(
+                            "Historical version for node {} is unavailable after update",
+                            id
+                        )));
+                    }
+
+                    if let Some(version) = deleted_version {
+                        if snapshot_id.0 >= version {
+                            return Err(SqliteGraphError::query(format!(
+                                "Node {} not found in snapshot",
+                                id
+                            )));
+                        }
+                        deleted_before_present = Some(version);
+                    }
+                } else {
+                    return Err(SqliteGraphError::query(format!("Node {} not found", id)));
+                }
+            }
+
+            let async_coordinator = self.get_async_coordinator()?;
+
+            match self.get_node_internal_async(id, &async_coordinator).await? {
+                Some(record) => {
+                    let data_bytes = if let Some(inline) = record.data_inline {
+                        inline
+                    } else if let Some(offset) = record.data_external_offset {
+                        let target_len = record.data_len
+                            & crate::backend::native::v3::node::record::constants::MAX_DATA_LEN;
+                        let buf = vec![0u8; target_len as usize];
+                        let (buffer, _) = async_coordinator.read_at_offset(offset, buf).await?;
+                        buffer
+                    } else {
+                        Vec::new()
+                    };
+
+                    let (kind, name, data) = Self::parse_node_data(&data_bytes, id);
+
+                    Ok(GraphEntity {
+                        id,
+                        kind,
+                        name,
+                        file_path: None,
+                        data,
+                    })
+                }
+                None => {
+                    if deleted_before_present.is_some() {
+                        Err(SqliteGraphError::query(format!(
+                            "Historical version for node {} is unavailable after delete",
+                            id
+                        )))
+                    } else {
+                        Err(SqliteGraphError::query(format!("Node {} not found", id)))
+                    }
+                }
+            }
+        }
+    }
+
+    fn neighbors(
+        &self,
+        snapshot_id: SnapshotId,
+        node: i64,
+        query: NeighborQuery,
+    ) -> impl std::future::Future<Output = Result<Vec<i64>, SqliteGraphError>> + Send {
+        async move {
+            Self::require_current_snapshot(snapshot_id)?;
+            let async_coordinator = self.get_async_coordinator()?;
+
+            if let Some(ref edge_type) = query.edge_type {
+                let edge_store = self.edge_store.read();
+                let dir = match query.direction {
+                    BackendDirection::Outgoing => EdgeDirection::Outgoing,
+                    BackendDirection::Incoming => EdgeDirection::Incoming,
+                };
+                let neighbors_arc = edge_store
+                    .neighbors_filtered(node, dir, edge_type)
+                    .map_err(map_v3_error)?;
+                Ok(neighbors_arc.to_vec())
+            } else {
+                let (btree_lock, cache_lock, edge_types_lock, page_size) = {
+                    let store = self.edge_store.read();
+                    (
+                        Arc::clone(store.btree_lock()),
+                        Arc::clone(store.cache_lock()),
+                        Arc::clone(store.edge_types_lock()),
+                        store.page_size(),
+                    )
+                };
+
+                let dir = match query.direction {
+                    BackendDirection::Outgoing => EdgeDirection::Outgoing,
+                    BackendDirection::Incoming => EdgeDirection::Incoming,
+                };
+
+                let neighbors_arc = crate::backend::native::v3::edge_compat::neighbors_async(
+                    &btree_lock,
+                    &cache_lock,
+                    &edge_types_lock,
+                    page_size,
+                    node,
+                    dir,
+                    &async_coordinator,
+                )
+                .await?;
+
+                Ok(neighbors_arc.to_vec())
+            }
+        }
     }
 }

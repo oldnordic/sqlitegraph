@@ -493,6 +493,9 @@ mod wcc;
 // Backend-agnostic algorithms module
 pub mod backend;
 
+// Async traversals (BFS, K-Hop)
+pub mod async_traversal;
+
 // Test module
 #[cfg(test)]
 mod tests;

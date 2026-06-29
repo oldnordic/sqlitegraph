@@ -1,6 +1,6 @@
 # SQLiteGraph API Reference
 
-**Version:** 3.4.6
+**Version:** 3.5.0
 **Last Updated:** 2026-06-29
 
 The complete API documentation is available at **[docs.rs/sqlitegraph](https://docs.rs/sqlitegraph)**.
@@ -21,9 +21,11 @@ This document provides a quick overview of the current public API surface.
 ## Table of Contents
 
 - [GraphBackend Trait (Unified API)](#graphbackend-trait-unified-api)
+- [Async Graph API](#async-graph-api)
 - [SQLite Backend API](#sqlite-backend-api)
 - [Native V3 Backend API](#native-v3-backend-api)
 - [Graph Algorithms API](#graph-algorithms-api)
+- [Async Graph Traversals](#async-graph-traversals)
 - [Cypher-Inspired Query API](#cypher-inspired-query-api)
 - [HNSW Vector Search API](#hnsw-vector-search-api)
 - [KV Store API](#kv-store-api)
@@ -110,6 +112,35 @@ use sqlitegraph::hnsw::storage::SQLiteVectorStorage;
 
 let storage = SQLiteVectorStorage::new(index_id, conn);
 ```
+
+## Async Graph API
+
+SQLiteGraph introduces non-blocking asynchronous graph backend operations designed to support high-throughput traversals of graphs larger than RAM without blocking execution threads.
+
+### AsyncGraphBackend Trait
+
+The asynchronous API is defined by the `AsyncGraphBackend` trait:
+
+```rust
+pub trait AsyncGraphBackend: Send + Sync {
+    /// Retrieve a node asynchronously from the snapshot.
+    fn get_node(
+        &self,
+        snapshot_id: SnapshotId,
+        id: i64,
+    ) -> impl std::future::Future<Output = Result<GraphEntity, SqliteGraphError>> + Send;
+
+    /// Retrieve neighbor node IDs for a given source node asynchronously.
+    fn neighbors(
+        &self,
+        snapshot_id: SnapshotId,
+        node: i64,
+        query: NeighborQuery,
+    ) -> impl std::future::Future<Output = Result<Vec<i64>, SqliteGraphError>> + Send;
+}
+```
+
+Both `V3Backend` (under `native-v3` feature) and its snapshots implement `AsyncGraphBackend`.
 
 ---
 
@@ -398,6 +429,28 @@ use sqlitegraph::typed_digraph::algo::{is_cyclic_directed, tarjan_scc, toposort,
 | `tarjan_scc` | `(&TypedDiGraph<N,E>) -> Vec<Vec<NodeIndex>>` | Strongly connected components |
 | `toposort` | `(&TypedDiGraph<N,E>) -> Result<Vec<NodeIndex>, CycleError>` | Topological sort |
 | `Dfs::new` | `(&TypedDiGraph<N,E>, NodeIndex) -> Dfs` | Depth-first visitor (implements `Iterator`) |
+
+## Async Graph Traversals
+
+SQLiteGraph provides parallelized asynchronous versions of BFS and K-Hop traversals that execute concurrent neighbor fetches across the I/O thread pool or `io_uring`:
+
+```rust
+use sqlitegraph::algo::async_traversal::{bfs_async, k_hop_async};
+use sqlitegraph::backend::BackendDirection;
+use sqlitegraph::snapshot::SnapshotId;
+
+// Perform async BFS up to depth 3
+let visited = bfs_async(&backend, SnapshotId::current(), start_node_id, 3).await?;
+
+// Perform async K-Hop traversal up to 2 hops
+let visited = k_hop_async(
+    &backend,
+    SnapshotId::current(),
+    start_node_id,
+    2,
+    BackendDirection::Outgoing,
+).await?;
+```
 
 ---
 

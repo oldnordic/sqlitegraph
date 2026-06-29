@@ -17,8 +17,10 @@
 //! - `delete`: Remove key->value mapping, handle underflow (future)
 //! - `split_page`: Split full page into two, propagate up if needed
 
+use crate::SqliteGraphError;
 use crate::backend::native::NativeBackendError;
 use crate::backend::native::NativeResult;
+use crate::backend::native::v3::AsyncFileCoordinator;
 use crate::backend::native::v3::allocator::PageAllocator;
 use crate::backend::native::v3::constants::{DEFAULT_PAGE_SIZE, V3_HEADER_SIZE};
 use crate::backend::native::v3::file_coordinator::FileCoordinator;
@@ -388,6 +390,94 @@ impl BTreeManager {
             field: "btree_depth".to_string(),
             reason: format!("exceeded maximum depth {}", MAX_TREE_HEIGHT),
         })
+    }
+
+    /// Asynchronously look up a key in the B+Tree.
+    pub async fn lookup_async(
+        &self,
+        key: i64,
+        async_coordinator: &AsyncFileCoordinator,
+    ) -> Result<Option<u64>, SqliteGraphError> {
+        if self.root_page_id == EMPTY_TREE_ROOT || self.root_page_id == 0 {
+            return Ok(None);
+        }
+
+        let search_key = key as u64;
+        let mut current_page_id = self.root_page_id;
+        let mut depth = 0;
+
+        while depth < MAX_TREE_HEIGHT as usize {
+            let index_page = self
+                .load_page_async(current_page_id, async_coordinator)
+                .await?;
+
+            match &index_page {
+                IndexPage::Leaf {
+                    entries, next_leaf, ..
+                } => {
+                    let result = IndexPage::binary_search_leaf(entries, search_key);
+                    let res_val = match result {
+                        Ok(idx) => {
+                            if let Some((_, page_id)) = entries.get(idx) {
+                                Ok(Some(*page_id))
+                            } else {
+                                Err(SqliteGraphError::validation(
+                                    "entry index out of bounds in BTree leaf",
+                                ))
+                            }
+                        }
+                        Err(_idx) => {
+                            if *next_leaf == 0 {
+                                Ok(None)
+                            } else {
+                                current_page_id = *next_leaf;
+                                continue;
+                            }
+                        }
+                    };
+                    return res_val;
+                }
+                IndexPage::Internal { keys, children, .. } => {
+                    let child_idx = IndexPage::find_child_index(keys, search_key);
+                    if child_idx < children.len() {
+                        current_page_id = children[child_idx];
+                    } else {
+                        return Err(SqliteGraphError::validation(
+                            "child index out of bounds in BTree internal",
+                        ));
+                    }
+                }
+            }
+            depth += 1;
+        }
+        Ok(None)
+    }
+
+    /// Asynchronously load an index page.
+    async fn load_page_async(
+        &self,
+        page_id: u64,
+        async_coordinator: &AsyncFileCoordinator,
+    ) -> Result<IndexPage, SqliteGraphError> {
+        if let Some(page) = self.page_cache.get(page_id) {
+            return Ok(page);
+        }
+
+        if page_id == 0 {
+            return Err(SqliteGraphError::connection(
+                "Cannot load page 0 (reserved for header)",
+            ));
+        }
+
+        let initial_buf = vec![0u8; self.page_size as usize];
+        let (buffer, _) = async_coordinator.read_page(page_id, initial_buf).await?;
+
+        let page = IndexPage::unpack(&buffer).map_err(|e| {
+            SqliteGraphError::validation(format!("Failed to unpack index page: {}", e))
+        })?;
+
+        self.page_cache.insert(page_id, page.clone());
+        Ok(page)
     }
 
     /// Get all keys stored in the B+Tree by traversing leaf pages horizontally.

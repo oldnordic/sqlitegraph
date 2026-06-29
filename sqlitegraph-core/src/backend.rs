@@ -877,3 +877,22 @@ where
         (*self).get_graph_ref()
     }
 }
+
+/// AsyncGraphBackend defines non-blocking graph operations.
+/// Supports async/await natively using Rust 2024 edition features.
+pub trait AsyncGraphBackend: Send + Sync {
+    /// Retrieve a node asynchronously from the snapshot.
+    fn get_node(
+        &self,
+        snapshot_id: SnapshotId,
+        id: i64,
+    ) -> impl std::future::Future<Output = Result<GraphEntity, SqliteGraphError>> + Send;
+
+    /// Retrieve neighbor node IDs for a given source node asynchronously.
+    fn neighbors(
+        &self,
+        snapshot_id: SnapshotId,
+        node: i64,
+        query: NeighborQuery,
+    ) -> impl std::future::Future<Output = Result<Vec<i64>, SqliteGraphError>> + Send;
+}

@@ -699,9 +699,9 @@ fn decode_packed_edge_page(page: &[u8], src: i64, dir: Direction) -> NativeResul
 pub struct V3EdgeStore {
     /// B+Tree index: (src, dir) → page_id
     #[cfg(test)]
-    pub btree: parking_lot::RwLock<BTreeManager>,
+    pub btree: Arc<parking_lot::RwLock<BTreeManager>>,
     #[cfg(not(test))]
-    btree: parking_lot::RwLock<BTreeManager>,
+    btree: Arc<parking_lot::RwLock<BTreeManager>>,
     /// Optional WAL writer for durability (shared with V3Backend via Arc)
     #[cfg(test)]
     pub wal: Option<Arc<RwLock<WALWriter>>>,
@@ -709,9 +709,9 @@ pub struct V3EdgeStore {
     wal: Option<Arc<RwLock<WALWriter>>>,
     /// In-memory cache of neighbor lists - using Arc<[i64]> for zero-copy reads
     /// This matches SQLite's AdjacencyCache pattern but with Arc for zero-copy
-    cache: RwLock<HashMap<(i64, Direction), Arc<[i64]>>>,
+    cache: Arc<RwLock<HashMap<(i64, Direction), Arc<[i64]>>>>,
     /// In-memory cache of weighted neighbors
-    cache_weighted: RwLock<HashMap<(i64, Direction), Arc<[(i64, f32)]>>>,
+    cache_weighted: Arc<RwLock<HashMap<(i64, Direction), Arc<[(i64, f32)]>>>>,
     /// Edge type storage: (src, dst, dir) -> edge_type string
     ///
     /// SEMANTIC CONSTRAINT: Key is (src, dst, dir), NOT edge_id.
@@ -721,7 +721,7 @@ pub struct V3EdgeStore {
     ///
     /// This HashMap is rebuilt from durable edge_data on cache miss via
     /// load_neighbors_from_disk(), ensuring edge types survive reopen/recovery.
-    edge_types: RwLock<HashMap<(i64, i64, Direction), String>>,
+    edge_types: Arc<RwLock<HashMap<(i64, i64, Direction), String>>>,
     /// Performance counters
     cache_hits: AtomicU64,
     cache_misses: AtomicU64,
@@ -831,6 +831,28 @@ impl V3EdgeStore {
         Arc::from(dsts.into_boxed_slice())
     }
 
+    pub fn btree_lock(&self) -> &Arc<parking_lot::RwLock<BTreeManager>> {
+        &self.btree
+    }
+
+    pub fn cache_lock(&self) -> &Arc<RwLock<HashMap<(i64, Direction), Arc<[i64]>>>> {
+        &self.cache
+    }
+
+    pub fn cache_weighted_lock(
+        &self,
+    ) -> &Arc<RwLock<HashMap<(i64, Direction), Arc<[(i64, f32)]>>>> {
+        &self.cache_weighted
+    }
+
+    pub fn edge_types_lock(&self) -> &Arc<RwLock<HashMap<(i64, i64, Direction), String>>> {
+        &self.edge_types
+    }
+
+    pub fn page_size(&self) -> u64 {
+        self.page_size as u64
+    }
+
     /// Create new edge store (in-memory only)
     /// NOTE: Prefer with_path_and_allocator() for database-backed edge stores
     pub fn new(
@@ -840,11 +862,11 @@ impl V3EdgeStore {
         page_size: u32,
     ) -> Self {
         Self {
-            btree: parking_lot::RwLock::new(btree),
+            btree: Arc::new(parking_lot::RwLock::new(btree)),
             wal: wal.map(|w| Arc::new(RwLock::new(w))),
-            cache: RwLock::new(HashMap::new()),
-            cache_weighted: RwLock::new(HashMap::new()),
-            edge_types: RwLock::new(HashMap::new()),
+            cache: Arc::new(RwLock::new(HashMap::new())),
+            cache_weighted: Arc::new(RwLock::new(HashMap::new())),
+            edge_types: Arc::new(RwLock::new(HashMap::new())),
             cache_hits: AtomicU64::new(0),
             cache_misses: AtomicU64::new(0),
             hit_time_ns: AtomicU64::new(0),
@@ -867,11 +889,11 @@ impl V3EdgeStore {
         page_size: u32,
     ) -> Self {
         Self {
-            btree: parking_lot::RwLock::new(btree),
+            btree: Arc::new(parking_lot::RwLock::new(btree)),
             wal: wal.map(|w| Arc::new(RwLock::new(w))),
-            cache: RwLock::new(HashMap::new()),
-            cache_weighted: RwLock::new(HashMap::new()),
-            edge_types: RwLock::new(HashMap::new()),
+            cache: Arc::new(RwLock::new(HashMap::new())),
+            cache_weighted: Arc::new(RwLock::new(HashMap::new())),
+            edge_types: Arc::new(RwLock::new(HashMap::new())),
             cache_hits: AtomicU64::new(0),
             cache_misses: AtomicU64::new(0),
             hit_time_ns: AtomicU64::new(0),
@@ -893,11 +915,11 @@ impl V3EdgeStore {
         // may collide. Always use with_path_and_allocator() in production.
         let header = PersistentHeaderV3::new_v3();
         Self {
-            btree: parking_lot::RwLock::new(btree),
+            btree: Arc::new(parking_lot::RwLock::new(btree)),
             wal: wal.map(|w| Arc::new(RwLock::new(w))),
-            cache: RwLock::new(HashMap::new()),
-            cache_weighted: RwLock::new(HashMap::new()),
-            edge_types: RwLock::new(HashMap::new()),
+            cache: Arc::new(RwLock::new(HashMap::new())),
+            cache_weighted: Arc::new(RwLock::new(HashMap::new())),
+            edge_types: Arc::new(RwLock::new(HashMap::new())),
             cache_hits: AtomicU64::new(0),
             cache_misses: AtomicU64::new(0),
             hit_time_ns: AtomicU64::new(0),
@@ -2856,4 +2878,207 @@ mod tests {
     //========================================================================
     // End TDD Tests
     //========================================================================
+}
+
+/// Standalone async neighbor retrieval function that takes references to avoid holding RwLockReadGuard across awaits
+pub async fn neighbors_async(
+    btree_lock: &parking_lot::RwLock<BTreeManager>,
+    cache_lock: &parking_lot::RwLock<HashMap<(i64, Direction), Arc<[i64]>>>,
+    edge_types_lock: &parking_lot::RwLock<HashMap<(i64, i64, Direction), String>>,
+    page_size: u64,
+    src: i64,
+    dir: Direction,
+    async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
+) -> Result<Arc<[i64]>, crate::errors::SqliteGraphError> {
+    let key = (src, dir);
+
+    {
+        let cache = cache_lock.read();
+        if let Some(neighbors) = cache.get(&key) {
+            return Ok(neighbors.clone());
+        }
+    }
+
+    let neighbors = load_neighbors_from_disk_async(
+        btree_lock,
+        edge_types_lock,
+        page_size,
+        src,
+        dir,
+        async_coordinator,
+    )
+    .await?;
+
+    if !neighbors.is_empty() {
+        let mut cache = cache_lock.write();
+        cache.insert(key, neighbors.clone());
+    }
+
+    Ok(neighbors)
+}
+
+/// Standalone async weighted neighbor retrieval function that takes references to avoid holding RwLockReadGuard across awaits
+pub async fn neighbors_weighted_async(
+    btree_lock: &parking_lot::RwLock<BTreeManager>,
+    cache_weighted_lock: &parking_lot::RwLock<HashMap<(i64, Direction), Arc<[(i64, f32)]>>>,
+    edge_types_lock: &parking_lot::RwLock<HashMap<(i64, i64, Direction), String>>,
+    page_size: u64,
+    src: i64,
+    dir: Direction,
+    async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
+) -> Result<Arc<[(i64, f32)]>, crate::errors::SqliteGraphError> {
+    let key = (src, dir);
+
+    {
+        let cache = cache_weighted_lock.read();
+        if let Some(neighbors) = cache.get(&key) {
+            return Ok(neighbors.clone());
+        }
+    }
+
+    let neighbors = load_neighbors_weighted_from_disk_async(
+        btree_lock,
+        cache_weighted_lock,
+        edge_types_lock,
+        page_size,
+        src,
+        dir,
+        async_coordinator,
+    )
+    .await?;
+
+    if !neighbors.is_empty() {
+        let mut cache = cache_weighted_lock.write();
+        cache.insert(key, neighbors.clone());
+    }
+
+    Ok(neighbors)
+}
+
+async fn load_neighbors_from_disk_async(
+    btree_lock: &parking_lot::RwLock<BTreeManager>,
+    edge_types_lock: &parking_lot::RwLock<HashMap<(i64, i64, Direction), String>>,
+    page_size: u64,
+    src: i64,
+    dir: Direction,
+    async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
+) -> Result<Arc<[i64]>, crate::errors::SqliteGraphError> {
+    let key = edge_key(src, dir);
+    let btree = btree_lock.read().clone();
+
+    let page_id = match btree.lookup_async(key, async_coordinator).await {
+        Ok(Some(pid)) => pid,
+        _ => {
+            return Ok(Arc::from([]));
+        }
+    };
+
+    match load_cluster_async(page_id, src, dir, page_size, async_coordinator).await {
+        Ok(cluster) => {
+            let edges_with_types = cluster.edges_with_types();
+            let mut edge_types = edge_types_lock.write();
+            for (dst, edge_type) in edges_with_types {
+                if let Some(et) = edge_type {
+                    edge_types.insert((src, dst, dir), et);
+                }
+            }
+
+            let neighbors: Vec<i64> = cluster.dsts();
+            Ok(Arc::from(neighbors.into_boxed_slice()))
+        }
+        Err(_) => Ok(Arc::from([])),
+    }
+}
+
+async fn load_neighbors_weighted_from_disk_async(
+    btree_lock: &parking_lot::RwLock<BTreeManager>,
+    _cache_weighted_lock: &parking_lot::RwLock<HashMap<(i64, Direction), Arc<[(i64, f32)]>>>,
+    edge_types_lock: &parking_lot::RwLock<HashMap<(i64, i64, Direction), String>>,
+    page_size: u64,
+    src: i64,
+    dir: Direction,
+    async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
+) -> Result<Arc<[(i64, f32)]>, crate::errors::SqliteGraphError> {
+    let key = edge_key(src, dir);
+    let btree = btree_lock.read().clone();
+
+    let page_id = match btree.lookup_async(key, async_coordinator).await {
+        Ok(Some(pid)) => pid,
+        _ => return Ok(Arc::from([])),
+    };
+
+    match load_cluster_async(page_id, src, dir, page_size, async_coordinator).await {
+        Ok(cluster) => {
+            let mut edge_types = edge_types_lock.write();
+            let mut neighbors = Vec::with_capacity(cluster.edges.len());
+            for e in &cluster.edges {
+                let edge_type = V3EdgeCluster::extract_edge_type(&e.edge_data);
+                if let Some(et) = edge_type {
+                    edge_types.insert((src, e.neighbor_id, dir), et);
+                }
+                let weight = V3EdgeCluster::extract_edge_weight(&e.edge_data);
+                neighbors.push((e.neighbor_id, weight));
+            }
+            neighbors.sort_by(|a, b| {
+                b.1.partial_cmp(&a.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+                    .then_with(|| a.0.cmp(&b.0))
+            });
+            Ok(Arc::from(neighbors.into_boxed_slice()))
+        }
+        Err(_) => Ok(Arc::from([])),
+    }
+}
+
+async fn load_cluster_async(
+    page_id: u64,
+    src: i64,
+    dir: Direction,
+    page_size: u64,
+    async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
+) -> Result<V3EdgeCluster, crate::errors::SqliteGraphError> {
+    let mut current_page_id = page_id;
+    let mut cluster_bytes = Vec::new();
+
+    let buf = vec![0u8; page_size as usize];
+    let (mut buffer, _) = async_coordinator.read_page(current_page_id, buf).await?;
+
+    loop {
+        if let Some(decoded_bytes) = decode_packed_edge_page(&buffer, src, dir).ok().flatten() {
+            let mut cluster = V3EdgeCluster::deserialize(&decoded_bytes, page_id).map_err(|e| {
+                crate::errors::SqliteGraphError::validation(format!(
+                    "Failed to deserialize edge cluster: {}",
+                    e
+                ))
+            })?;
+            cluster.page_id = 0;
+            return Ok(cluster);
+        }
+
+        if let Some((payload_len, next_page_id)) = decode_edge_cluster_page_header(&buffer) {
+            let payload_end = EDGE_CLUSTER_PAGE_HEADER_SIZE + payload_len;
+            cluster_bytes.extend_from_slice(&buffer[EDGE_CLUSTER_PAGE_HEADER_SIZE..payload_end]);
+            if next_page_id == 0 {
+                break;
+            }
+            current_page_id = next_page_id;
+            let buf = vec![0u8; page_size as usize];
+            let (next_buf, _) = async_coordinator.read_page(current_page_id, buf).await?;
+            buffer = next_buf;
+        } else {
+            return V3EdgeCluster::deserialize(&buffer, page_id).map_err(|e| {
+                crate::errors::SqliteGraphError::validation(format!(
+                    "Failed to deserialize edge cluster fallback: {}",
+                    e
+                ))
+            });
+        }
+    }
+
+    V3EdgeCluster::deserialize(&cluster_bytes, page_id).map_err(|e| {
+        crate::errors::SqliteGraphError::validation(format!(
+            "Failed to deserialize edge cluster end: {}",
+            e
+        ))
+    })
 }

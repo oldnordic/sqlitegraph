@@ -286,6 +286,7 @@ pub use errors::SqliteGraphError;
 pub use graph::{GraphEdge, GraphEntity, SqliteGraph};
 
 // Re-export graph algorithms
+pub use algo::async_traversal::{bfs_async, k_hop_async};
 pub use algo::{
     betweenness_centrality, betweenness_centrality_with_progress, label_propagation,
     louvain_communities, louvain_communities_with_progress, pagerank, pagerank_with_progress,

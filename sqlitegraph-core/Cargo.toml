@@ -1,6 +1,6 @@
 [package]
 name = "sqlitegraph"
-version = "3.4.6"
+version = "3.5.0"
 edition = "2024"
 rust-version = "1.89"
 description = "Embedded graph database with full ACID transactions, HNSW vector search, dual backend support, and comprehensive graph algorithms library"
@@ -45,6 +45,11 @@ petgraph = "0.6"
 sha2 = "0.10"
 regex = "1"
 turbovec = { version = "0.9", optional = true }
+tokio = { version = "1", features = ["fs", "rt", "rt-multi-thread", "sync", "macros"] }
+futures = "0.3"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rio = "0.9"
 
 [dependencies.lru]
 version = "0.12"

@@ -9,6 +9,7 @@
 
 pub mod algorithm;
 pub mod allocator;
+pub mod async_io;
 pub mod backend;
 pub mod btree;
 pub mod compact_edge_record;
@@ -30,6 +31,8 @@ pub mod storage;
 pub mod string_table;
 pub mod wal;
 pub mod write_batch;
+
+pub use async_io::coordinator::AsyncFileCoordinator;
 
 // Re-export V3 types
 pub use header::{PersistentHeaderV3, offset as header_offset, size as header_size};
