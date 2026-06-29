@@ -1,6 +1,13 @@
 # SQLiteGraph Changelog
 
-## [Unreleased]
+## [3.4.4] - 2026-06-29
+
+### Fixed
+- **Native-v3 large adjacency durability** — Fixed the edge-store persistence path so oversized `(src, dir)` edge clusters no longer overflow a single 4 KiB page during `flush_to_disk()`.
+- **Native-v3 reopen recovery** — Added chained-page decoding for persisted edge clusters, preserving large weighted and unweighted neighbor lists across close/reopen cycles while remaining compatible with legacy single-page edge data.
+- **Regression coverage** — Added a reopen regression that forces a multi-page weighted adjacency list through flush + reopen and verifies full recovery.
+
+## [3.4.3] - 2026-06-29
 
 ### Added
 - **Weighted Neighbor Retrieval** — Added `neighbors_weighted` and `neighbors_weighted_shared` to `V3Backend` and `V3EdgeStore` to retrieve adjacency lists with edge weights (`f32`) for pathformer's walk routing.

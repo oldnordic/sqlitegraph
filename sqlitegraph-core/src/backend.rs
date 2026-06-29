@@ -121,7 +121,11 @@ pub trait GraphBackend {
     ///
     /// Backends that support manual ID assignment (e.g. V3Backend, SqliteGraphBackend)
     /// will respect this ID. Default implementation injects "id" into the node spec data.
-    fn insert_node_with_id(&self, mut node: NodeSpec, node_id: i64) -> Result<i64, SqliteGraphError> {
+    fn insert_node_with_id(
+        &self,
+        mut node: NodeSpec,
+        node_id: i64,
+    ) -> Result<i64, SqliteGraphError> {
         if let Some(obj) = node.data.as_object_mut() {
             obj.insert("id".to_string(), serde_json::Value::Number(node_id.into()));
         } else {

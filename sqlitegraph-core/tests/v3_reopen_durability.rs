@@ -413,15 +413,19 @@ fn test_v3_multiple_flushes_preserves_edges_and_manual_ids() {
             file_path: None,
             data: serde_json::json!({}),
         };
-        let d1_id = backend.insert_node_with_id(node_spec_dst1, dst1_id).unwrap();
+        let d1_id = backend
+            .insert_node_with_id(node_spec_dst1, dst1_id)
+            .unwrap();
         assert_eq!(d1_id, dst1_id);
 
-        backend.insert_edge(EdgeSpec {
-            from: src_id,
-            to: dst1_id,
-            edge_type: "rel".to_string(),
-            data: serde_json::json!(null),
-        }).unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: src_id,
+                to: dst1_id,
+                edge_type: "rel".to_string(),
+                data: serde_json::json!(null),
+            })
+            .unwrap();
 
         backend.flush().expect("Flush 1 should succeed");
     }
@@ -436,15 +440,19 @@ fn test_v3_multiple_flushes_preserves_edges_and_manual_ids() {
             file_path: None,
             data: serde_json::json!({}),
         };
-        let d2_id = backend.insert_node_with_id(node_spec_dst2, dst2_id).unwrap();
+        let d2_id = backend
+            .insert_node_with_id(node_spec_dst2, dst2_id)
+            .unwrap();
         assert_eq!(d2_id, dst2_id);
 
-        backend.insert_edge(EdgeSpec {
-            from: src_id,
-            to: dst2_id,
-            edge_type: "rel".to_string(),
-            data: serde_json::json!(null),
-        }).unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: src_id,
+                to: dst2_id,
+                edge_type: "rel".to_string(),
+                data: serde_json::json!(null),
+            })
+            .unwrap();
 
         backend.flush().expect("Flush 2 should succeed");
     }
@@ -453,20 +461,25 @@ fn test_v3_multiple_flushes_preserves_edges_and_manual_ids() {
     {
         let backend = V3Backend::open(&db_path).unwrap();
 
-        let neighbors = backend.neighbors(
-            SnapshotId::current(),
-            src_id,
-            NeighborQuery {
-                direction: BackendDirection::Outgoing,
-                edge_type: None,
-            },
-        ).unwrap();
+        let neighbors = backend
+            .neighbors(
+                SnapshotId::current(),
+                src_id,
+                NeighborQuery {
+                    direction: BackendDirection::Outgoing,
+                    edge_type: None,
+                },
+            )
+            .unwrap();
 
         // Previously, the second flush would have overwritten the first edge, leaving only dst2_id.
         // Now, both edges must be present!
-        assert_eq!(neighbors.len(), 2, "Should preserve all edges across flushes");
+        assert_eq!(
+            neighbors.len(),
+            2,
+            "Should preserve all edges across flushes"
+        );
         assert!(neighbors.contains(&dst1_id));
         assert!(neighbors.contains(&dst2_id));
     }
 }
-

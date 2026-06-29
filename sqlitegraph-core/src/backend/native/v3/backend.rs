@@ -173,7 +173,11 @@ impl<'a> WriteBatchGuard<'a> {
     }
 
     /// Insert a node with a manually specified ID without syncing (accumulated in batch)
-    pub fn insert_node_with_id(&mut self, mut node: NodeSpec, node_id: i64) -> Result<i64, SqliteGraphError> {
+    pub fn insert_node_with_id(
+        &mut self,
+        mut node: NodeSpec,
+        node_id: i64,
+    ) -> Result<i64, SqliteGraphError> {
         if let Some(obj) = node.data.as_object_mut() {
             obj.insert("id".to_string(), serde_json::Value::Number(node_id.into()));
         } else {
