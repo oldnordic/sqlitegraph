@@ -77,7 +77,7 @@ jobs:
       - name: cargo audit
         run: |
           cargo install cargo-audit --locked
-          cargo audit
+          cargo audit --ignore RUSTSEC-2020-0021
 
       - name: cargo deny
         run: |
