@@ -1,7 +1,10 @@
 use crate::backend::native::v3::constants::{DEFAULT_PAGE_SIZE, V3_HEADER_SIZE};
 use crate::errors::SqliteGraphError;
 use std::fs::OpenOptions;
+#[cfg(unix)]
 use std::os::unix::fs::FileExt;
+#[cfg(windows)]
+use std::os::windows::fs::FileExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -87,8 +90,7 @@ impl AsyncFileCoordinator {
 
         tokio::task::spawn_blocking(move || {
             let mut local_buf = buf;
-            let n = file
-                .read_at(&mut local_buf, offset)
+            let n = Self::file_read_at(&file, &mut local_buf, offset)
                 .map_err(|e| SqliteGraphError::connection(format!("pread failed: {}", e)))?;
             Ok((local_buf, n))
         })
@@ -130,8 +132,7 @@ impl AsyncFileCoordinator {
 
         tokio::task::spawn_blocking(move || {
             let mut local_buf = buf;
-            let n = file
-                .read_at(&mut local_buf, offset)
+            let n = Self::file_read_at(&file, &mut local_buf, offset)
                 .map_err(|e| SqliteGraphError::connection(format!("pread failed: {}", e)))?;
             Ok((local_buf, n))
         })
@@ -177,8 +178,7 @@ impl AsyncFileCoordinator {
         let returned_data = tokio::task::spawn_blocking(move || {
             let mut written = 0;
             while written < data.len() {
-                let n = file
-                    .write_at(&data[written..], offset + written as u64)
+                let n = Self::file_write_at(&file, &data[written..], offset + written as u64)
                     .map_err(|e| SqliteGraphError::connection(format!("pwrite failed: {}", e)))?;
                 if n == 0 {
                     return Err(SqliteGraphError::connection(
@@ -212,5 +212,27 @@ impl AsyncFileCoordinator {
     /// Get the database file path
     pub fn db_path(&self) -> &Path {
         &self.db_path
+    }
+
+    fn file_read_at(file: &std::fs::File, buf: &mut [u8], offset: u64) -> std::io::Result<usize> {
+        #[cfg(unix)]
+        {
+            file.read_at(buf, offset)
+        }
+        #[cfg(windows)]
+        {
+            file.seek_read(buf, offset)
+        }
+    }
+
+    fn file_write_at(file: &std::fs::File, buf: &[u8], offset: u64) -> std::io::Result<usize> {
+        #[cfg(unix)]
+        {
+            file.write_at(buf, offset)
+        }
+        #[cfg(windows)]
+        {
+            file.seek_write(buf, offset)
+        }
     }
 }
