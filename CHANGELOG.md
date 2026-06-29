@@ -1,5 +1,15 @@
 # SQLiteGraph Changelog
 
+## [Unreleased]
+
+### Changed
+- **Native-v3 edge-store compaction** — Small `(src, dir)` edge clusters are now packed together into shared 4 KiB edge pages instead of reserving a full page per cluster.
+
+### Fixed
+- **Native-v3 sparse graph size blowup** — Removed eager edge-page allocation for new dirty clusters so packed edge pages do not leave sparse-file holes on disk.
+- **Native-v3 reopen compatibility** — Edge-store reads now decode packed small-cluster pages while preserving support for existing single-cluster and multi-page overflow edge pages.
+- **Regression coverage** — Added a reopen regression that verifies many tiny weighted clusters stay compact on disk and still round-trip correctly.
+
 ## [3.4.4] - 2026-06-29
 
 ### Fixed

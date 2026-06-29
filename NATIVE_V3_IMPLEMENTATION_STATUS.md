@@ -1,6 +1,6 @@
 # Native-v3 Implementation Status
 
-**Date:** 2026-06-28
+**Date:** 2026-06-29
 **Status:** ✅ Core Features Complete
 
 ## Overview
@@ -56,6 +56,15 @@ Native-v3 backend now provides **full feature parity** with SQLite backend for c
 - `V3SavepointGuard` - Savepoint lifecycle management
 - WAL-backed durability with fsync at commit
 
+### ✅ Packed Native Edge Store (COMPLETE)
+**Status:** Fully implemented
+**Implementation:** Packed small-cluster pages + overflow pages for large adjacency lists
+- Small `(src, dir)` edge clusters now share packed 4 KiB edge pages
+- Large adjacency lists continue to use chained overflow pages
+- Reader supports packed pages, legacy single-cluster pages, and overflow pages
+- Weighted edge helpers remain unchanged: `batch_insert_edges_with_weights()`, `neighbors_weighted_shared()`
+- Large-graph reopen durability remains intact after compaction
+
 ## Feature Support Matrix
 
 | Feature | SQLite Backend | Native-v3 Backend | Status |
@@ -99,7 +108,7 @@ Native-v3 now aligns with original vision from `docs/NATIVE_V3_SPEC.md`:
 
 ```
 ✅ SQL Layer (Property Store via KV)
-✅ Graph Topology Layer (B+Tree + CSR edges)
+✅ Graph Topology Layer (B+Tree + packed native edge store)
 ✅ HNSW Semantic Layer (vector similarity search)
 ✅ WAL (Write-Ahead Logging)
 ✅ MVCC (snapshot isolation)
@@ -123,8 +132,8 @@ cargo test --lib --features native-v3           # ✅ All tests pass
 Native-v3 advantages:
 - **Binary format** - faster reads than SQLite
 - **B+Tree indexing** - O(log n) node lookups
-- **Page compression** - smaller disk footprint
-- **CSR edges** - efficient adjacency operations
+- **Packed edge pages** - multiple small clusters can share one 4 KiB page
+- **Overflow edge pages** - large adjacency lists still scale without truncation
 
 Native-v3 considerations:
 - Pattern matching scans kind_index (optimized via hash lookup)
@@ -134,4 +143,3 @@ Native-v3 considerations:
 ## Conclusion
 
 **Native-v3 backend is now feature-complete** for cypher queries. Users can choose between SQLite (mature, SQL-debuggable) and native-v3 (binary format, optimized) based on their workload requirements.
-

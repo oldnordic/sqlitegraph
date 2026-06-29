@@ -120,6 +120,9 @@ pub enum Direction {
 
 const EDGE_CLUSTER_PAGE_MAGIC: [u8; 4] = *b"V3EC";
 const EDGE_CLUSTER_PAGE_HEADER_SIZE: usize = 16;
+const PACKED_EDGE_PAGE_MAGIC: [u8; 4] = *b"V3EP";
+const PACKED_EDGE_PAGE_HEADER_SIZE: usize = 8;
+const PACKED_EDGE_PAGE_SLOT_SIZE: usize = 16;
 
 impl Direction {
     /// Convert to V2 Direction for EdgeCluster compatibility
@@ -575,6 +578,109 @@ fn decode_edge_cluster_page_header(page: &[u8]) -> Option<(usize, u64)> {
     Some((payload_len, next_page_id))
 }
 
+fn encode_packed_edge_page(
+    page_size: usize,
+    entries: &[((i64, Direction), Vec<u8>)],
+) -> NativeResult<Vec<u8>> {
+    let slot_bytes = entries.len() * PACKED_EDGE_PAGE_SLOT_SIZE;
+    if PACKED_EDGE_PAGE_HEADER_SIZE + slot_bytes > page_size {
+        return Err(NativeBackendError::SerializationError {
+            context: format!(
+                "packed edge page header {} + slots {} exceed page size {}",
+                PACKED_EDGE_PAGE_HEADER_SIZE, slot_bytes, page_size
+            ),
+        });
+    }
+
+    let mut payload_cursor = PACKED_EDGE_PAGE_HEADER_SIZE + slot_bytes;
+    let total_payload: usize = entries.iter().map(|(_, bytes)| bytes.len()).sum();
+    if payload_cursor + total_payload > page_size {
+        return Err(NativeBackendError::SerializationError {
+            context: format!(
+                "packed edge page payload {} exceeds page size {}",
+                payload_cursor + total_payload,
+                page_size
+            ),
+        });
+    }
+
+    let mut page = vec![0u8; page_size];
+    page[0..4].copy_from_slice(&PACKED_EDGE_PAGE_MAGIC);
+    page[4..6].copy_from_slice(&(entries.len() as u16).to_be_bytes());
+
+    for (idx, ((src, dir), cluster_bytes)) in entries.iter().enumerate() {
+        let slot_offset = PACKED_EDGE_PAGE_HEADER_SIZE + idx * PACKED_EDGE_PAGE_SLOT_SIZE;
+        page[slot_offset..slot_offset + 8].copy_from_slice(&src.to_be_bytes());
+        page[slot_offset + 8] = match dir {
+            Direction::Outgoing => 0,
+            Direction::Incoming => 1,
+        };
+        page[slot_offset + 9] = 0;
+        page[slot_offset + 10..slot_offset + 12]
+            .copy_from_slice(&(payload_cursor as u16).to_be_bytes());
+        page[slot_offset + 12..slot_offset + 14]
+            .copy_from_slice(&(cluster_bytes.len() as u16).to_be_bytes());
+        page[slot_offset + 14..slot_offset + 16].copy_from_slice(&0u16.to_be_bytes());
+
+        let payload_end = payload_cursor + cluster_bytes.len();
+        page[payload_cursor..payload_end].copy_from_slice(cluster_bytes);
+        payload_cursor = payload_end;
+    }
+
+    Ok(page)
+}
+
+fn decode_packed_edge_page(page: &[u8], src: i64, dir: Direction) -> NativeResult<Option<Vec<u8>>> {
+    if page.len() < PACKED_EDGE_PAGE_HEADER_SIZE || page[0..4] != PACKED_EDGE_PAGE_MAGIC {
+        return Ok(None);
+    }
+
+    let slot_count = u16::from_be_bytes([page[4], page[5]]) as usize;
+    let slot_region_end = PACKED_EDGE_PAGE_HEADER_SIZE + slot_count * PACKED_EDGE_PAGE_SLOT_SIZE;
+    if slot_region_end > page.len() {
+        return Err(NativeBackendError::DeserializationError {
+            context: "Packed edge page slot directory exceeds page length".to_string(),
+        });
+    }
+
+    for idx in 0..slot_count {
+        let slot_offset = PACKED_EDGE_PAGE_HEADER_SIZE + idx * PACKED_EDGE_PAGE_SLOT_SIZE;
+        let slot_src = i64::from_be_bytes(
+            page[slot_offset..slot_offset + 8]
+                .try_into()
+                .expect("slot src bounds checked"),
+        );
+        let slot_dir = if page[slot_offset + 8] == 1 {
+            Direction::Incoming
+        } else {
+            Direction::Outgoing
+        };
+        if slot_src != src || slot_dir != dir {
+            continue;
+        }
+
+        let payload_offset =
+            u16::from_be_bytes([page[slot_offset + 10], page[slot_offset + 11]]) as usize;
+        let payload_len =
+            u16::from_be_bytes([page[slot_offset + 12], page[slot_offset + 13]]) as usize;
+        let payload_end = payload_offset + payload_len;
+        if payload_offset < slot_region_end || payload_end > page.len() {
+            return Err(NativeBackendError::DeserializationError {
+                context: format!(
+                    "Packed edge page payload out of bounds: offset {} len {} page {}",
+                    payload_offset,
+                    payload_len,
+                    page.len()
+                ),
+            });
+        }
+
+        return Ok(Some(page[payload_offset..payload_end].to_vec()));
+    }
+
+    Ok(None)
+}
+
 /// V3 Edge Store - PERFORMANCE FIX: Store Arc<[i64]> in cache to avoid cloning
 ///
 /// This change makes neighbor queries faster by:
@@ -825,7 +931,7 @@ impl V3EdgeStore {
         };
         drop(btree);
 
-        match self.load_cluster_from_disk(page_id, db_path) {
+        match self.load_cluster_from_disk(page_id, src, dir, db_path) {
             Ok(cluster) => {
                 let edges_with_types = cluster.edges_with_types();
                 let mut edge_types = self.edge_types.write();
@@ -908,24 +1014,14 @@ impl V3EdgeStore {
             Ok(Some(pid)) => {
                 // Try to load existing cluster from disk to avoid dropping previous edges
                 if let Some(ref db_path) = self.db_path
-                    && let Ok(cluster) = self.load_cluster_from_disk(pid, db_path)
+                    && let Ok(mut cluster) = self.load_cluster_from_disk(pid, src, dir, db_path)
                 {
+                    cluster.page_id = 0;
                     existing_cluster = Some(cluster);
                 }
                 pid
             }
-            Ok(None) | Err(_) => {
-                let mut allocator = self.allocator.write();
-                match allocator.allocate() {
-                    Ok(pid) => pid,
-                    Err(e) => {
-                        return Err(NativeBackendError::IoError {
-                            context: "Failed to allocate edge page".to_string(),
-                            source: std::io::Error::other(e.to_string()),
-                        });
-                    }
-                }
-            }
+            Ok(None) | Err(_) => 0,
         };
 
         let cluster =
@@ -1142,7 +1238,7 @@ impl V3EdgeStore {
         };
         drop(btree);
 
-        match self.load_cluster_from_disk(page_id, db_path) {
+        match self.load_cluster_from_disk(page_id, src, dir, db_path) {
             Ok(cluster) => {
                 let mut edge_types = self.edge_types.write();
                 let mut neighbors = Vec::with_capacity(cluster.edges.len());
@@ -1310,43 +1406,85 @@ impl V3EdgeStore {
         // Drop the lock before doing I/O
         drop(dirty);
 
-        // Process each dirty cluster
-        for ((src, dir), cluster) in clusters_to_flush {
-            // Serialize cluster to bytes
-            let cluster_bytes = cluster.serialize()?;
-            let payload_capacity = (self.page_size as usize)
-                .checked_sub(EDGE_CLUSTER_PAGE_HEADER_SIZE)
-                .ok_or_else(|| NativeBackendError::SerializationError {
-                    context: format!(
-                        "edge page size {} too small for multi-page encoding",
-                        self.page_size
-                    ),
-                })?;
+        let packed_capacity = (self.page_size as usize)
+            .checked_sub(PACKED_EDGE_PAGE_HEADER_SIZE + PACKED_EDGE_PAGE_SLOT_SIZE)
+            .ok_or_else(|| NativeBackendError::SerializationError {
+                context: format!(
+                    "edge page size {} too small for packed edge encoding",
+                    self.page_size
+                ),
+            })?;
+        let overflow_capacity = (self.page_size as usize)
+            .checked_sub(EDGE_CLUSTER_PAGE_HEADER_SIZE)
+            .ok_or_else(|| NativeBackendError::SerializationError {
+                context: format!(
+                    "edge page size {} too small for multi-page encoding",
+                    self.page_size
+                ),
+            })?;
 
-            // CRITICAL FIX: Use cluster's allocated page_id instead of calculating it
-            // If page_id is 0 (allocation failed during insert), allocate now
-            // The unified PageAllocator ensures page IDs don't collide across subsystems
-            let page_id = if cluster.page_id == 0 {
+        let mut packed_entries: Vec<((i64, Direction), Vec<u8>)> = Vec::new();
+        let mut packed_bytes_used = PACKED_EDGE_PAGE_HEADER_SIZE;
+
+        let flush_packed_entries = |entries: &mut Vec<((i64, Direction), Vec<u8>)>,
+                                    bytes_used: &mut usize|
+         -> NativeResult<()> {
+            if entries.is_empty() {
+                return Ok(());
+            }
+
+            let packed_page_id = {
                 let mut allocator = self.allocator.write();
-                match allocator.allocate() {
-                    Ok(pid) => pid,
-                    Err(e) => {
-                        return Err(NativeBackendError::IoError {
-                            context: format!(
-                                "Failed to allocate edge page for ({}, {:?})",
-                                src, dir
-                            ),
-                            source: std::io::Error::other(e.to_string()),
-                        });
-                    }
-                }
-            } else {
-                cluster.page_id
+                allocator
+                    .allocate()
+                    .map_err(|e| NativeBackendError::IoError {
+                        context: "Failed to allocate packed edge page".to_string(),
+                        source: std::io::Error::other(e.to_string()),
+                    })?
             };
 
-            let total_pages = cluster_bytes.len().max(1).div_ceil(payload_capacity);
+            let page_bytes = encode_packed_edge_page(self.page_size as usize, entries)?;
+            self.write_page_to_disk(&db_path, packed_page_id, &page_bytes)?;
+
+            let mut btree = self.btree.write();
+            for ((src, dir), _) in entries.iter() {
+                let key = edge_key(*src, *dir);
+                let _ = btree.insert(key, packed_page_id);
+            }
+
+            entries.clear();
+            *bytes_used = PACKED_EDGE_PAGE_HEADER_SIZE;
+            Ok(())
+        };
+
+        for ((src, dir), cluster) in clusters_to_flush {
+            let cluster_bytes = cluster.serialize()?;
+            let packed_size = PACKED_EDGE_PAGE_SLOT_SIZE + cluster_bytes.len();
+
+            if cluster_bytes.len() <= packed_capacity {
+                if packed_bytes_used + packed_size > self.page_size as usize {
+                    flush_packed_entries(&mut packed_entries, &mut packed_bytes_used)?;
+                }
+                packed_bytes_used += packed_size;
+                packed_entries.push(((src, dir), cluster_bytes));
+                continue;
+            }
+
+            flush_packed_entries(&mut packed_entries, &mut packed_bytes_used)?;
+
+            let first_page_id = {
+                let mut allocator = self.allocator.write();
+                allocator
+                    .allocate()
+                    .map_err(|e| NativeBackendError::IoError {
+                        context: format!("Failed to allocate edge page for ({}, {:?})", src, dir),
+                        source: std::io::Error::other(e.to_string()),
+                    })?
+            };
+
+            let total_pages = cluster_bytes.len().max(1).div_ceil(overflow_capacity);
             let mut page_ids = Vec::with_capacity(total_pages);
-            page_ids.push(page_id);
+            page_ids.push(first_page_id);
             if total_pages > 1 {
                 let mut allocator = self.allocator.write();
                 for _ in 1..total_pages {
@@ -1370,14 +1508,14 @@ impl V3EdgeStore {
                 self.write_page_to_disk(&db_path, page_id, &page_bytes)?;
             }
 
-            // Update B+Tree index with composite key: (src, dir) -> page_id
-            // CRITICAL FIX: Use edge_key() to create composite key instead of just src
             {
                 let mut btree = self.btree.write();
                 let key = edge_key(src, dir);
-                let _ = btree.insert(key, page_id);
+                let _ = btree.insert(key, first_page_id);
             }
         }
+
+        flush_packed_entries(&mut packed_entries, &mut packed_bytes_used)?;
 
         // Clear dirty clusters after successful flush
         self.dirty_clusters.write().clear();
@@ -1426,6 +1564,8 @@ impl V3EdgeStore {
     fn load_cluster_from_disk(
         &self,
         page_id: u64,
+        src: i64,
+        dir: Direction,
         db_path: &PathBuf,
     ) -> NativeResult<V3EdgeCluster> {
         use crate::backend::native::v3::constants::V3_HEADER_SIZE;
@@ -1459,6 +1599,12 @@ impl V3EdgeStore {
                     context: format!("Failed to read edge page {}", current_page_id),
                     source: e,
                 })?;
+
+            if let Some(cluster_bytes) = decode_packed_edge_page(&buffer, src, dir)? {
+                let mut cluster = V3EdgeCluster::deserialize(&cluster_bytes, page_id)?;
+                cluster.page_id = 0;
+                return Ok(cluster);
+            }
 
             if let Some((payload_len, next_page_id)) = decode_edge_cluster_page_header(&buffer) {
                 let payload_end = EDGE_CLUSTER_PAGE_HEADER_SIZE + payload_len;
@@ -2415,6 +2561,48 @@ mod tests {
             );
             assert_eq!(neighbors[0], (2, 1.5));
             assert_eq!(neighbors[2498], (2500, 1.5));
+        }
+    }
+
+    #[test]
+    fn test_small_clusters_are_packed_and_reopen_correctly() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("packed_small_clusters.graph");
+        std::fs::write(&db_path, vec![0u8; 4096]).expect("Failed to create db file");
+
+        {
+            let (edge_store, _allocator) = create_test_edge_store(Some(db_path.clone()));
+            for src in 1..=128 {
+                edge_store
+                    .insert_edge_weighted(src, 10_000 + src, Direction::Outgoing, None, 0.5)
+                    .expect("Insert failed");
+                edge_store
+                    .insert_edge_weighted(10_000 + src, src, Direction::Incoming, None, 0.5)
+                    .expect("Insert failed");
+            }
+            edge_store.flush(None).expect("Flush failed");
+        }
+
+        let file_size = std::fs::metadata(&db_path).expect("metadata").len();
+        assert!(
+            file_size < 65_536,
+            "packed sparse clusters should stay well below one-page-per-cluster size, got {} bytes",
+            file_size
+        );
+
+        {
+            let (recovered_store, _allocator) = create_test_edge_store(Some(db_path.clone()));
+            for src in 1..=128 {
+                let outgoing = recovered_store
+                    .neighbors_weighted(src, Direction::Outgoing)
+                    .expect("Failed to recover outgoing neighbors");
+                assert_eq!(outgoing.as_ref(), &[(10_000 + src, 0.5)]);
+
+                let incoming = recovered_store
+                    .neighbors_weighted(10_000 + src, Direction::Incoming)
+                    .expect("Failed to recover incoming neighbors");
+                assert_eq!(incoming.as_ref(), &[(src, 0.5)]);
+            }
         }
     }
 

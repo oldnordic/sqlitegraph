@@ -1,7 +1,7 @@
 # SQLiteGraph API Reference
 
 **Version:** 3.4.x
-**Last Updated:** 2026-06-27
+**Last Updated:** 2026-06-29
 
 The complete API documentation is available at **[docs.rs/sqlitegraph](https://docs.rs/sqlitegraph)**.
 
@@ -14,7 +14,7 @@ This document provides a quick overview of the current public API surface.
 | Backend | Status | Module | Best For |
 |---------|--------|--------|----------|
 | **SQLite** | ✅ Stable | `backend::sqlite` | Debuggable, SQL ecosystem |
-| **Native V3** | ⚠️ Experimental | `backend::native::v3` | Graph-oriented storage, KV, pub/sub (Bugs should be reported) |
+| **Native V3** | ⚠️ Experimental | `backend::native::v3` | Graph-oriented storage, packed edge store, KV, pub/sub (Bugs should be reported) |
 
 ---
 
@@ -129,6 +129,38 @@ let backend = V3Backend::open("data.graph")?;
 // Create with WAL enabled
 let backend = V3Backend::create_with_wal("data.graph", true)?;
 ```
+
+### Weighted Edge Retrieval And Bulk Ingestion
+
+Native V3 exposes weighted adjacency helpers used by graph-walk workloads:
+
+```rust
+use sqlitegraph::backend::{BackendDirection, NeighborQuery};
+use sqlitegraph::snapshot::SnapshotId;
+
+backend.batch_insert_edges_with_weights(vec![
+    (1, 2, 0.75, None),
+    (1, 3, 0.50, None),
+])?;
+
+let neighbors = backend.neighbors_weighted_shared(
+    SnapshotId::current(),
+    1,
+    NeighborQuery {
+        direction: BackendDirection::Outgoing,
+        edge_type: None,
+    },
+)?;
+
+for &(dst, weight) in neighbors.iter() {
+    println!("{dst}: {weight}");
+}
+```
+
+Notes:
+- `batch_insert_edges_with_weights(...)` inserts weighted edges through the native V3 edge store in one batch.
+- `neighbors_weighted_shared(...)` returns `Arc<[(i64, f32)]>` and avoids per-call allocation on hot read paths.
+- The native V3 edge store now packs multiple small `(src, dir)` clusters into shared edge pages while keeping the public API unchanged.
 
 ### Lazy Initialization Inspection
 
