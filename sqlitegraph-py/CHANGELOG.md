@@ -7,7 +7,7 @@ crate of the same name has its own changelog at the repository root.
 
 ### Changed
 
-- Bundled core crate is now **sqlitegraph 3.4.1** — brings weighted neighbor retrieval, bulk weighted edge insertion, experimental CSR sharding, and key bug fixes.
+- Bundled core crate is now **sqlitegraph 3.4.2** — brings weighted neighbor retrieval, bulk weighted edge insertion, experimental CSR sharding, and key bug fixes.
 
 ## [0.5.3] - 2026-06-20
 
