@@ -838,6 +838,71 @@ impl V3EdgeStore {
         edge_types.get(&(src, dst, dir)).cloned()
     }
 
+    /// Get or create a dirty cluster, loading from disk if it already exists to avoid dropping previous edges.
+    fn get_or_create_dirty_cluster<'m>(
+        &self,
+        dirty: &'m mut std::collections::HashMap<(i64, Direction), V3EdgeCluster>,
+        src: i64,
+        dir: Direction,
+    ) -> NativeResult<&'m mut V3EdgeCluster> {
+        let cache_key = (src, dir);
+        if dirty.contains_key(&cache_key) {
+            return Ok(dirty.get_mut(&cache_key).unwrap());
+        }
+
+        let key = edge_key(src, dir);
+        let lookup_res = {
+            let btree = self.btree.read();
+            btree.lookup(key)
+        };
+
+        let mut existing_cluster = None;
+        let page_id_to_use = match lookup_res {
+            Ok(Some(pid)) => {
+                // Try to load existing cluster from disk to avoid dropping previous edges
+                if let Some(ref db_path) = self.db_path {
+                    use crate::backend::native::v3::constants::V3_HEADER_SIZE;
+                    use std::fs::File;
+                    use std::io::Read;
+
+                    let offset = V3_HEADER_SIZE + (pid - 1) * (self.page_size as u64);
+                    if let Ok(mut file) = File::open(db_path) {
+                        if file.seek(SeekFrom::Start(offset)).is_ok() {
+                            let mut buffer = vec![0u8; self.page_size as usize];
+                            if let Ok(n) = file.read(&mut buffer) {
+                                if n > 0 {
+                                    if let Ok(cluster) = V3EdgeCluster::deserialize(&buffer, pid) {
+                                        existing_cluster = Some(cluster);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                pid
+            }
+            Ok(None) | Err(_) => {
+                let mut allocator = self.allocator.write();
+                match allocator.allocate() {
+                    Ok(pid) => pid,
+                    Err(e) => {
+                        return Err(NativeBackendError::IoError {
+                            context: "Failed to allocate edge page".to_string(),
+                            source: std::io::Error::other(e.to_string()),
+                        });
+                    }
+                }
+            }
+        };
+
+        let cluster = existing_cluster.unwrap_or_else(|| {
+            V3EdgeCluster::new(src, dir, page_id_to_use)
+        });
+
+        dirty.insert(cache_key, cluster);
+        Ok(dirty.get_mut(&cache_key).unwrap())
+    }
+
     /// Insert an edge - uses interior mutability via RwLock, takes &self!
     ///
     /// # SEMANTIC CONSTRAINT
@@ -856,7 +921,7 @@ impl V3EdgeStore {
         let cache_key = (src, dir);
         let mut cache = self.cache.write();
 
-        // Get or create entry
+        // Get or update entry in cache
         if let Some(neighbors) = cache.get_mut(&cache_key) {
             // Existing entry - need to convert Arc back to Vec, modify, then re-Arc
             let mut vec: Vec<i64> = neighbors.to_vec();
@@ -865,8 +930,18 @@ impl V3EdgeStore {
                 *neighbors = Arc::from(vec);
             }
         } else {
-            // Create new entry - wrap in Arc
-            cache.insert(cache_key, Arc::from(vec![dst]));
+            // Cache miss/cold cache or new node
+            // Load existing from disk if available to avoid caching a partial list
+            let mut vec = Vec::new();
+            if let Some(ref db_path) = self.db_path {
+                if let Ok(existing) = self.load_neighbors_from_disk(src, dir, db_path) {
+                    vec = existing.to_vec();
+                }
+            }
+            if !vec.contains(&dst) {
+                vec.push(dst);
+            }
+            cache.insert(cache_key, Arc::from(vec));
         }
 
         // Also update weighted cache with default weight 1.0
@@ -879,7 +954,16 @@ impl V3EdgeStore {
                     *neighbors = Arc::from(vec);
                 }
             } else {
-                cache_weighted.insert(cache_key, Arc::from(vec![(dst, 1.0)]));
+                let mut vec = Vec::new();
+                if let Some(ref db_path) = self.db_path {
+                    if let Ok(existing) = self.load_neighbors_weighted_from_disk(src, dir, db_path) {
+                        vec = existing.to_vec();
+                    }
+                }
+                if !vec.iter().any(|(n, _)| *n == dst) {
+                    vec.push((dst, 1.0));
+                }
+                cache_weighted.insert(cache_key, Arc::from(vec));
             }
         }
 
@@ -910,44 +994,9 @@ impl V3EdgeStore {
         }
 
         // Mark cluster as dirty for later flush
-        // CRITICAL FIX: Allocate page via PageAllocator instead of using formula
-        // First, find or allocate page_id, then create/update cluster
         let page_id = {
             let mut dirty = self.dirty_clusters.write();
-
-            // Check if cluster already exists in dirty_clusters
-            dirty.entry(cache_key).or_insert_with(|| {
-                // Need to find or allocate page_id for new cluster
-                let key = edge_key(src, dir);
-                let btree = self.btree.read();
-
-                // Check B+Tree for existing page_id
-                let page_id_to_use = match btree.lookup(key) {
-                    Ok(Some(pid)) => pid,
-                    Ok(None) | Err(_) => {
-                        // No entry or lookup error - allocate new page via PageAllocator
-                        // The unified PageAllocator ensures page IDs don't collide across subsystems
-                        drop(btree);
-                        let mut allocator = self.allocator.write();
-                        match allocator.allocate() {
-                            Ok(pid) => pid,
-                            Err(e) => {
-                                eprintln!("WARNING: Failed to allocate edge page: {:?}", e);
-                                0 // Fallback - will be retried on flush
-                            }
-                        }
-                    }
-                };
-
-                // Create new cluster with allocated page_id
-                V3EdgeCluster::new(src, dir, page_id_to_use)
-            });
-
-            // Now get the cluster and add the edge
-            // SAFETY: We just inserted the key above (line 682), or it already existed (checked at line 656)
-            let cluster = dirty
-                .get_mut(&cache_key)
-                .expect("cluster must exist after insert");
+            let cluster = self.get_or_create_dirty_cluster(&mut dirty, src, dir)?;
             let cluster_page_id = cluster.page_id;
             // CRITICAL: Pass edge_type to add_edge() so it gets serialized into edge_data
             cluster.add_edge(dst, edge_type);
@@ -958,7 +1007,6 @@ impl V3EdgeStore {
         if let Some(ref wal) = self.wal {
             let mut wal_guard = wal.write();
             // Write EdgeInsert WAL record for crash recovery
-            // CRITICAL FIX: Use actual allocated page_id, not calculated formula
             let _ = wal_guard.edge_insert(src, dst, dir as u8, page_id);
         }
 
@@ -1143,7 +1191,16 @@ impl V3EdgeStore {
                     *neighbors = Arc::from(vec);
                 }
             } else {
-                cache.insert(cache_key, Arc::from(vec![dst]));
+                let mut vec = Vec::new();
+                if let Some(ref db_path) = self.db_path {
+                    if let Ok(existing) = self.load_neighbors_from_disk(src, dir, db_path) {
+                        vec = existing.to_vec();
+                    }
+                }
+                if !vec.contains(&dst) {
+                    vec.push(dst);
+                }
+                cache.insert(cache_key, Arc::from(vec));
             }
         }
 
@@ -1159,7 +1216,18 @@ impl V3EdgeStore {
                 }
                 *neighbors = Arc::from(vec);
             } else {
-                cache_weighted.insert(cache_key, Arc::from(vec![(dst, weight)]));
+                let mut vec = Vec::new();
+                if let Some(ref db_path) = self.db_path {
+                    if let Ok(existing) = self.load_neighbors_weighted_from_disk(src, dir, db_path) {
+                        vec = existing.to_vec();
+                    }
+                }
+                if let Some(pos) = vec.iter().position(|(n, _)| *n == dst) {
+                    vec[pos].1 = weight;
+                } else {
+                    vec.push((dst, weight));
+                }
+                cache_weighted.insert(cache_key, Arc::from(vec));
             }
         }
 
@@ -1174,24 +1242,7 @@ impl V3EdgeStore {
         // Mark cluster as dirty
         let page_id = {
             let mut dirty = self.dirty_clusters.write();
-            dirty.entry(cache_key).or_insert_with(|| {
-                let key = edge_key(src, dir);
-                let btree = self.btree.read();
-                let page_id_to_use = match btree.lookup(key) {
-                    Ok(Some(pid)) => pid,
-                    Ok(None) | Err(_) => {
-                        drop(btree);
-                        let mut allocator = self.allocator.write();
-                        match allocator.allocate() {
-                            Ok(pid) => pid,
-                            Err(_) => 0,
-                        }
-                    }
-                };
-                V3EdgeCluster::new(src, dir, page_id_to_use)
-            });
-
-            let cluster = dirty.get_mut(&cache_key).unwrap();
+            let cluster = self.get_or_create_dirty_cluster(&mut dirty, src, dir)?;
             let cluster_page_id = cluster.page_id;
             cluster.add_edge_weighted(dst, edge_type, weight);
             cluster_page_id

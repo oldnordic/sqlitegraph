@@ -382,3 +382,91 @@ fn test_v3_large_dataset_reopen() {
         .expect("Target node should exist");
     assert_eq!(node.data["id"], target_id as i64);
 }
+
+/// Test 6: Verify multiple flushes for the same source node does not lose previous edges,
+/// and verify manual node ID support via `insert_node_with_id` works.
+#[test]
+fn test_v3_multiple_flushes_preserves_edges_and_manual_ids() {
+    let temp_dir = TempDir::new().unwrap();
+    let db_path = temp_dir.path().join("v3_multi_flush_test.graph");
+
+    let src_id = 9999;
+    let dst1_id = 8888;
+    let dst2_id = 7777;
+
+    // Phase 1: Insert src and first edge, then flush
+    {
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        let node_spec_src = NodeSpec {
+            kind: "Source".to_string(),
+            name: "source_node".to_string(),
+            file_path: None,
+            data: serde_json::json!({}),
+        };
+        let s_id = backend.insert_node_with_id(node_spec_src, src_id).unwrap();
+        assert_eq!(s_id, src_id);
+
+        let node_spec_dst1 = NodeSpec {
+            kind: "Dest".to_string(),
+            name: "dest_node1".to_string(),
+            file_path: None,
+            data: serde_json::json!({}),
+        };
+        let d1_id = backend.insert_node_with_id(node_spec_dst1, dst1_id).unwrap();
+        assert_eq!(d1_id, dst1_id);
+
+        backend.insert_edge(EdgeSpec {
+            from: src_id,
+            to: dst1_id,
+            edge_type: "rel".to_string(),
+            data: serde_json::json!(null),
+        }).unwrap();
+
+        backend.flush().expect("Flush 1 should succeed");
+    }
+
+    // Phase 2: Open, insert second edge, then flush again
+    {
+        let backend = V3Backend::open(&db_path).unwrap();
+
+        let node_spec_dst2 = NodeSpec {
+            kind: "Dest".to_string(),
+            name: "dest_node2".to_string(),
+            file_path: None,
+            data: serde_json::json!({}),
+        };
+        let d2_id = backend.insert_node_with_id(node_spec_dst2, dst2_id).unwrap();
+        assert_eq!(d2_id, dst2_id);
+
+        backend.insert_edge(EdgeSpec {
+            from: src_id,
+            to: dst2_id,
+            edge_type: "rel".to_string(),
+            data: serde_json::json!(null),
+        }).unwrap();
+
+        backend.flush().expect("Flush 2 should succeed");
+    }
+
+    // Phase 3: Reopen and check neighbors of src_id
+    {
+        let backend = V3Backend::open(&db_path).unwrap();
+
+        let neighbors = backend.neighbors(
+            SnapshotId::current(),
+            src_id,
+            NeighborQuery {
+                direction: BackendDirection::Outgoing,
+                edge_type: None,
+            },
+        ).unwrap();
+
+        // Previously, the second flush would have overwritten the first edge, leaving only dst2_id.
+        // Now, both edges must be present!
+        assert_eq!(neighbors.len(), 2, "Should preserve all edges across flushes");
+        assert!(neighbors.contains(&dst1_id));
+        assert!(neighbors.contains(&dst2_id));
+    }
+}
+

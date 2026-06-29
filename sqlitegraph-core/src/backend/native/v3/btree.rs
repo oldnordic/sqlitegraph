@@ -644,7 +644,7 @@ impl BTreeManager {
                 }
 
                 // Truncate old root
-                let mut truncated_old_root = IndexPage::new_leaf_root(old_root_id);
+                let mut truncated_old_root = IndexPage::new_leaf(old_root_id);
                 if let IndexPage::Leaf {
                     entries: old_entries,
                     next_leaf: old_next,

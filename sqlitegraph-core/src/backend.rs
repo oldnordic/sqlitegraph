@@ -116,6 +116,22 @@ use crate::{
 pub trait GraphBackend {
     // Write operations (unchanged - commit returns SnapshotId in future)
     fn insert_node(&self, node: NodeSpec) -> Result<i64, SqliteGraphError>;
+
+    /// Insert a node with a manually specified ID.
+    ///
+    /// Backends that support manual ID assignment (e.g. V3Backend, SqliteGraphBackend)
+    /// will respect this ID. Default implementation injects "id" into the node spec data.
+    fn insert_node_with_id(&self, mut node: NodeSpec, node_id: i64) -> Result<i64, SqliteGraphError> {
+        if let Some(obj) = node.data.as_object_mut() {
+            obj.insert("id".to_string(), serde_json::Value::Number(node_id.into()));
+        } else {
+            let mut obj = serde_json::Map::new();
+            obj.insert("id".to_string(), serde_json::Value::Number(node_id.into()));
+            node.data = serde_json::Value::Object(obj);
+        }
+        self.insert_node(node)
+    }
+
     fn insert_edge(&self, edge: EdgeSpec) -> Result<i64, SqliteGraphError>;
 
     /// Insert many nodes atomically.
@@ -628,6 +644,10 @@ where
 {
     fn insert_node(&self, node: NodeSpec) -> Result<i64, SqliteGraphError> {
         (*self).insert_node(node)
+    }
+
+    fn insert_node_with_id(&self, node: NodeSpec, node_id: i64) -> Result<i64, SqliteGraphError> {
+        (*self).insert_node_with_id(node, node_id)
     }
 
     fn get_node(&self, snapshot_id: SnapshotId, id: i64) -> Result<GraphEntity, SqliteGraphError> {

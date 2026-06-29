@@ -172,6 +172,20 @@ impl<'a> WriteBatchGuard<'a> {
         Ok(node_id)
     }
 
+    /// Insert a node with a manually specified ID without syncing (accumulated in batch)
+    pub fn insert_node_with_id(&mut self, mut node: NodeSpec, node_id: i64) -> Result<i64, SqliteGraphError> {
+        if let Some(obj) = node.data.as_object_mut() {
+            obj.insert("id".to_string(), serde_json::Value::Number(node_id.into()));
+        } else {
+            let mut obj = serde_json::Map::new();
+            obj.insert("id".to_string(), serde_json::Value::Number(node_id.into()));
+            node.data = serde_json::Value::Object(obj);
+        }
+        let node_id = self.backend.insert_node_inner(node)?;
+        self.node_count += 1;
+        Ok(node_id)
+    }
+
     /// Insert an edge without syncing (accumulated in batch)
     pub fn insert_edge(&mut self, edge: EdgeSpec) -> Result<i64, SqliteGraphError> {
         // Use inner insert that doesn't sync
