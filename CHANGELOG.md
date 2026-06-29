@@ -1,6 +1,6 @@
 # SQLiteGraph Changelog
 
-## [Unreleased]
+## [3.4.5] - 2026-06-29
 
 ### Changed
 - **Native-v3 edge-store compaction** — Small `(src, dir)` edge clusters are now packed together into shared 4 KiB edge pages instead of reserving a full page per cluster.
