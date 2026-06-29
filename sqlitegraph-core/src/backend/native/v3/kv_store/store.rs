@@ -229,10 +229,10 @@ impl KvStore {
                 // Key bytes
                 result.extend_from_slice(&entry.key);
 
-                // Value serialization
+                // Value serialization (u32 length in v3 format)
                 let value_bytes = entry.value.to_bytes();
                 let value_type = entry.value.type_tag();
-                let value_len: u16 = value_bytes.len().try_into().unwrap_or(u16::MAX);
+                let value_len: u32 = value_bytes.len().try_into().unwrap_or(u32::MAX);
                 result.extend_from_slice(&value_len.to_le_bytes());
                 result.extend_from_slice(&value_bytes);
                 result.push(value_type);
@@ -252,7 +252,7 @@ impl KvStore {
     /// Deserialize KV store state from checkpoint bytes
     ///
     /// Replaces the current store contents with the checkpoint data.
-    pub fn from_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
+    pub fn from_bytes(&mut self, bytes: &[u8], version: u8) -> Result<(), String> {
         use std::io::Read;
 
         if bytes.len() < 4 {
@@ -282,12 +282,20 @@ impl KvStore {
             let mut key = vec![0u8; key_len];
             cursor.read_exact(&mut key).map_err(|e| e.to_string())?;
 
-            // Read value length
-            let mut value_len_bytes = [0u8; 2];
-            cursor
-                .read_exact(&mut value_len_bytes)
-                .map_err(|e| e.to_string())?;
-            let value_len = u16::from_le_bytes(value_len_bytes) as usize;
+            // Read value length (u32 in version >= 3, u16 in version < 3)
+            let value_len = if version >= 3 {
+                let mut value_len_bytes = [0u8; 4];
+                cursor
+                    .read_exact(&mut value_len_bytes)
+                    .map_err(|e| e.to_string())?;
+                u32::from_le_bytes(value_len_bytes) as usize
+            } else {
+                let mut value_len_bytes = [0u8; 2];
+                cursor
+                    .read_exact(&mut value_len_bytes)
+                    .map_err(|e| e.to_string())?;
+                u16::from_le_bytes(value_len_bytes) as usize
+            };
 
             // Read value bytes
             let mut value_bytes = vec![0u8; value_len];

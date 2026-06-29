@@ -13,12 +13,14 @@ fn test_100_nodes_persistence() {
 
     println!("\n=== Phase 1: Create and insert 100 nodes ===\n");
 
+    let mut inserted_ids = Vec::new();
+
     // Create and insert 100 nodes
     {
         let backend = V3Backend::create(&db_path).unwrap();
 
         for i in 0..100 {
-            let _node_id = backend
+            let node_id = backend
                 .insert_node(NodeSpec {
                     kind: "TestNode".to_string(),
                     name: format!("node_{}", i),
@@ -26,6 +28,7 @@ fn test_100_nodes_persistence() {
                     data: serde_json::json!({"id": i, "data": "test data here".repeat(5)}),
                 })
                 .unwrap();
+            inserted_ids.push(node_id);
 
             if (i + 1) % 20 == 0 {
                 println!("Inserted {} nodes...", i + 1);
@@ -38,7 +41,8 @@ fn test_100_nodes_persistence() {
         // Verify a few nodes before dropping
         println!("\nVerifying sample nodes before drop:");
         for i in [0, 25, 50, 75, 99] {
-            match backend.get_node(SnapshotId::current(), i + 1) {
+            let node_id = inserted_ids[i];
+            match backend.get_node(SnapshotId::current(), node_id) {
                 Ok(node) => println!(
                     "  ✓ Node {} ({}): kind={}, name={}",
                     i + 1,
@@ -64,7 +68,8 @@ fn test_100_nodes_persistence() {
     let mut error_count = 0;
 
     for i in 0..100 {
-        match backend2.get_node(SnapshotId::current(), i + 1) {
+        let node_id = inserted_ids[i];
+        match backend2.get_node(SnapshotId::current(), node_id) {
             Ok(node) => {
                 // Verify the data is correct
                 let expected_name = format!("node_{}", i);

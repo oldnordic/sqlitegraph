@@ -34,6 +34,16 @@ fn test_edge_type_survives_reopen() {
                 data: serde_json::json!({}),
             })
             .unwrap();
+        let other = backend
+            .insert_node(NodeSpec {
+                kind: "Node".to_string(),
+                name: "other".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        // 4 edges to reproduce and verify issue 2
         backend
             .insert_edge(EdgeSpec {
                 from: center,
@@ -50,6 +60,22 @@ fn test_edge_type_survives_reopen() {
                 data: serde_json::json!({}),
             })
             .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: helper,
+                to: util,
+                edge_type: "DEPENDS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: util,
+                to: other,
+                edge_type: "LINKS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
         backend.flush().unwrap();
     }
     {
@@ -61,6 +87,17 @@ fn test_edge_type_survives_reopen() {
             .find(|&&id| backend.get_node(current, id).unwrap().name == "center")
             .copied()
             .unwrap();
+        let helper = all_ids
+            .iter()
+            .find(|&&id| backend.get_node(current, id).unwrap().name == "helper")
+            .copied()
+            .unwrap();
+        let util = all_ids
+            .iter()
+            .find(|&&id| backend.get_node(current, id).unwrap().name == "util")
+            .copied()
+            .unwrap();
+
         let all = backend
             .neighbors(
                 current,
@@ -83,16 +120,33 @@ fn test_edge_type_survives_reopen() {
             )
             .unwrap();
         assert_eq!(calls.len(), 1, "Should have 1 CALLS neighbor after reopen");
-        let uses = backend
+
+        let depends = backend
             .neighbors(
                 current,
-                center,
+                helper,
                 NeighborQuery {
                     direction: BackendDirection::Outgoing,
-                    edge_type: Some("USES".to_string()),
+                    edge_type: Some("DEPENDS".to_string()),
                 },
             )
             .unwrap();
-        assert_eq!(uses.len(), 1, "Should have 1 USES neighbor after reopen");
+        assert_eq!(
+            depends.len(),
+            1,
+            "Should have 1 DEPENDS neighbor after reopen"
+        );
+
+        let links = backend
+            .neighbors(
+                current,
+                util,
+                NeighborQuery {
+                    direction: BackendDirection::Outgoing,
+                    edge_type: Some("LINKS".to_string()),
+                },
+            )
+            .unwrap();
+        assert_eq!(links.len(), 1, "Should have 1 LINKS neighbor after reopen");
     }
 }

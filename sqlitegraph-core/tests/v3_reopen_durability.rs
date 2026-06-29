@@ -346,12 +346,13 @@ fn test_v3_large_dataset_reopen() {
 
     let expected_count = 1000;
     let target_id;
+    let mut inserted_ids = Vec::with_capacity(expected_count);
     {
         let backend = V3Backend::create(&db_path).unwrap();
 
         // Insert 1000 nodes
         for i in 0..expected_count {
-            backend
+            let node_id = backend
                 .insert_node(NodeSpec {
                     kind: "Node".to_string(),
                     name: format!("node_{}", i),
@@ -359,6 +360,7 @@ fn test_v3_large_dataset_reopen() {
                     data: serde_json::json!({"id": i}),
                 })
                 .unwrap();
+            inserted_ids.push(node_id);
         }
 
         target_id = expected_count / 2;
@@ -373,9 +375,10 @@ fn test_v3_large_dataset_reopen() {
     let ids = backend.entity_ids().unwrap();
     assert_eq!(ids.len(), expected_count, "All nodes should persist");
 
-    // Check specific node (ID 500 has data["id"] = 499 because IDs start at 1)
+    // Check specific node
+    let target_node_id = inserted_ids[target_id];
     let node = backend
-        .get_node(SnapshotId::current(), target_id as i64)
+        .get_node(SnapshotId::current(), target_node_id)
         .expect("Target node should exist");
-    assert_eq!(node.data["id"], (target_id - 1) as i64);
+    assert_eq!(node.data["id"], target_id as i64);
 }

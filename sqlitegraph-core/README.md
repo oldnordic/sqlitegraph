@@ -37,6 +37,23 @@ benchmarks below for workload-specific behavior.
 
 **Keyword index:** embedded graph database · HNSW vector search · Cypher · MVCC · write-ahead log · persistent homology · temporal versioning · louvain · SQLite · Native V3 · Python bindings · Rust
 
+## What's New in 3.4
+
+The 3.4 release adds **MVCC snapshot tracking** and **scale optimizations** for
+time-travel queries, eliminating expensive COUNT(*) table scans on large
+datasets.
+
+- **MVCC snapshot tracking (v8)** — named snapshots (`create_snapshot()`,
+  `list_snapshots()`, `delete_snapshot()`), batch insert with snapshot tagging
+  (`batch_insert_entities_with_snapshot()`, `batch_insert_edges_with_snapshot()`),
+  and time-travel queries (`query_as_of(timestamp)`) filter by `created_at` for
+  historical graph state.
+- **scale optimization (v9)** — pre-aggregated `snapshot_stats` table for O(1)
+  time-travel vs O(N) COUNT(*) scans, composite indexes on `(snapshot_id,
+  created_at)` for multi-dimensional queries, partition-ready schema design.
+
+See [CHANGELOG](https://github.com/oldnordic/sqlitegraph/blob/main/CHANGELOG.md) for full history.
+
 ## What's New in 3.3
 
 The 3.3 release adds a **temporal version chain** with persistent-homology
@@ -85,6 +102,8 @@ See [CHANGELOG](https://github.com/oldnordic/sqlitegraph/blob/main/CHANGELOG.md)
 | Pub/Sub | Yes | Yes |
 | LRU Cache | No | Yes |
 | Parallel BFS | No | Yes |
+| MVCC snapshots | Yes (v8) | Yes (v8) |
+| Time-travel queries | Yes (optimized v9) | Yes (optimized v9) |
 
 ## Benchmarks
 
@@ -121,10 +140,10 @@ See [examples/](https://github.com/oldnordic/sqlitegraph/tree/main/sqlitegraph-c
 ```toml
 [dependencies]
 # SQLite backend (default)
-sqlitegraph = "3.3"
+sqlitegraph = "3.4"
 
 # OR Native V3 backend (graph-oriented storage)
-sqlitegraph = { version = "3.3", features = ["native-v3"] }
+sqlitegraph = { version = "3.4", features = ["native-v3"] }
 ```
 
 ```rust

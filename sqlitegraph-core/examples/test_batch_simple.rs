@@ -28,7 +28,7 @@ fn main() {
     // Test 1: Insert without batch mode
     println!("Test 1: Immediate mode");
     let node1 = NodeRecordV3::new_inline(0, NodeFlags::empty(), 0, 0, vec![1, 2, 3], 0, 0, 0, 0);
-    match store.insert_node(node1) {
+    match store.insert_node(node1, None) {
         Ok(id) => println!("  Inserted node {}", id),
         Err(e) => println!("  Error: {}", e),
     }
@@ -39,7 +39,7 @@ fn main() {
     println!("  Batch mode enabled");
 
     let node2 = NodeRecordV3::new_inline(0, NodeFlags::empty(), 0, 0, vec![4, 5, 6], 0, 0, 0, 0);
-    match store.insert_node(node2) {
+    match store.insert_node(node2, None) {
         Ok(id) => {
             println!(
                 "  Staged node {} (dirty_pages: {})",
@@ -50,7 +50,7 @@ fn main() {
             // Try second insert
             let node3 =
                 NodeRecordV3::new_inline(0, NodeFlags::empty(), 0, 0, vec![7, 8, 9], 0, 0, 0, 0);
-            match store.insert_node(node3) {
+            match store.insert_node(node3, None) {
                 Ok(id2) => println!(
                     "  Staged node {} (dirty_pages: {})",
                     id2,

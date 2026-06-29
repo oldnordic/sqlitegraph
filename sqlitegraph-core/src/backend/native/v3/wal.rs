@@ -1729,16 +1729,16 @@ pub fn write_kv_checkpoint(
         source: e,
     })?;
 
-    // Write magic header for validation (v2 indicates checksum present)
-    let magic: [u8; 8] = [b'V', b'3', b'K', b'V', b'C', b'K', 0, 2];
+    // Write magic header for validation (v3 indicates u32 value lengths)
+    let magic: [u8; 8] = [b'V', b'3', b'K', b'V', b'C', b'K', 0, 3];
     file.write_all(&magic)
         .map_err(|e| NativeBackendError::IoError {
             context: "Failed to write checkpoint magic".to_string(),
             source: e,
         })?;
 
-    // Write version (2 = with checksum)
-    let version: u32 = 2;
+    // Write version (3 = with u32 value lengths)
+    let version: u32 = 3;
     file.write_all(&version.to_le_bytes())
         .map_err(|e| NativeBackendError::IoError {
             context: "Failed to write checkpoint version".to_string(),
@@ -1843,7 +1843,7 @@ pub fn read_kv_checkpoint(
     }
 
     // Determine format version from magic bytes [7] (last byte)
-    let has_checksum = magic_bytes[7] == 2; // v2 format
+    let has_checksum = magic_bytes[7] >= 2; // v2 and v3 format have checksums
 
     // Read version field
     let mut version_bytes = [0u8; 4];
@@ -1907,14 +1907,16 @@ pub fn read_kv_checkpoint(
         }
     }
 
-    // Deserialize into KV store
-    kv_store.from_bytes(&checkpoint_data).map_err(|e| {
-        cleanup_corrupt_checkpoint(&checkpoint_path);
-        NativeBackendError::InvalidHeader {
-            field: "checkpoint_data".to_string(),
-            reason: format!("Failed to deserialize checkpoint: {}", e),
-        }
-    })?;
+    // Deserialize into KV store (pass the parsed version byte)
+    kv_store
+        .from_bytes(&checkpoint_data, magic_bytes[7])
+        .map_err(|e| {
+            cleanup_corrupt_checkpoint(&checkpoint_path);
+            NativeBackendError::InvalidHeader {
+                field: "checkpoint_data".to_string(),
+                reason: format!("Failed to deserialize checkpoint: {}", e),
+            }
+        })?;
 
     Ok(true)
 }

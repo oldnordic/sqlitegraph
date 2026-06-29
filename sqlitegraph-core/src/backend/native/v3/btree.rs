@@ -390,6 +390,63 @@ impl BTreeManager {
         })
     }
 
+    /// Get all keys stored in the B+Tree by traversing leaf pages horizontally.
+    pub fn keys(&self) -> NativeResult<Vec<i64>> {
+        if self.root_page_id == EMPTY_TREE_ROOT || self.root_page_id == 0 {
+            return Ok(Vec::new());
+        }
+
+        // 1. Traverse down the leftmost path to find the first leaf
+        let mut current_page_id = self.root_page_id;
+        let mut depth = 0;
+        loop {
+            let index_page = self.load_page(current_page_id)?;
+            match index_page {
+                IndexPage::Leaf { .. } => break,
+                IndexPage::Internal { children, .. } => {
+                    if children.is_empty() {
+                        return Ok(Vec::new());
+                    }
+                    current_page_id = children[0];
+                }
+            }
+            depth += 1;
+            if depth > MAX_TREE_HEIGHT as usize {
+                return Err(NativeBackendError::InvalidHeader {
+                    field: "btree_depth".to_string(),
+                    reason: format!(
+                        "exceeded maximum depth {} in keys traversal",
+                        MAX_TREE_HEIGHT
+                    ),
+                });
+            }
+        }
+
+        // 2. Traverse leaf pages horizontally
+        let mut keys = Vec::new();
+        while current_page_id != 0 {
+            let index_page = self.load_page(current_page_id)?;
+            match index_page {
+                IndexPage::Leaf {
+                    entries, next_leaf, ..
+                } => {
+                    for (k, _) in entries {
+                        keys.push(k as i64);
+                    }
+                    current_page_id = next_leaf;
+                }
+                _ => {
+                    return Err(NativeBackendError::InvalidHeader {
+                        field: "btree_traverse".to_string(),
+                        reason: "Expected leaf page in horizontal traversal".to_string(),
+                    });
+                }
+            }
+        }
+
+        Ok(keys)
+    }
+
     /// Insert key->value mapping into B+Tree
     ///
     /// Inserts a new node_id -> page_id mapping into the B+Tree.

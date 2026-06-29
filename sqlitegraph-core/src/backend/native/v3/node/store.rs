@@ -457,6 +457,15 @@ impl NodeStore {
         self.next_node_id = next_id;
     }
 
+    /// Get all node IDs in the store from the B+Tree
+    pub fn node_ids(&self) -> NativeResult<Vec<i64>> {
+        if let Some(ref btree) = self.btree_manager {
+            btree.keys()
+        } else {
+            Ok(Vec::new())
+        }
+    }
+
     /// Insert a new node into the store
     ///
     /// # Arguments
@@ -467,14 +476,25 @@ impl NodeStore {
     ///
     /// * `Ok(node_id)` - The assigned node ID
     /// * `Err(...)` - Error during insert
-    pub fn insert_node(&mut self, mut node: NodeRecordV3) -> NativeResult<i64> {
+    pub fn insert_node(
+        &mut self,
+        mut node: NodeRecordV3,
+        manual_id: Option<i64>,
+    ) -> NativeResult<i64> {
         #[cfg(feature = "v3-forensics")]
         FORENSIC_COUNTERS
             .node_encode_count
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         // 1. Allocate new node_id
-        let node_id = self.allocate_node_id();
+        let node_id = if let Some(id) = manual_id {
+            if id >= self.next_node_id {
+                self.next_node_id = id + 1;
+            }
+            id
+        } else {
+            self.allocate_node_id()
+        };
         node.id = node_id;
 
         // 2-5. Try to add the node to a page, retrying with a new page if the selected page is full

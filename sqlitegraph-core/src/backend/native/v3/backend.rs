@@ -532,14 +532,20 @@ impl V3Backend {
             Arc::clone(&self.allocator),
             None,
         );
-        node_store.set_next_node_id(header.node_count as i64 + 1);
+        let max_node_id = node_store
+            .node_ids()
+            .map_err(map_v3_error)?
+            .into_iter()
+            .max()
+            .unwrap_or(0);
+        node_store.set_next_node_id(max_node_id + 1);
 
         let mut edge_store = V3EdgeStore::with_path_and_allocator(
             BTreeManager::with_root(
                 Arc::clone(&self.allocator),
                 None,
                 header.edge_data_offset,
-                header.btree_height,
+                header.reserved,
                 self.db_path.clone(),
             ),
             None,
@@ -719,13 +725,20 @@ impl V3Backend {
 
         // Initialize components with shared allocator
         let allocator = Arc::new(RwLock::new(PageAllocator::new(&header)));
-        let btree = BTreeManager::new(Arc::clone(&allocator), None, db_path.clone());
+        let node_btree = BTreeManager::new(Arc::clone(&allocator), None, db_path.clone());
+        let edge_btree = BTreeManager::new(Arc::clone(&allocator), None, db_path.clone());
         let mut node_store = NodeStore::new(&header, db_path.clone());
         // Initialize NodeStore with shared BTreeManager and PageAllocator
-        node_store.initialize(btree.clone(), Arc::clone(&allocator), None);
-        node_store.set_next_node_id(header.node_count as i64 + 1);
+        node_store.initialize(node_btree.clone(), Arc::clone(&allocator), None);
+        let max_node_id = node_store
+            .node_ids()
+            .map_err(map_v3_error)?
+            .into_iter()
+            .max()
+            .unwrap_or(0);
+        node_store.set_next_node_id(max_node_id + 1);
         let edge_store = V3EdgeStore::with_path_and_allocator(
-            btree.clone(),
+            edge_btree,
             None,
             db_path.clone(),
             Arc::clone(&allocator),
@@ -744,7 +757,7 @@ impl V3Backend {
         Ok(Self {
             db_path,
             sqlite_conn: Arc::new(Mutex::new(sqlite_conn)),
-            btree: RwLock::new(btree),
+            btree: RwLock::new(node_btree),
             node_store: RwLock::new(node_store),
             edge_store: RwLock::new(edge_store),
             allocator,
@@ -857,13 +870,19 @@ impl V3Backend {
             Arc::clone(&allocator),
             None,
         );
-        node_store.set_next_node_id(header.node_count as i64 + 1);
+        let max_node_id = node_store
+            .node_ids()
+            .map_err(map_v3_error)?
+            .into_iter()
+            .max()
+            .unwrap_or(0);
+        node_store.set_next_node_id(max_node_id + 1);
         let mut edge_store = V3EdgeStore::with_path_and_allocator(
             BTreeManager::with_root(
                 Arc::clone(&allocator),
                 None,
                 header.edge_data_offset,
-                header.btree_height,
+                header.reserved,
                 db_path.clone(),
             ),
             None,
@@ -1678,6 +1697,10 @@ impl V3Backend {
         let mut header = self.header.write();
         if let Some(root_page) = self.edge_store.read().btree_root_page_id() {
             header.edge_data_offset = root_page;
+            header.reserved = self.edge_store.read().btree_height();
+        } else {
+            header.edge_data_offset = 0;
+            header.reserved = 0;
         }
         let allocator = self.allocator.read();
         header.total_pages = allocator.total_pages();
@@ -2038,6 +2061,12 @@ impl V3Backend {
         // Check if data fits inline (MAX_INLINE_DATA = 64 bytes)
         const MAX_INLINE_DATA: usize = 64;
 
+        let requested_id = node
+            .data
+            .get("id")
+            .or_else(|| node.data.get("node_id"))
+            .and_then(|v| v.as_i64());
+
         let node_record = if total_len <= MAX_INLINE_DATA {
             // Small data: store inline
             let mut inline_data = Vec::with_capacity(total_len);
@@ -2048,7 +2077,7 @@ impl V3Backend {
             inline_data.extend_from_slice(&data_bytes);
 
             NodeRecordV3::new_inline(
-                0,
+                requested_id.unwrap_or(0),
                 crate::backend::native::types::NodeFlags::empty(),
                 0,
                 0,
@@ -2109,7 +2138,7 @@ impl V3Backend {
             // Create external node record
             // Use offset as the external data reference
             NodeRecordV3::new_external(
-                0,
+                requested_id.unwrap_or(0),
                 crate::backend::native::types::NodeFlags::empty(),
                 0,
                 0,
@@ -2123,7 +2152,9 @@ impl V3Backend {
         };
 
         let mut node_store = self.node_store.write();
-        let node_id = node_store.insert_node(node_record).map_err(map_v3_error)?;
+        let node_id = node_store
+            .insert_node(node_record, requested_id)
+            .map_err(map_v3_error)?;
 
         // Update indexes with kind and name from the inserted node
         self.kind_index.insert(node.kind.clone(), node_id);
@@ -2833,7 +2864,7 @@ impl GraphBackend for V3Backend {
         // Store edge attributes in SQLite
         let conn = self.sqlite_conn.lock();
         conn.execute(
-            "INSERT INTO edge_attributes (src, dst, attr_name, attr_value, created_version) VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT OR REPLACE INTO edge_attributes (src, dst, attr_name, attr_value, created_version) VALUES (?1, ?2, ?3, ?4, ?5)",
             [
                 &from as &dyn ToSql,
                 &to as &dyn ToSql,
@@ -2935,17 +2966,8 @@ impl GraphBackend for V3Backend {
     }
 
     fn entity_ids(&self) -> Result<Vec<i64>, SqliteGraphError> {
-        // For now, scan all possible node IDs
-        // In production, this would use a B+Tree range scan
-        let header = self.header.read();
-        let mut ids = Vec::new();
-
-        for id in 1..=header.node_count as i64 {
-            if self.get_node_internal(id)?.is_some() {
-                ids.push(id);
-            }
-        }
-
+        let node_store = self.node_store.read();
+        let ids = node_store.node_ids().map_err(map_v3_error)?;
         Ok(ids)
     }
 
@@ -3443,127 +3465,11 @@ impl GraphBackend for V3Backend {
 
     fn snapshot_import(
         &self,
-        import_dir: &Path,
+        _import_dir: &Path,
     ) -> Result<crate::backend::ImportMetadata, SqliteGraphError> {
-        if !import_dir.is_dir() {
-            return Err(SqliteGraphError::connection(format!(
-                "Import path is not a directory: {}",
-                import_dir.display()
-            )));
-        }
-
-        // Find v3_snapshot_* files in the import directory
-        let mut snapshot_files: Vec<std::fs::DirEntry> = std::fs::read_dir(import_dir)
-            .map_err(|e| SqliteGraphError::connection(format!("Failed to read import dir: {}", e)))?
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with("v3_snapshot_")
-            })
-            .collect();
-
-        snapshot_files.sort_by_key(|a| a.file_name());
-
-        if snapshot_files.is_empty() {
-            return Err(SqliteGraphError::connection(format!(
-                "No v3_snapshot_* files found in {}",
-                import_dir.display()
-            )));
-        }
-
-        let latest_snapshot = &snapshot_files[snapshot_files.len() - 1];
-        let snapshot_path = latest_snapshot.path();
-
-        // Get entity count before import
-        let before_count = self.header.read().node_count;
-
-        // Copy the snapshot file to our db_path
-        std::fs::copy(&snapshot_path, &self.db_path)
-            .map_err(|e| SqliteGraphError::connection(format!("Failed to copy snapshot: {}", e)))?;
-
-        // Re-read header from the newly copied file
-        let mut file = File::open(&self.db_path).map_err(|e| {
-            SqliteGraphError::connection(format!("Failed to open imported DB: {}", e))
-        })?;
-        let mut header_bytes = vec![0u8; V3_HEADER_SIZE as usize];
-        file.read_exact(&mut header_bytes).map_err(|e| {
-            SqliteGraphError::connection(format!("Failed to read imported header: {}", e))
-        })?;
-        let imported_header =
-            PersistentHeaderV3::from_bytes(&header_bytes).map_err(map_v3_error)?;
-        imported_header.validate().map_err(map_v3_error)?;
-        drop(file);
-
-        // Reinitialize all in-memory structures from the imported file
-        // The file on disk has changed, so our old BTree/page references are invalid
-        // Update allocator in place so new structures share the same Arc
-        *self.allocator.write() = PageAllocator::new(&imported_header);
-
-        let btree = BTreeManager::with_root(
-            Arc::clone(&self.allocator),
-            None,
-            imported_header.root_index_page,
-            imported_header.btree_height,
-            self.db_path.clone(),
-        );
-        let mut node_store = NodeStore::new(&imported_header, self.db_path.clone());
-        node_store.initialize(
-            BTreeManager::with_root(
-                Arc::clone(&self.allocator),
-                None,
-                imported_header.root_index_page,
-                imported_header.btree_height,
-                self.db_path.clone(),
-            ),
-            Arc::clone(&self.allocator),
-            None,
-        );
-        node_store.set_next_node_id(imported_header.node_count as i64 + 1);
-        let edge_store = V3EdgeStore::with_path_and_allocator(
-            BTreeManager::with_root(
-                Arc::clone(&self.allocator),
-                None,
-                imported_header.edge_data_offset,
-                imported_header.btree_height,
-                self.db_path.clone(),
-            ),
-            None,
-            self.db_path.clone(),
-            Arc::clone(&self.allocator),
-            imported_header.page_size,
-        );
-        let _ = edge_store.restore_btree_from_metadata();
-
-        // Update in-memory state
-        *self.btree.write() = btree;
-        *self.node_store.write() = node_store;
-        *self.edge_store.write() = edge_store;
-        // Keep existing WAL (if any) — snapshot doesn't include WAL
-        *self.header.write() = imported_header.clone();
-
-        // Clear and rebuild indexes from the imported data
-        self.kind_index.clear();
-        self.name_index.clear();
-        self.rebuild_indexes();
-
-        // Persist the rebuilt indexes
-        let _ = crate::backend::native::v3::index_persistence::persist_indexes(
-            &self.db_path,
-            &self.kind_index,
-            &self.name_index,
-            imported_header.node_count,
-        );
-
-        let after_count = imported_header.node_count;
-        let edges_imported = imported_header.edge_count;
-
-        Ok(crate::backend::ImportMetadata {
-            snapshot_path,
-            entities_imported: after_count.saturating_sub(before_count),
-            edges_imported,
-        })
+        Err(SqliteGraphError::Unsupported(
+            "snapshot_import is not supported on the V3 backend".to_string(),
+        ))
     }
 
     fn query_nodes_by_kind(
@@ -3599,8 +3505,8 @@ impl GraphBackend for V3Backend {
                 Ok(self.name_index.get_substring(&cleaned))
             }
         } else {
-            // Exact match (no wildcards)
-            Ok(self.name_index.get_exact(pattern))
+            // Substring match (V3 specific design difference from SQLite GLOB)
+            Ok(self.name_index.get_substring(pattern))
         }
     }
 
@@ -4333,52 +4239,12 @@ mod tests {
     }
 
     #[test]
-    fn test_snapshot_import() {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.graph");
-        let import_dir = temp_dir.path().join("import");
-        std::fs::create_dir(&import_dir).unwrap();
-
-        // Create a snapshot file
-        {
-            let backend = V3Backend::create(&db_path).unwrap();
-            backend
-                .insert_node(NodeSpec {
-                    kind: "Function".to_string(),
-                    name: "original".to_string(),
-                    file_path: None,
-                    data: serde_json::json!({}),
-                })
-                .unwrap();
-            backend.flush_to_disk().unwrap();
-
-            // Export snapshot
-            backend.snapshot_export(&import_dir).unwrap();
-        }
-
-        // Create a fresh database and import
-        let fresh_db = temp_dir.path().join("fresh.graph");
-        let backend = V3Backend::create(&fresh_db).unwrap();
-
-        let metadata = backend.snapshot_import(&import_dir).unwrap();
-        assert_eq!(metadata.entities_imported, 1);
-
-        // Verify imported data is queryable
-        use crate::SnapshotId;
-        let snapshot = SnapshotId::current();
-        let results = backend.query_nodes_by_kind(snapshot, "Function").unwrap();
-        assert_eq!(results.len(), 1);
-    }
-
-    #[test]
-    fn test_snapshot_import_missing_dir_fails() {
+    fn test_snapshot_import_unsupported() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.graph");
         let backend = V3Backend::create(&db_path).unwrap();
-
-        let missing_dir = temp_dir.path().join("nonexistent_import");
-        let result = backend.snapshot_import(&missing_dir);
-        assert!(result.is_err());
+        let result = backend.snapshot_import(temp_dir.path());
+        assert!(matches!(result, Err(SqliteGraphError::Unsupported(_))));
     }
 
     #[test]
