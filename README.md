@@ -37,6 +37,19 @@ benchmarks below for workload-specific behavior.
 
 **Keyword index:** embedded graph database · HNSW vector search · Cypher · MVCC · write-ahead log · persistent homology · temporal versioning · louvain · SQLite · Native V3 · Python bindings · Rust
 
+## What's New in 3.4.6
+
+The 3.4.6 patch release tightens the native-v3 traversal path for weighted
+graph workloads:
+
+- **Bulk warmup for known source sets** — `warm_neighbors_for_sources()` lets
+  callers preload weighted native-v3 adjacency before the first traversal pass.
+- **Deterministic weighted reads** — `neighbors_weighted_shared()` now returns
+  unfiltered neighbors in descending weight order, so downstream callers do not
+  need an extra cold-miss sort.
+- **Packed-page-aware warming** — warmup deduplicates packed edge-page reads and
+  fills the weighted and unweighted caches in one pass.
+
 ## What's New in 3.4
 
 The 3.4 release adds **MVCC snapshot tracking** and **scale optimizations** for
@@ -148,10 +161,10 @@ cargo bench --features native-v3 --bench sqlite_v3_curated
 ```toml
 [dependencies]
 # SQLite backend (default)
-sqlitegraph = "3.4"
+sqlitegraph = "3.4.6"
 
 # OR Native V3 backend (graph-oriented storage)
-sqlitegraph = { version = "3.4", features = ["native-v3"] }
+sqlitegraph = { version = "3.4.6", features = ["native-v3"] }
 ```
 
 ```rust

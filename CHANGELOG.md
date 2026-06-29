@@ -1,5 +1,18 @@
 # SQLiteGraph Changelog
 
+## [3.4.6] - 2026-06-29
+
+### Added
+- **Native-v3 bulk warm API** — Added `warm_neighbors_for_sources()` to preload weighted adjacency lists for known source sets before the first query pass.
+
+### Changed
+- **Native-v3 weighted neighbor contract** — `neighbors_weighted_shared()` now returns unfiltered neighbors in descending weight order with neighbor ID as a deterministic tie-breaker.
+- **Native-v3 cold-start behavior** — Bulk warming now deduplicates packed-page reads and fills the weighted/unweighted caches in one pass instead of forcing repeated first-touch lookups.
+- **Native-v3 weighted cache ordering** — In-memory weighted neighbor caches now preserve the same descending-weight order as the persisted edge store across insert, flush, and reopen.
+
+### Fixed
+- **Regression coverage** — Added regressions for sorted weighted reads after reopen and bulk warm cache population.
+
 ## [3.4.5] - 2026-06-29
 
 ### Changed

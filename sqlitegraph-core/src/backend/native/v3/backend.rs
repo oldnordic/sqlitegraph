@@ -1613,6 +1613,9 @@ impl V3Backend {
     }
 
     /// Return shared (neighbor_id, weight) pairs without allocating per call.
+    ///
+    /// For unfiltered queries, neighbors are returned in descending weight
+    /// order with neighbor ID as a deterministic tie-breaker.
     pub fn neighbors_weighted_shared(
         &self,
         snapshot_id: SnapshotId,
@@ -1647,6 +1650,27 @@ impl V3Backend {
     ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
         let shared = self.neighbors_weighted_shared(snapshot_id, node, query)?;
         Ok(shared.to_vec())
+    }
+
+    /// Warm the weighted-neighbor cache for a set of source nodes.
+    ///
+    /// This preloads edge clusters for the requested direction so the first
+    /// `neighbors_weighted_shared` call can hit in-memory cache.
+    pub fn warm_neighbors_for_sources(
+        &self,
+        snapshot_id: SnapshotId,
+        sources: &[i64],
+        query: NeighborQuery,
+    ) -> Result<usize, SqliteGraphError> {
+        Self::require_current_snapshot(snapshot_id)?;
+        let edge_store = self.edge_store.read();
+        let dir = match query.direction {
+            BackendDirection::Outgoing => EdgeDirection::Outgoing,
+            BackendDirection::Incoming => EdgeDirection::Incoming,
+        };
+        edge_store
+            .warm_weighted_neighbors(sources, dir)
+            .map_err(map_v3_error)
     }
 
     /// Return current edge-cache hit and miss counters.

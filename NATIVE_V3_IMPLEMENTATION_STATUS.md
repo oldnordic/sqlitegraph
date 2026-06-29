@@ -62,7 +62,8 @@ Native-v3 backend now provides **full feature parity** with SQLite backend for c
 - Small `(src, dir)` edge clusters now share packed 4 KiB edge pages
 - Large adjacency lists continue to use chained overflow pages
 - Reader supports packed pages, legacy single-cluster pages, and overflow pages
-- Weighted edge helpers remain unchanged: `batch_insert_edges_with_weights()`, `neighbors_weighted_shared()`
+- Weighted edge helpers now guarantee descending-weight neighbor order for unfiltered reads
+- `warm_neighbors_for_sources()` bulk-warms weighted adjacency caches for known source sets
 - Large-graph reopen durability remains intact after compaction
 
 ## Feature Support Matrix

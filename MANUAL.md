@@ -1,6 +1,6 @@
 # SQLiteGraph Manual
 
-Usage guide for SQLiteGraph in the current 3.4 release line, with dual backend
+Usage guide for SQLiteGraph in the current 3.4.6 release line, with dual backend
 architecture (SQLite and Native V3).
 
 > Looking for the Python wrapper? See
@@ -18,10 +18,10 @@ architecture (SQLite and Native V3).
 
 ```toml
 [dependencies]
-sqlitegraph = "3.4"
+sqlitegraph = "3.4.6"
 
 # For Native V3 backend
-sqlitegraph = { version = "3.4", features = ["native-v3"] }
+sqlitegraph = { version = "3.4.6", features = ["native-v3"] }
 ```
 
 **System Requirements** (for native-v3 turbovec optimization):
@@ -74,6 +74,36 @@ use sqlitegraph::backend::native::v3::V3Backend;
 
 let graph = V3Backend::create("graph.graph")?;
 ```
+
+For weighted native-v3 traversals, warm the known source set before the first
+pass and then read shared weighted neighbors without re-sorting:
+
+```rust
+use sqlitegraph::backend::{BackendDirection, NeighborQuery};
+use sqlitegraph::snapshot::SnapshotId;
+
+graph.warm_neighbors_for_sources(
+    SnapshotId::current(),
+    &[1, 2, 3],
+    NeighborQuery {
+        direction: BackendDirection::Outgoing,
+        edge_type: None,
+    },
+)?;
+
+let weighted = graph.neighbors_weighted_shared(
+    SnapshotId::current(),
+    1,
+    NeighborQuery {
+        direction: BackendDirection::Outgoing,
+        edge_type: None,
+    },
+)?;
+```
+
+`neighbors_weighted_shared()` returns unfiltered neighbors in descending weight
+order. `warm_neighbors_for_sources()` is useful when the caller already knows
+the frontier and wants to hide the first cold edge-page pass.
 
 ### Backend Comparison
 

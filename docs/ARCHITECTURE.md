@@ -1,7 +1,7 @@
 # SQLiteGraph Architecture
 
-**Last Updated:** 2026-04-23
-**Version:** v2.1.0
+**Last Updated:** 2026-06-29
+**Version:** v3.4.6
 
 This document describes the architecture of SQLiteGraph from a developer's perspective. For user-facing documentation, see [README.md](../README.md) and [MANUAL.md](../MANUAL.md).
 
@@ -39,12 +39,13 @@ SQLiteGraph is an embedded graph database with **two** storage backends:
            ▼                                         ▼
 ┌──────────────────┐                    ┌──────────────────┐
 │  SQLite Backend  │                    │   Native V3      │
-│  (Stable)        │                    │   (Stable)       │
+│  (Stable)        │                    │ (Experimental)   │
 ├──────────────────┤                    ├──────────────────┤
 │ - SQL storage    │                    │ - Binary format  │
 │ - ACID via SQL   │                    │ - B+Tree index   │
-│ - Debuggable     │                    │ - Storage-backed │
-│                  │                    │   capacity       │
+│ - Debuggable     │                    │ - Packed edge    │
+│                  │                    │   pages + warm   │
+│                  │                    │   cache path     │
 └──────────────────┘                    └──────────────────┘
 ```
 
@@ -53,7 +54,7 @@ SQLiteGraph is an embedded graph database with **two** storage backends:
 | Backend | Status | Use Case |
 |---------|--------|----------|
 | **SQLite** | ✅ Stable | Debuggable, familiar SQL ecosystem |
-| **Native V3** | ✅ Stable | Graph-oriented storage, KV, pub/sub |
+| **Native V3** | Experimental | Graph-oriented storage, packed edge pages, KV, pub/sub |
 
 ### Key Architectural Principles
 
@@ -62,6 +63,7 @@ SQLiteGraph is an embedded graph database with **two** storage backends:
 3. **Honest Engineering**: Document limitations, deprecate when better alternatives exist
 4. **MVCC Isolation**: Snapshot-based reads without blocking writers
 5. **Pluggable Components**: Algorithms, storage, and indexing are decoupled
+6. **Packed Adjacency Path**: Native V3 stores many small `(src, dir)` clusters in shared edge pages and bulk-warms them through the edge-store cache
 
 ---
 
@@ -79,7 +81,7 @@ sqlitegraph/
 │   │   │   ├── impl_.rs       # SqliteGraphBackend
 │   │   │   └── pubsub_tests.rs
 │   │   └── native/            # Native backends
-│   │       ├── v3/            # V3 backend (stable)
+│   │       ├── v3/            # V3 backend (experimental)
 │   │       │   ├── backend.rs # V3Backend implementation
 │   │       │   ├── btree/     # B+Tree index
 │   │       │   ├── kv_store/  # Lazy KV storage
@@ -301,11 +303,11 @@ require a per-version cycle basis plus generator matching across versions).
 - Creates tables on-demand
 - No node limits
 
-### Native V3 Backend (Stable)
+### Native V3 Backend (Experimental)
 
 **Location:** `src/backend/native/v3/`
 
-**Status:** Mature, recommended for new projects
+**Status:** Experimental graph-oriented backend with packed edge pages, warmable adjacency cache, KV, and pub/sub
 
 | Aspect | Implementation |
 |--------|----------------|
@@ -315,6 +317,7 @@ require a per-version cycle basis plus generator matching across versions).
 | **KV Store** | Lazy-initialized in-memory HashMap |
 | **Pub/Sub** | Lazy-initialized Publisher |
 | **WAL** | Optional for durability |
+| **Weighted adjacency** | Descending-weight reads + bulk warm API |
 
 #### File Format
 

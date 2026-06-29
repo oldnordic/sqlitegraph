@@ -1,6 +1,6 @@
 # SQLiteGraph API Reference
 
-**Version:** 3.4.x
+**Version:** 3.4.6
 **Last Updated:** 2026-06-29
 
 The complete API documentation is available at **[docs.rs/sqlitegraph](https://docs.rs/sqlitegraph)**.
@@ -155,11 +155,21 @@ let neighbors = backend.neighbors_weighted_shared(
 for &(dst, weight) in neighbors.iter() {
     println!("{dst}: {weight}");
 }
+
+backend.warm_neighbors_for_sources(
+    SnapshotId::current(),
+    &[1, 2, 3],
+    NeighborQuery {
+        direction: BackendDirection::Outgoing,
+        edge_type: None,
+    },
+)?;
 ```
 
 Notes:
 - `batch_insert_edges_with_weights(...)` inserts weighted edges through the native V3 edge store in one batch.
-- `neighbors_weighted_shared(...)` returns `Arc<[(i64, f32)]>` and avoids per-call allocation on hot read paths.
+- `neighbors_weighted_shared(...)` returns `Arc<[(i64, f32)]>`, avoids per-call allocation on hot read paths, and returns unfiltered neighbors in descending weight order.
+- `warm_neighbors_for_sources(...)` preloads the weighted neighbor cache for known source sets so the first query pass can avoid cold edge-page reads.
 - The native V3 edge store now packs multiple small `(src, dir)` clusters into shared edge pages while keeping the public API unchanged.
 
 ### Lazy Initialization Inspection
@@ -877,4 +887,4 @@ pub enum SqliteGraphError {
 
 ---
 
-**Note:** This API reference is maintained for the current 3.2 line. We document deprecations and limitations honestly; check backend-specific sections for feature availability.
+**Note:** This API reference is maintained for the current 3.4.6 line. We document deprecations and limitations honestly; check backend-specific sections for feature availability.

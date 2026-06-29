@@ -151,6 +151,15 @@ pub struct V3EdgeCluster {
 }
 
 impl V3EdgeCluster {
+    fn sort_for_weighted_queries(&mut self) {
+        self.edges.sort_by(|a, b| {
+            let weight_cmp = Self::extract_edge_weight(&b.edge_data)
+                .partial_cmp(&Self::extract_edge_weight(&a.edge_data))
+                .unwrap_or(std::cmp::Ordering::Equal);
+            weight_cmp.then_with(|| a.neighbor_id.cmp(&b.neighbor_id))
+        });
+    }
+
     /// Create new empty edge cluster
     pub fn new(src: i64, direction: Direction, page_id: u64) -> Self {
         Self {
@@ -764,6 +773,64 @@ fn edge_key(src: i64, dir: Direction) -> i64 {
 }
 
 impl V3EdgeStore {
+    fn read_page_from_disk(
+        &self,
+        file: &mut std::fs::File,
+        db_path: &PathBuf,
+        page_id: u64,
+    ) -> NativeResult<Vec<u8>> {
+        use crate::backend::native::v3::constants::V3_HEADER_SIZE;
+        use std::io::{Read, Seek, SeekFrom};
+
+        let offset = V3_HEADER_SIZE + (page_id - 1) * (self.page_size as u64);
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|e| NativeBackendError::IoError {
+                context: format!("Failed to seek to edge page {} offset {}", page_id, offset),
+                source: e,
+            })?;
+
+        let mut buffer = vec![0u8; self.page_size as usize];
+        file.read_exact(&mut buffer)
+            .map_err(|e| NativeBackendError::IoError {
+                context: format!(
+                    "Failed to read edge page {} from {}",
+                    page_id,
+                    db_path.display()
+                ),
+                source: e,
+            })?;
+        Ok(buffer)
+    }
+
+    fn weighted_neighbors_from_cluster(
+        &self,
+        src: i64,
+        dir: Direction,
+        cluster: &V3EdgeCluster,
+    ) -> Arc<[(i64, f32)]> {
+        let mut edge_types = self.edge_types.write();
+        let mut neighbors = Vec::with_capacity(cluster.edges.len());
+        for e in &cluster.edges {
+            let edge_type = V3EdgeCluster::extract_edge_type(&e.edge_data);
+            if let Some(et) = edge_type {
+                edge_types.insert((src, e.neighbor_id, dir), et);
+            }
+            let weight = V3EdgeCluster::extract_edge_weight(&e.edge_data);
+            neighbors.push((e.neighbor_id, weight));
+        }
+        neighbors.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.0.cmp(&b.0))
+        });
+        Arc::from(neighbors.into_boxed_slice())
+    }
+
+    fn unweighted_neighbors_from_weighted(neighbors: &[(i64, f32)]) -> Arc<[i64]> {
+        let dsts: Vec<i64> = neighbors.iter().map(|(dst, _)| *dst).collect();
+        Arc::from(dsts.into_boxed_slice())
+    }
+
     /// Create new edge store (in-memory only)
     /// NOTE: Prefer with_path_and_allocator() for database-backed edge stores
     pub fn new(
@@ -1079,8 +1146,13 @@ impl V3EdgeStore {
                 let mut vec = neighbors.to_vec();
                 if !vec.iter().any(|(n, _)| *n == dst) {
                     vec.push((dst, 1.0));
-                    *neighbors = Arc::from(vec);
                 }
+                vec.sort_by(|a, b| {
+                    b.1.partial_cmp(&a.1)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| a.0.cmp(&b.0))
+                });
+                *neighbors = Arc::from(vec);
             } else {
                 let mut vec = Vec::new();
                 if let Some(ref db_path) = self.db_path {
@@ -1092,6 +1164,11 @@ impl V3EdgeStore {
                 if !vec.iter().any(|(n, _)| *n == dst) {
                     vec.push((dst, 1.0));
                 }
+                vec.sort_by(|a, b| {
+                    b.1.partial_cmp(&a.1)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| a.0.cmp(&b.0))
+                });
                 cache_weighted.insert(cache_key, Arc::from(vec));
             }
         }
@@ -1203,9 +1280,12 @@ impl V3EdgeStore {
         {
             let cache = self.cache_weighted.read();
             if let Some(neighbors) = cache.get(&key) {
+                self.cache_hits.fetch_add(1, Ordering::Relaxed);
                 return Ok(neighbors.clone());
             }
         }
+
+        self.cache_misses.fetch_add(1, Ordering::Relaxed);
 
         // Cache miss - try to load from disk if we have a db_path
         if let Some(ref db_path) = self.db_path
@@ -1239,21 +1319,108 @@ impl V3EdgeStore {
         drop(btree);
 
         match self.load_cluster_from_disk(page_id, src, dir, db_path) {
-            Ok(cluster) => {
-                let mut edge_types = self.edge_types.write();
-                let mut neighbors = Vec::with_capacity(cluster.edges.len());
-                for e in &cluster.edges {
-                    let edge_type = V3EdgeCluster::extract_edge_type(&e.edge_data);
-                    if let Some(et) = edge_type {
-                        edge_types.insert((src, e.neighbor_id, dir), et);
-                    }
-                    let weight = V3EdgeCluster::extract_edge_weight(&e.edge_data);
-                    neighbors.push((e.neighbor_id, weight));
-                }
-                Ok(Arc::from(neighbors.into_boxed_slice()))
-            }
+            Ok(cluster) => Ok(self.weighted_neighbors_from_cluster(src, dir, &cluster)),
             Err(_) => Ok(Arc::from([])),
         }
+    }
+
+    pub fn warm_weighted_neighbors(&self, sources: &[i64], dir: Direction) -> NativeResult<usize> {
+        use std::collections::BTreeMap;
+
+        let db_path = match &self.db_path {
+            Some(path) => path,
+            None => return Ok(0),
+        };
+        if sources.is_empty() {
+            return Ok(0);
+        }
+
+        let misses: Vec<i64> = {
+            let cache = self.cache_weighted.read();
+            sources
+                .iter()
+                .copied()
+                .filter(|src| !cache.contains_key(&(*src, dir)))
+                .collect()
+        };
+        if misses.is_empty() {
+            return Ok(0);
+        }
+
+        let lookups: Vec<(i64, u64)> = {
+            let btree = self.btree.read();
+            misses
+                .into_iter()
+                .filter_map(|src| match btree.lookup(edge_key(src, dir)) {
+                    Ok(Some(page_id)) => Some((src, page_id)),
+                    Ok(None) | Err(_) => None,
+                })
+                .collect()
+        };
+        if lookups.is_empty() {
+            return Ok(0);
+        }
+
+        let mut page_groups: BTreeMap<u64, Vec<i64>> = BTreeMap::new();
+        for (src, page_id) in lookups {
+            page_groups.entry(page_id).or_default().push(src);
+        }
+
+        let mut file = std::fs::File::open(db_path).map_err(|e| NativeBackendError::IoError {
+            context: format!(
+                "Failed to open db file for edge warm read: {}",
+                db_path.display()
+            ),
+            source: e,
+        })?;
+
+        let mut warmed = Vec::new();
+        for (page_id, srcs) in page_groups {
+            let buffer = self.read_page_from_disk(&mut file, db_path, page_id)?;
+            if buffer.len() >= PACKED_EDGE_PAGE_HEADER_SIZE
+                && buffer[0..4] == PACKED_EDGE_PAGE_MAGIC
+            {
+                for src in srcs {
+                    if let Some(cluster_bytes) = decode_packed_edge_page(&buffer, src, dir)? {
+                        let mut cluster = V3EdgeCluster::deserialize(&cluster_bytes, page_id)?;
+                        cluster.page_id = 0;
+                        cluster.sort_for_weighted_queries();
+                        let weighted = self.weighted_neighbors_from_cluster(src, dir, &cluster);
+                        let unweighted = Self::unweighted_neighbors_from_weighted(&weighted);
+                        warmed.push((src, weighted, unweighted));
+                    }
+                }
+                continue;
+            }
+
+            for src in srcs {
+                let mut cluster = self.load_cluster_from_open_file(
+                    &mut file,
+                    page_id,
+                    src,
+                    dir,
+                    db_path,
+                    Some(buffer.clone()),
+                )?;
+                cluster.sort_for_weighted_queries();
+                let weighted = self.weighted_neighbors_from_cluster(src, dir, &cluster);
+                let unweighted = Self::unweighted_neighbors_from_weighted(&weighted);
+                warmed.push((src, weighted, unweighted));
+            }
+        }
+
+        if warmed.is_empty() {
+            return Ok(0);
+        }
+
+        let warmed_count = warmed.len();
+        let mut weighted_cache = self.cache_weighted.write();
+        let mut unweighted_cache = self.cache.write();
+        for (src, weighted, unweighted) in warmed {
+            weighted_cache.insert((src, dir), weighted);
+            unweighted_cache.insert((src, dir), unweighted);
+        }
+        Ok(warmed_count)
     }
 
     /// Get weighted neighbors filtered by edge type
@@ -1324,6 +1491,11 @@ impl V3EdgeStore {
                 } else {
                     vec.push((dst, weight));
                 }
+                vec.sort_by(|a, b| {
+                    b.1.partial_cmp(&a.1)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| a.0.cmp(&b.0))
+                });
                 *neighbors = Arc::from(vec);
             } else {
                 let mut vec = Vec::new();
@@ -1338,6 +1510,11 @@ impl V3EdgeStore {
                 } else {
                     vec.push((dst, weight));
                 }
+                vec.sort_by(|a, b| {
+                    b.1.partial_cmp(&a.1)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| a.0.cmp(&b.0))
+                });
                 cache_weighted.insert(cache_key, Arc::from(vec));
             }
         }
@@ -1458,6 +1635,8 @@ impl V3EdgeStore {
         };
 
         for ((src, dir), cluster) in clusters_to_flush {
+            let mut cluster = cluster;
+            cluster.sort_for_weighted_queries();
             let cluster_bytes = cluster.serialize()?;
             let packed_size = PACKED_EDGE_PAGE_SLOT_SIZE + cluster_bytes.len();
 
@@ -1568,9 +1747,7 @@ impl V3EdgeStore {
         dir: Direction,
         db_path: &PathBuf,
     ) -> NativeResult<V3EdgeCluster> {
-        use crate::backend::native::v3::constants::V3_HEADER_SIZE;
         use std::fs::File;
-        use std::io::Read;
 
         let mut file = File::open(db_path).map_err(|e| NativeBackendError::IoError {
             context: format!(
@@ -1580,26 +1757,26 @@ impl V3EdgeStore {
             source: e,
         })?;
 
+        self.load_cluster_from_open_file(&mut file, page_id, src, dir, db_path, None)
+    }
+
+    fn load_cluster_from_open_file(
+        &self,
+        file: &mut std::fs::File,
+        page_id: u64,
+        src: i64,
+        dir: Direction,
+        db_path: &PathBuf,
+        first_page: Option<Vec<u8>>,
+    ) -> NativeResult<V3EdgeCluster> {
         let mut current_page_id = page_id;
         let mut cluster_bytes = Vec::new();
+        let mut buffer = match first_page {
+            Some(buffer) => buffer,
+            None => self.read_page_from_disk(file, db_path, current_page_id)?,
+        };
+
         loop {
-            let offset = V3_HEADER_SIZE + (current_page_id - 1) * (self.page_size as u64);
-            file.seek(SeekFrom::Start(offset))
-                .map_err(|e| NativeBackendError::IoError {
-                    context: format!(
-                        "Failed to seek to edge page {} offset {}",
-                        current_page_id, offset
-                    ),
-                    source: e,
-                })?;
-
-            let mut buffer = vec![0u8; self.page_size as usize];
-            file.read_exact(&mut buffer)
-                .map_err(|e| NativeBackendError::IoError {
-                    context: format!("Failed to read edge page {}", current_page_id),
-                    source: e,
-                })?;
-
             if let Some(cluster_bytes) = decode_packed_edge_page(&buffer, src, dir)? {
                 let mut cluster = V3EdgeCluster::deserialize(&cluster_bytes, page_id)?;
                 cluster.page_id = 0;
@@ -1614,6 +1791,7 @@ impl V3EdgeStore {
                     break;
                 }
                 current_page_id = next_page_id;
+                buffer = self.read_page_from_disk(file, db_path, current_page_id)?;
             } else {
                 return V3EdgeCluster::deserialize(&buffer, page_id);
             }
@@ -2525,6 +2703,75 @@ mod tests {
         assert_eq!(neighbors_incoming.len(), 1);
         assert_eq!(neighbors_incoming[0].0, n1_id);
         assert_eq!(neighbors_incoming[0].1, 4.2);
+    }
+
+    #[test]
+    fn test_weighted_neighbors_are_sorted_after_reopen() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("sorted_weighted_neighbors.graph");
+        std::fs::write(&db_path, vec![0u8; 4096]).expect("Failed to create db file");
+
+        {
+            let (edge_store, _allocator) = create_test_edge_store(Some(db_path.clone()));
+            edge_store
+                .insert_edge_weighted(1, 11, Direction::Outgoing, None, 0.2)
+                .expect("Insert failed");
+            edge_store
+                .insert_edge_weighted(1, 12, Direction::Outgoing, None, 0.9)
+                .expect("Insert failed");
+            edge_store
+                .insert_edge_weighted(1, 13, Direction::Outgoing, None, 0.5)
+                .expect("Insert failed");
+            edge_store.flush(None).expect("Flush failed");
+        }
+
+        {
+            let (recovered_store, _allocator) = create_test_edge_store(Some(db_path.clone()));
+            let neighbors = recovered_store
+                .neighbors_weighted(1, Direction::Outgoing)
+                .expect("Failed to recover weighted neighbors");
+            assert_eq!(neighbors.as_ref(), &[(12, 0.9), (13, 0.5), (11, 0.2)]);
+        }
+    }
+
+    #[test]
+    fn test_bulk_warm_weighted_neighbors_populates_cache() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("warm_weighted_neighbors.graph");
+        std::fs::write(&db_path, vec![0u8; 4096]).expect("Failed to create db file");
+
+        {
+            let (edge_store, _allocator) = create_test_edge_store(Some(db_path.clone()));
+            for src in 1..=32 {
+                edge_store
+                    .insert_edge_weighted(src, 1000 + src, Direction::Outgoing, None, 0.7)
+                    .expect("Insert failed");
+            }
+            edge_store.flush(None).expect("Flush failed");
+        }
+
+        {
+            let (recovered_store, _allocator) = create_test_edge_store(Some(db_path.clone()));
+            assert_eq!(recovered_store.cache_weighted.read().len(), 0);
+            assert_eq!(recovered_store.cache.read().len(), 0);
+
+            let warmed = recovered_store
+                .warm_weighted_neighbors(&(1..=32).collect::<Vec<_>>(), Direction::Outgoing)
+                .expect("warm failed");
+            assert_eq!(warmed, 32);
+            assert_eq!(recovered_store.cache_weighted.read().len(), 32);
+            assert_eq!(recovered_store.cache.read().len(), 32);
+
+            let before = recovered_store.cache_stats();
+            let neighbors = recovered_store
+                .neighbors_weighted(1, Direction::Outgoing)
+                .expect("neighbors failed");
+            let after = recovered_store.cache_stats();
+
+            assert_eq!(neighbors.as_ref(), &[(1001, 0.7)]);
+            assert_eq!(after.0, before.0 + 1, "warm cache should produce a hit");
+            assert_eq!(after.1, before.1, "warm cache should avoid a miss");
+        }
     }
 
     #[test]
