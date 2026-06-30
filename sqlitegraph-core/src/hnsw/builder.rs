@@ -91,16 +91,16 @@ impl HnswConfigBuilder {
     /// Set vector dimension count
     ///
     /// # Arguments
-    /// * `dimension` - Number of dimensions in vectors (1-4096)
+    /// * `dimension` - Number of dimensions in vectors (1-16384)
     ///
     /// # Panics
     ///
-    /// Panics if dimension is 0 or exceeds practical limits (>4096)
+    /// Panics if dimension is 0 or exceeds practical limits (>16384)
     pub fn dimension(mut self, dimension: usize) -> Self {
         assert!(dimension > 0, "Dimension must be greater than 0");
         assert!(
-            dimension <= 4096,
-            "Dimension exceeds practical limit of 4096"
+            dimension <= 16384,
+            "Dimension exceeds practical limit of 16384"
         );
         self.config.dimension = dimension;
         self

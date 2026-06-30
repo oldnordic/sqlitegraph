@@ -118,9 +118,6 @@ struct HnswIndexMetadata {
     embedding_count: Arc<std::sync::Mutex<usize>>,
     /// Vector dimension (must match all insertions)
     dimension: usize,
-    /// Turbovec bit width (2-4, default 4 for best precision)
-    #[cfg(feature = "turbovec")]
-    bit_width: usize,
 }
 
 struct GraphTransactionFrame {
@@ -137,6 +134,15 @@ struct GraphTransactionState {
 /// Turbovec activation threshold: 1K vectors triggers compression
 #[cfg(feature = "turbovec")]
 const TURBOVEC_THRESHOLD: usize = 1_000;
+
+#[cfg(feature = "turbovec")]
+const TURBOVEC_BIT_WIDTH: usize = 4;
+
+#[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
+pub struct HnswSearchConfig {
+    pub force_exact: bool,
+    pub ef_search_override: Option<usize>,
+}
 
 /// Write batch guard for amortized durability
 ///
@@ -312,6 +318,75 @@ fn map_v3_error(err: NativeBackendError) -> SqliteGraphError {
 }
 
 impl V3Backend {
+    fn validate_base_path(db_path: &Path) -> Result<(), SqliteGraphError> {
+        let uses_reserved_sqlite_extension = db_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("sqlite"))
+            .unwrap_or(false);
+        if uses_reserved_sqlite_extension {
+            return Err(SqliteGraphError::connection(
+                "Base path must not use .sqlite extension; that suffix is reserved for the internal SQLite property store"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn sqlite_sidecar_path(db_path: &Path) -> Result<PathBuf, SqliteGraphError> {
+        Self::validate_base_path(db_path)?;
+        Ok(db_path.with_extension("sqlite"))
+    }
+
+    fn normalize_vector_result_id(
+        hnsw: &HnswIndex,
+        vector_id: u64,
+    ) -> Result<i64, SqliteGraphError> {
+        let normalized_id = hnsw
+            .get_vector(vector_id)
+            .map_err(|e| {
+                SqliteGraphError::validation(format!(
+                    "HNSW metadata lookup failed for vector {}: {:?}",
+                    vector_id, e
+                ))
+            })?
+            .map(|(_, metadata)| {
+                metadata
+                    .get("node_id")
+                    .and_then(|value| value.as_i64())
+                    .unwrap_or(vector_id as i64)
+            })
+            .unwrap_or(vector_id as i64);
+        Ok(normalized_id)
+    }
+
+    fn hnsw_exact_search(
+        &self,
+        metadata_arc: &HnswIndexMetadata,
+        query_vector: &[f32],
+        k: usize,
+        ef_search_override: Option<usize>,
+    ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
+        let mut hnsw = metadata_arc.hnsw_index.lock().unwrap();
+        let original_ef_search = hnsw.config.ef_search;
+        if let Some(ef_search) = ef_search_override {
+            hnsw.config.ef_search = ef_search;
+        }
+
+        let results = hnsw
+            .search(query_vector, k)
+            .map_err(|e| SqliteGraphError::validation(format!("HNSW search error: {:?}", e)));
+        hnsw.config.ef_search = original_ef_search;
+
+        let results = results?;
+        results
+            .into_iter()
+            .map(|(vector_id, distance)| {
+                Self::normalize_vector_result_id(&hnsw, vector_id).map(|id| (id, distance))
+            })
+            .collect()
+    }
+
     /// Check if snapshot is valid for V3 backend.
     ///
     /// V3 now supports MVCC snapshots:
@@ -718,6 +793,7 @@ impl V3Backend {
     /// ```
     pub fn create<P: AsRef<Path>>(path: P) -> Result<Self, SqliteGraphError> {
         let db_path = path.as_ref().to_path_buf();
+        Self::validate_base_path(&db_path)?;
 
         // Detect optimal page size based on storage media (SSD vs HDD)
         let mut adaptive_manager = AdaptivePageManager::new(&db_path);
@@ -766,7 +842,7 @@ impl V3Backend {
         );
 
         // Initialize SQLite connection for property storage
-        let sqlite_path = db_path.with_extension("sqlite");
+        let sqlite_path = Self::sqlite_sidecar_path(&db_path)?;
         let sqlite_conn = Connection::open(sqlite_path).map_err(|e| {
             SqliteGraphError::connection(format!("Failed to open SQLite connection: {}", e))
         })?;
@@ -847,6 +923,7 @@ impl V3Backend {
     /// ```
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self, SqliteGraphError> {
         let db_path = path.as_ref().to_path_buf();
+        Self::validate_base_path(&db_path)?;
 
         // Check if file exists
         if !db_path.exists() {
@@ -913,7 +990,7 @@ impl V3Backend {
         );
 
         // Initialize SQLite connection for property storage
-        let sqlite_path = db_path.with_extension("sqlite");
+        let sqlite_path = Self::sqlite_sidecar_path(&db_path)?;
         let sqlite_conn = Connection::open(sqlite_path).map_err(|e| {
             SqliteGraphError::connection(format!("Failed to open SQLite connection: {}", e))
         })?;
@@ -1097,20 +1174,8 @@ impl V3Backend {
         &self,
         index_name: &str,
         dimension: usize,
-        bit_width: usize, // 2, 3, or 4 (default 4 for best precision)
     ) -> Result<(), SqliteGraphError> {
         self.ensure_hnsw_not_in_graph_transaction("create_hnsw_index")?;
-
-        // Validate bit_width (turbovec only supports 2, 3, or 4)
-        #[cfg(feature = "turbovec")]
-        if ![2usize, 3, 4].contains(&bit_width) {
-            return Err(SqliteGraphError::validation(format!(
-                "Invalid bit_width: {}. Must be 2, 3, or 4",
-                bit_width
-            )));
-        }
-        #[cfg(not(feature = "turbovec"))]
-        let _ = bit_width;
 
         // Check if index already exists
         {
@@ -1173,8 +1238,6 @@ impl V3Backend {
                 #[cfg(feature = "turbovec")]
                 embedding_count: Arc::new(std::sync::Mutex::new(0)),
                 dimension,
-                #[cfg(feature = "turbovec")]
-                bit_width,
             },
         );
 
@@ -1448,30 +1511,13 @@ impl V3Backend {
 
         drop(hnsw);
 
-        // Debug: verify vector collection
-        eprintln!(
-            "DEBUG: Building turbovec from {} HNSW vectors (dimension: {})",
-            ids.len(),
-            metadata_arc.dimension
-        );
-
-        // Build turbovec index with configured bit width (2-4, default 4 for best precision)
-        let bit_width = metadata_arc.bit_width;
-        let mut turbovec_index = turbovec::IdMapIndex::new(metadata_arc.dimension, bit_width)
-            .map_err(|e| {
+        let mut turbovec_index =
+            turbovec::IdMapIndex::new(metadata_arc.dimension, TURBOVEC_BIT_WIDTH).map_err(|e| {
                 SqliteGraphError::validation(format!("Turbovec construction failed: {}", e))
             })?;
-
-        eprintln!(
-            "DEBUG: Adding {} vectors to turbovec index ({}-bit quantization)",
-            ids.len(),
-            bit_width
-        );
         turbovec_index
             .add_with_ids(&embeddings, &ids)
             .map_err(|e| SqliteGraphError::validation(format!("Turbovec add failed: {}", e)))?;
-
-        eprintln!("DEBUG: Turbovec index built successfully");
         // Store the index
         let mut turbovec = metadata_arc.turbovec_index.lock().unwrap();
         *turbovec = Some(turbovec_index);
@@ -1484,27 +1530,28 @@ impl V3Backend {
     /// Called during search when turbovec is needed but not available.
     /// Should only happen once at threshold crossing.
     #[cfg(feature = "turbovec")]
-    fn ensure_turbovec_index(&self, index_name: &str) {
+    fn ensure_turbovec_index(&self, index_name: &str) -> Result<(), SqliteGraphError> {
         let metadata_arc = {
             let indexes = self.hnsw_indexes.read();
             match indexes.get(index_name) {
                 Some(m) => m.clone(),
-                None => return,
+                None => {
+                    return Err(SqliteGraphError::validation(format!(
+                        "HNSW index not found: {}",
+                        index_name
+                    )));
+                }
             }
         };
 
         // Check if already built
         let turbovec = metadata_arc.turbovec_index.lock().unwrap();
         if turbovec.is_some() {
-            return; // Already built
+            return Ok(()); // Already built
         }
         drop(turbovec);
 
-        // Build if not built (should only happen once at threshold)
-        eprintln!("DEBUG: ensure_turbovec_index called for {}", index_name);
-        if let Err(e) = self.build_turbovec_index(index_name) {
-            eprintln!("ERROR: Failed to build turbovec index: {}", e);
-        }
+        self.build_turbovec_index(index_name)
     }
 
     /// Search using turbovec index (for large datasets)
@@ -1542,6 +1589,21 @@ impl V3Backend {
         query_vector: &[f32],
         k: usize,
     ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
+        self.hnsw_vector_search_with_config(
+            index_name,
+            query_vector,
+            k,
+            HnswSearchConfig::default(),
+        )
+    }
+
+    pub fn hnsw_vector_search_with_config(
+        &self,
+        index_name: &str,
+        query_vector: &[f32],
+        k: usize,
+        config: HnswSearchConfig,
+    ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
         // Get index metadata
         let metadata_arc = {
             let indexes = self.hnsw_indexes.read();
@@ -1559,15 +1621,22 @@ impl V3Backend {
             )));
         }
 
+        if let Some(ef_search) = config.ef_search_override {
+            if ef_search == 0 || ef_search > 200 {
+                return Err(SqliteGraphError::validation(format!(
+                    "Invalid ef_search_override: {}. Must be in 1..=200",
+                    ef_search
+                )));
+            }
+        }
+
         // Check if we should use turbovec (large dataset)
         #[cfg(feature = "turbovec")]
         {
             let count = *metadata_arc.embedding_count.lock().unwrap();
-            if count > TURBOVEC_THRESHOLD {
-                // Ensure turbovec index is built
-                self.ensure_turbovec_index(index_name);
+            if count > TURBOVEC_THRESHOLD && !config.force_exact {
+                self.ensure_turbovec_index(index_name)?;
 
-                // Try turbovec search first
                 let turbovec = metadata_arc.turbovec_index.lock().unwrap();
                 if let Some(ref index) = *turbovec {
                     return Ok(self.turbovec_search(index, query_vector, k));
@@ -1575,17 +1644,7 @@ impl V3Backend {
             }
         }
 
-        // Fall back to HNSW search for small datasets or if turbovec unavailable
-        let hnsw = metadata_arc.hnsw_index.lock().unwrap();
-        let results = hnsw
-            .search(query_vector, k)
-            .map_err(|e| SqliteGraphError::validation(format!("HNSW search error: {:?}", e)))?;
-
-        // Convert u64 IDs to i64 and return
-        Ok(results
-            .into_iter()
-            .map(|(id, dist)| (id as i64, dist))
-            .collect())
+        self.hnsw_exact_search(&metadata_arc, query_vector, k, config.ef_search_override)
     }
 
     /// Return a shared neighbor slice without cloning into a `Vec`.
@@ -3960,6 +4019,161 @@ mod tests {
             assert_eq!(backend.header().magic, V3_MAGIC);
             assert_eq!(backend.header().version, V3_FORMAT_VERSION);
         }
+    }
+
+    #[test]
+    fn test_v3_backend_rejects_sqlite_base_path() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("reserved.sqlite");
+
+        let create_error = match V3Backend::create(&db_path) {
+            Ok(_) => panic!("expected .sqlite base path rejection"),
+            Err(err) => err,
+        };
+        assert!(
+            create_error
+                .to_string()
+                .contains("Base path must not use .sqlite extension"),
+            "unexpected error: {create_error}"
+        );
+
+        std::fs::write(&db_path, b"not-a-v3-db").unwrap();
+        let open_error = match V3Backend::open(&db_path) {
+            Ok(_) => panic!("expected .sqlite base path rejection"),
+            Err(err) => err,
+        };
+        assert!(
+            open_error
+                .to_string()
+                .contains("Base path must not use .sqlite extension"),
+            "unexpected error: {open_error}"
+        );
+    }
+
+    #[cfg(feature = "turbovec")]
+    #[test]
+    fn test_hnsw_vector_search_normalizes_ids_and_supports_exact_override() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("hnsw.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+        let dimension = 128;
+
+        backend.create_hnsw_index("vectors", dimension).unwrap();
+
+        let make_vector = |seed: usize| -> Vec<f32> {
+            (0..dimension)
+                .map(|j| {
+                    let mut x = ((seed as u64) << 32) ^ j as u64 ^ 0x9E37_79B9_7F4A_7C15;
+                    x ^= x >> 30;
+                    x = x.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+                    x ^= x >> 27;
+                    x = x.wrapping_mul(0x94D0_49BB_1331_11EB);
+                    x ^= x >> 31;
+                    if x & 1 == 0 { -1.0 } else { 1.0 }
+                })
+                .collect()
+        };
+
+        for i in 0..100 {
+            let node_id = 10_000 + i as i64;
+            backend
+                .insert_hnsw_vector(
+                    "vectors",
+                    &make_vector(i),
+                    Some(serde_json::json!({"node_id": node_id})),
+                )
+                .unwrap();
+        }
+
+        let small_result = backend
+            .hnsw_vector_search("vectors", &make_vector(42), 1)
+            .unwrap();
+        assert!(
+            (10_000..11_002).contains(&small_result[0].0),
+            "expected normalized node_id, got {}",
+            small_result[0].0
+        );
+
+        for i in 100..1002 {
+            let node_id = 10_000 + i as i64;
+            backend
+                .insert_hnsw_vector(
+                    "vectors",
+                    &make_vector(i),
+                    Some(serde_json::json!({"node_id": node_id})),
+                )
+                .unwrap();
+        }
+
+        assert_eq!(backend.hnsw_embedding_count("vectors").unwrap(), 1002);
+        assert!(backend.hnsw_turbovec_ready("vectors").unwrap());
+
+        {
+            let metadata = backend.hnsw_indexes.read();
+            let index = metadata.get("vectors").unwrap();
+            let mut turbovec = index.turbovec_index.lock().unwrap();
+            *turbovec = None;
+        }
+        assert!(!backend.hnsw_turbovec_ready("vectors").unwrap());
+
+        let exact_result = backend
+            .hnsw_vector_search_with_config(
+                "vectors",
+                &make_vector(1001),
+                1,
+                HnswSearchConfig {
+                    force_exact: true,
+                    ef_search_override: Some(100),
+                },
+            )
+            .unwrap();
+        assert!(
+            (10_000..11_002).contains(&exact_result[0].0),
+            "expected normalized node_id, got {}",
+            exact_result[0].0
+        );
+        assert!(
+            !backend.hnsw_turbovec_ready("vectors").unwrap(),
+            "force_exact should not rebuild the turbovec cache"
+        );
+
+        let turbovec_result = backend
+            .hnsw_vector_search("vectors", &make_vector(1001), 1)
+            .unwrap();
+        assert!(
+            (10_000..11_002).contains(&turbovec_result[0].0),
+            "expected normalized node_id, got {}",
+            turbovec_result[0].0
+        );
+        assert!(
+            backend.hnsw_turbovec_ready("vectors").unwrap(),
+            "default search should rebuild the turbovec cache when eligible"
+        );
+    }
+
+    #[test]
+    fn test_hnsw_vector_search_rejects_invalid_ef_override() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("invalid_ef.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        backend.create_hnsw_index("vectors", 64).unwrap();
+
+        let error = backend
+            .hnsw_vector_search_with_config(
+                "vectors",
+                &[0.0; 64],
+                1,
+                HnswSearchConfig {
+                    force_exact: true,
+                    ef_search_override: Some(0),
+                },
+            )
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("Invalid ef_search_override"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

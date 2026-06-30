@@ -25,7 +25,7 @@ fn populate_hnsw_index(
     let ctx = create_v3_bench_context(&format!("hnsw_{}.db", vector_count));
 
     ctx.backend
-        .create_hnsw_index("test_index", dimension, 4)
+        .create_hnsw_index("test_index", dimension)
         .expect("Failed to create HNSW index");
 
     let query_vec: Vec<f32> = (0..dimension).map(|i| i as f32 * 0.01).collect();
@@ -558,7 +558,7 @@ pub fn bench_all_features_integration(c: &mut Criterion) {
                         .expect("Failed to create snapshot");
 
                     ctx.backend
-                        .create_hnsw_index("semantic", 64, 4)
+                        .create_hnsw_index("semantic", 64)
                         .expect("Failed to create HNSW index");
 
                     (ctx, snapshot_lsn, nodes)

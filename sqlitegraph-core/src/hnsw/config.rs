@@ -53,7 +53,7 @@ use crate::hnsw::distance_metric::DistanceMetric;
 ///
 /// ## dimension
 /// Vector dimension count. Must match all vectors inserted into the index.
-/// Typical values: 128-4096 depending on embedding model used.
+/// Typical values: 128-16384 depending on embedding model used.
 ///
 /// ## m
 /// Number of bi-directional links created for each node during construction.
@@ -160,7 +160,7 @@ use crate::hnsw::distance_metric::DistanceMetric;
 pub struct HnswConfig {
     /// Vector dimension count
     /// Must match all vectors inserted into the index
-    /// Range: 1-4096 (practical limits)
+    /// Range: 1-16384 (practical limits)
     pub dimension: usize,
 
     /// Number of connections per node (M parameter)

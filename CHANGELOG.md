@@ -1,5 +1,22 @@
 # SQLiteGraph Changelog
 
+## [3.5.1] - 2026-06-30
+
+### Added
+- **Native-v3 HNSW 10K integrity job** — Added `sqlitegraph-core/examples/hnsw_10k_integrity_job.rs` to insert 10,000 deterministic vectors, verify sampled raw vector payloads and metadata, and validate exact-route plus routed-search ID integrity after turbovec activation.
+- **Native-v3 HNSW exact-search override** — Added `HnswSearchConfig` and `hnsw_vector_search_with_config(...)` so callers can force exact HNSW routing and override `ef_search` without exposing turbovec bit-width as public API.
+
+### Changed
+- **Native-v3 turbovec API surface** — Removed the public bit-width parameter from `create_hnsw_index(...)`; native-v3 now keeps turbovec quantization internal and fixed at 4-bit for in-memory operation.
+- **HNSW benchmark fixtures** — Updated native-v3 benches and comprehensive tests to use the simplified `create_hnsw_index(name, dimension)` API.
+- **HNSW dimension ceiling** — Raised the practical HNSW builder cap from 4096 to 16384 dimensions so larger hidden-state vectors can be indexed directly.
+
+### Fixed
+- **Native-v3 `.sqlite` base-path corruption trap** — `V3Backend::create()` and `V3Backend::open()` now reject `.sqlite` base paths explicitly instead of colliding with the internal SQLite property-store sidecar path.
+- **Native-v3 HNSW/turbovec ID contract** — `hnsw_vector_search()` now normalizes both exact HNSW and turbovec results to `metadata.node_id`, eliminating corpus-size-dependent ID semantics.
+- **Native-v3 turbovec stderr noise** — Removed unconditional debug `eprintln!` output from turbovec build/search routing.
+- **Regression coverage** — Added native-v3 regressions for `.sqlite` base-path rejection, normalized search IDs across the HNSW/turbovec boundary, and invalid `ef_search` override rejection.
+
 ## [3.5.0] - 2026-06-29
 
 ### Added

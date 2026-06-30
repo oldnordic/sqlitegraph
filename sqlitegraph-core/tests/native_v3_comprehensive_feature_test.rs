@@ -102,7 +102,7 @@ fn test_hnsw_integration() {
     // Create HNSW index
     let dimension = 64;
     backend
-        .create_hnsw_index("test_index", dimension, 4)
+        .create_hnsw_index("test_index", dimension)
         .expect("Failed to create HNSW index");
 
     // Insert vectors with metadata
@@ -132,8 +132,7 @@ fn test_hnsw_integration() {
         .expect("Failed to perform vector search");
 
     assert!(!results.is_empty(), "Vector search should return results");
-    // Note: results contain (vector_id as i64, distance)
-    // The vector_id is the internal HNSW ID, not the graph node ID
+    assert_eq!(results[0].0, 1, "Search should return metadata node_id");
     assert!(
         results[0].1 < 0.01,
         "Should find very similar vector (distance < 0.01)"
@@ -318,7 +317,7 @@ fn test_all_features_working_together() {
 
     // 4. Create HNSW index and insert vectors
     backend
-        .create_hnsw_index("semantic_index", 64, 4)
+        .create_hnsw_index("semantic_index", 64)
         .expect("Failed to create HNSW index");
 
     let vec1: Vec<f32> = (0..64).map(|i| i as f32 * 0.01).collect();
@@ -764,7 +763,7 @@ fn test_turbovec_integration() {
     // Create HNSW index
     let dimension = 64;
     backend
-        .create_hnsw_index("turbovec_test", dimension, 4)
+        .create_hnsw_index("turbovec_test", dimension)
         .expect("Failed to create HNSW index");
 
     // Test 1: Small dataset (< 1K vectors) - should use HNSW

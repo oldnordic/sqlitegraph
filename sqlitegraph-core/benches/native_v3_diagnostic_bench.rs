@@ -20,7 +20,7 @@ fn populate_hnsw_index(
     let ctx = create_v3_bench_context(&format!("hnsw_diag_{}.db", vector_count));
 
     ctx.backend
-        .create_hnsw_index("diag_index", dimension, 4)
+        .create_hnsw_index("diag_index", dimension)
         .expect("Failed to create HNSW index");
 
     let query_vec: Vec<f32> = (0..dimension).map(|i| i as f32 * 0.01).collect();
