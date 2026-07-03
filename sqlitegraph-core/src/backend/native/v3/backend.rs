@@ -2623,25 +2623,27 @@ impl V3Backend {
     ) -> bool {
         use serde_json::Value;
 
-        // If node.data is not an object, can't match properties
-        let data_obj = match &node.data {
-            Value::Object(obj) if !obj.is_empty() => obj,
-            _ => return required_props.is_empty(), // No properties to check
-        };
-
         // Check each required property
         for (key, expected_value) in required_props {
+            match key.as_str() {
+                "kind" if node.kind == *expected_value => continue,
+                "name" if node.name == *expected_value => continue,
+                "file_path" if node.file_path.as_deref() == Some(expected_value.as_str()) => {
+                    continue;
+                }
+                _ => {}
+            }
+
+            let data_obj = match &node.data {
+                Value::Object(obj) if !obj.is_empty() => obj,
+                _ => return false,
+            };
+
             match data_obj.get(key) {
-                Some(Value::String(actual_value)) if actual_value == expected_value => {
-                    // Property matches
-                }
-                Some(Value::Number(n)) if n.to_string() == *expected_value => {
-                    // Numeric property matches (when expected as string)
-                }
-                Some(Value::Bool(b)) if b.to_string() == *expected_value => {
-                    // Boolean property matches (when expected as string)
-                }
-                _ => return false, // Property missing or doesn't match
+                Some(Value::String(actual_value)) if actual_value == expected_value => continue,
+                Some(Value::Number(n)) if n.to_string() == *expected_value => continue,
+                Some(Value::Bool(b)) if b.to_string() == *expected_value => continue,
+                _ => return false,
             }
         }
 
@@ -3448,13 +3450,73 @@ impl GraphBackend for V3Backend {
     fn pattern_search(
         &self,
         snapshot_id: SnapshotId,
-        _start: i64,
-        _pattern: &PatternQuery,
+        start: i64,
+        pattern: &PatternQuery,
     ) -> Result<Vec<PatternMatch>, SqliteGraphError> {
         Self::require_current_snapshot(snapshot_id)?;
-        Err(SqliteGraphError::Unsupported(
-            "V3 backend does not support pattern_search yet".to_string(),
-        ))
+
+        if let Some(root_constraint) = &pattern.root {
+            let root = self.get_node(snapshot_id, start)?;
+            if !root_constraint.matches(&root) {
+                return Ok(Vec::new());
+            }
+        }
+
+        let mut cache: HashMap<i64, GraphEntity> = HashMap::new();
+        let mut sequences: Vec<Vec<i64>> = vec![vec![start]];
+
+        for leg in &pattern.legs {
+            let mut next_sequences = Vec::new();
+
+            for sequence in &sequences {
+                let current = *sequence.last().expect("sequence non-empty");
+                let neighbors = self.neighbors(
+                    snapshot_id,
+                    current,
+                    NeighborQuery {
+                        direction: leg.direction,
+                        edge_type: leg.edge_type.clone(),
+                    },
+                )?;
+
+                for neighbor in neighbors {
+                    let matches_constraint = match leg.constraint.as_ref() {
+                        None => true,
+                        Some(constraint) => {
+                            let entity = if let Some(entity) = cache.get(&neighbor) {
+                                entity.clone()
+                            } else {
+                                let entity = self.get_node(snapshot_id, neighbor)?;
+                                cache.insert(neighbor, entity.clone());
+                                entity
+                            };
+                            constraint.matches(&entity)
+                        }
+                    };
+
+                    if matches_constraint {
+                        let mut next = sequence.clone();
+                        next.push(neighbor);
+                        next_sequences.push(next);
+                    }
+                }
+            }
+
+            if next_sequences.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            next_sequences.sort();
+            next_sequences.dedup();
+            sequences = next_sequences;
+        }
+
+        let mut matches: Vec<PatternMatch> = sequences
+            .into_iter()
+            .map(|nodes| PatternMatch { nodes })
+            .collect();
+        matches.sort_by(|a, b| a.nodes.cmp(&b.nodes));
+        Ok(matches)
     }
 
     fn checkpoint(&self) -> Result<(), SqliteGraphError> {

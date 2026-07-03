@@ -1,5 +1,23 @@
 # SQLiteGraph Changelog
 
+## [3.6.0] - 2026-07-03
+
+### Added
+- **Native-v3 trait-level pattern search** — Implemented `V3Backend::pattern_search(...)` with ordered leg expansion, root constraints, per-leg node constraints, and deterministic result ordering.
+- **V3-specific Cypher parity coverage** — Added focused native-v3 query tests for edge matches, label-filtered edge matches, variable-depth queries, edge-pattern `name` filters, and the still-open multi-hop Cypher gap.
+
+### Changed
+- **Security dependency bump** — Raised `lru` from `0.12` to `0.16.3+` in `sqlitegraph-core` so downstream workspaces can clear `RUSTSEC-2026-0002` from the shared dependency graph.
+- **Native-v3 user-facing status docs** — Replaced the old “full parity” messaging with an audited capability matrix and explicit query limitations.
+
+### Fixed
+- **Native-v3 edge-pattern property filters** — V3 query matching now honors semantic node fields such as `name`, `kind`, and `file_path` during edge-pattern filtering instead of checking only `node.data`.
+
+### Known limitations
+- **Native-v3 multi-hop Cypher** — Multi-hop Cypher queries on V3 still fail with `Graph introspection failed`; this remains a tracked parity gap.
+- **Native-v3 name-pattern helper semantics** — `query_nodes_by_name_pattern(...)` still uses substring semantics and does not yet match SQLite `GLOB` behavior.
+- **Native-v3 snapshot import** — `snapshot_import(...)` remains unsupported.
+
 ## [3.5.1] - 2026-06-30
 
 ### Added

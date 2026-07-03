@@ -1,6 +1,6 @@
 # SQLiteGraph Manual
 
-Usage guide for SQLiteGraph in the current 3.4.6 release line, with dual backend
+Usage guide for SQLiteGraph in the current 3.6.0 release line, with dual backend
 architecture (SQLite and Native V3).
 
 > Looking for the Python wrapper? See
@@ -18,10 +18,10 @@ architecture (SQLite and Native V3).
 
 ```toml
 [dependencies]
-sqlitegraph = "3.4.6"
+sqlitegraph = "3.6.0"
 
 # For Native V3 backend
-sqlitegraph = { version = "3.4.6", features = ["native-v3"] }
+sqlitegraph = { version = "3.6.0", features = ["native-v3"] }
 ```
 
 **System Requirements** (for native-v3 turbovec optimization):

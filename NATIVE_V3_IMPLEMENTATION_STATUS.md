@@ -1,155 +1,85 @@
 # Native-v3 Implementation Status
 
-**Date:** 2026-06-29
-**Status:** ✅ Core Features Complete
+**Date:** 2026-07-03
+**Status:** Partial parity; storage paths are strong, query parity is incomplete
+**Evidence source:** [NATIVE_V3_AUDIT.md](/home/feanor/Projects/sqlitegraph/NATIVE_V3_AUDIT.md:1)
 
 ## Overview
 
-Native-v3 backend now provides **full feature parity** with SQLite backend for cypher queries.
+Native-v3 is substantially more complete than some older caveats suggested, but it does **not** currently have full feature parity with the SQLite backend.
 
-## Implemented Features
+The audited picture is:
 
-### ✅ Pattern Matching (COMPLETE)
-**Status:** Fully implemented  
-**Implementation:** `match_triples()` uses B+Tree + edge_store for graph traversal
-- Label filtering via `kind_index`
-- Edge traversal via `V3EdgeStore.neighbors_filtered()`
-- Property filtering via `node.data`
-- Sorted results for deterministic output
+- storage, persistence, MVCC, transactions, async traversal, HNSW, and turbovec support are confirmed working
+- trait-level `pattern_search` now works on V3
+- some Cypher behavior is still proven only on the SQLite execution path, and V3 multi-hop Cypher remains incomplete
 
-### ✅ HNSW Vector Search (COMPLETE)
-**Status:** Fully implemented with turbovec optimization
-**Implementation:** HNSW indexes stored in-memory with KV persistence + turbovec compression
-- `create_hnsw_index()` - Create new HNSW indexes with configurable bit-width (2-4, default 4)
-- `get_hnsw_index()` - Retrieve existing indexes
-- `delete_hnsw_index()` - Remove indexes
-- `insert_hnsw_vector()` - Public API for vector insertion with turbovec activation tracking
-- `hnsw_vector_search()` - KNN similarity search (auto-routes to turbovec at 1K threshold)
-- **Turbovec integration:** 17× faster at 10K vectors, 13.7× faster at 50K vectors
-- Integration with existing HNSW codebase
+## Capability Matrix
 
-### ✅ MVCC Snapshots (COMPLETE)
-**Status:** Fully implemented
-**Implementation:** LSN-based snapshot versioning
-- `create_snapshot()` - Create named snapshots
-- `current_snapshot_version()` - Get current LSN
-- Snapshot isolation via `require_current_snapshot()`
-- WAL-based time travel queries
-- 16 tests passing
+| Area | Native-v3 status | Notes |
+| --- | --- | --- |
+| Basic CRUD | Confirmed working | Covered by native-v3 integration and persistence tests |
+| Reopen durability | Confirmed working | Reopen, WAL recovery, and checkpoint flows passed audited tests |
+| KV durability | Confirmed working | Flush/truncate cycle and reopen recovery passed |
+| MVCC snapshots | Confirmed working | Snapshot versioning and isolation are covered by passing tests |
+| Transactions and savepoints | Confirmed working | Transaction and rollback flows are covered by passing tests |
+| Public SQL interface | Confirmed working | `execute_sql*` paths are covered by passing tests |
+| HNSW vector search | Confirmed working | Persistence and integration tests passed |
+| Turbovec routing | Confirmed working | Covered by comprehensive feature tests |
+| Async traversal | Confirmed working | Async traversal suites passed |
+| `pattern_search` | Confirmed working | Trait-level pattern expansion now works on V3 |
+| `snapshot_import` | Not implemented | Backend explicitly returns `Unsupported` |
+| `query_nodes_by_kind` | Confirmed working | Current implementation uses the kind index |
+| `query_nodes_by_name_pattern` | Semantics mismatch | V3 does not match SQLite `GLOB` behavior |
+| Cypher parser | Confirmed working | Parser behavior is exercised by the generic Cypher suite |
+| Cypher execution parity on V3 | Not yet proven | Existing suite primarily validates SQLite execution |
+| Multi-hop Cypher on V3 | Likely incomplete | Current code path strongly suggests a gap |
+| Historical snapshot semantics for helper queries | Not yet proven | Acceptance is tested; correctness is not fully proven |
+| Power-loss durability after KV checkpoint rename | Not yet proven | No reproduced bug, but proof is incomplete |
 
-### ✅ SQL Query Interface (COMPLETE)
-**Status:** Fully implemented
-**Implementation:** Direct SQL access for property queries
-- `execute_sql()` - Execute SELECT queries with result row mapping
-- `execute_sql_params()` - Parameterized SELECT queries
-- `execute_sql_update()` - Execute INSERT/UPDATE/DELETE statements
-- `execute_sql_update_params()` - Parameterized update statements
-- Integration with SQLite connection pooling
+## Confirmed Working Areas
 
-### ✅ Transaction Management (COMPLETE)
-**Status:** Fully implemented
-**Implementation:** ACID transactions with nested savepoint support
-- `begin_transaction()` - Begin transaction with V3TransactionGuard
-- `V3TransactionGuard::commit()` - Commit transaction changes
-- `V3TransactionGuard::rollback()` - Rollback on drop (RAII)
-- `savepoint()` - Create nested transaction savepoints
-- `V3SavepointGuard` - Savepoint lifecycle management
-- WAL-backed durability with fsync at commit
+The following areas are backed by direct audit evidence in [NATIVE_V3_AUDIT.md](/home/feanor/Projects/sqlitegraph/NATIVE_V3_AUDIT.md:1):
 
-### ✅ Packed Native Edge Store (COMPLETE)
-**Status:** Fully implemented
-**Implementation:** Packed small-cluster pages + overflow pages for large adjacency lists
-- Small `(src, dir)` edge clusters now share packed 4 KiB edge pages
-- Large adjacency lists continue to use chained overflow pages
-- Reader supports packed pages, legacy single-cluster pages, and overflow pages
-- Weighted edge helpers now guarantee descending-weight neighbor order for unfiltered reads
-- `warm_neighbors_for_sources()` bulk-warms weighted adjacency caches for known source sets
-- Large-graph reopen durability remains intact after compaction
+- reopen durability and file persistence
+- KV durability and WAL recovery
+- MVCC snapshot versioning and isolation
+- transactions and nested savepoints
+- public SQL access
+- HNSW persistence and turbovec integration
+- async traversal support
 
-### ✅ Async & io_uring I/O Engine (COMPLETE)
-**Status:** Fully implemented with Linux `io_uring` support (via `rio`) and pread thread-pool fallback.
-- `AsyncGraphBackend` trait interface returning Send futures.
-- `AsyncFileCoordinator` owned-buffer coordinator for safe async I/O.
-- Lock-free async read paths for B+Tree, node, and edge stores.
-- Concurrent async BFS and K-Hop traversals.
-- Async traversal tests (`tests/v3_async_traversal_tests.rs`) and coordinator tests (`tests/v3_async_coordinator_tests.rs`).
+## Confirmed Gaps
 
-## Feature Support Matrix
+These are explicit current gaps, not speculative concerns:
 
-| Feature | SQLite Backend | Native-v3 Backend | Status |
-|---------|---------------|-------------------|----------|
-| Basic CRUD | ✅ | ✅ | Complete |
-| Simple MATCH | ✅ | ✅ | Complete |
-| Pattern MATCH (a)-[:REL]->(b) | ✅ | ✅ | **NEW** |
-| Multi-hop queries | ✅ | ✅ | **NEW** |
-| CREATE/SET/DELETE | ✅ | ✅ | Complete |
-| HNSW vector search | ✅ | ✅ | **NEW** |
-| Turbovec optimization | ❌ | ✅ | **NEW** |
-| MVCC snapshots | ✅ | ✅ | **NEW** |
-| SQL Query Interface | ✅ | ✅ | **NEW** |
-| Transaction Management | ✅ | ✅ | **NEW** |
-| Property filtering | ✅ | ✅ | Complete |
-| Label filtering | ✅ | ✅ | Complete |
-| Async Graph API & Traversals | ❌ | ✅ | **NEW** |
+- `snapshot_import` is unsupported on native-v3
+- `query_nodes_by_name_pattern` does not match SQLite `GLOB` semantics
+- multi-hop Cypher on V3 is still incomplete
 
-## CLI Usage
+## Cypher Status
 
-Both backends now support full cypher query syntax:
+Native-v3 should not currently be described as having full Cypher parity.
 
-```bash
-# SQLite backend
-sqlitegraph --backend sqlite --db graph.db query "MATCH (a)-[:CALLS]->(b) RETURN a, b"
+- The generic `cypher_tests` suite demonstrates parser behavior and SQLite-backed execution semantics.
+- That suite does not by itself prove equivalent V3 execution behavior.
+- Multi-hop Cypher on V3 is not proven and current code inspection suggests it is incomplete.
 
-# Native-v3 backend  
-sqlitegraph --backend v3 --db graph.db query "MATCH (a)-[:CALLS]->(b) RETURN a, b"
+## Documentation Correction
 
-# Pattern matching works on both
-sqlitegraph --backend sqlite query "MATCH (n:User)-[:KNOWS]->(m:User) RETURN n.name, m.name"
-sqlitegraph --backend v3 query "MATCH (n:User)-[:KNOWS]->(m:User) RETURN n.name, m.name"
+This document supersedes older wording such as:
 
-# HNSW vector queries (when indexes exist)
-sqlitegraph --backend sqlite query "CALL vector.search(index, [0.1, 0.2], 5)"
-sqlitegraph --backend v3 query "CALL vector.search(index, [0.1, 0.2], 5)"
-```
+- "full feature parity"
+- "feature-complete for cypher queries"
 
-## Architecture Alignment
+Those claims were broader than the audited evidence supports.
 
-Native-v3 now aligns with original vision from `docs/NATIVE_V3_SPEC.md`:
+## Recommended Next Work
 
-```
-✅ SQL Layer (Property Store via KV)
-✅ Graph Topology Layer (B+Tree + packed native edge store)
-✅ HNSW Semantic Layer (vector similarity search)
-✅ WAL (Write-Ahead Logging)
-✅ MVCC (snapshot isolation)
-```
+The audit now recommends this order:
 
-## Testing
-
-**Tests passing:**
-- 16 MVCC snapshot tests (`test_snapshot_*`)
-- 268 HNSW integration tests  
-- All native-v3 backend tests (`cargo test --lib --features native-v3`)
-
-**Verification commands:**
-```bash
-cargo build --release --features native-v3  # ✅ Compiles
-cargo test --lib --features native-v3           # ✅ All tests pass
-```
-
-## Performance Notes
-
-Native-v3 advantages:
-- **Binary format** - faster reads than SQLite
-- **B+Tree indexing** - O(log n) node lookups
-- **Packed edge pages** - multiple small clusters can share one 4 KiB page
-- **Overflow edge pages** - large adjacency lists still scale without truncation
-
-Native-v3 considerations:
-- Pattern matching scans kind_index (optimized via hash lookup)
-- HNSW indexes stored in-memory (persistence via KV store)
-- MVCC uses WAL LSN tracking (minimal overhead)
-
-## Conclusion
-
-**Native-v3 backend is now feature-complete** for cypher queries. Users can choose between SQLite (mature, SQL-debuggable) and native-v3 (binary format, optimized) based on their workload requirements.
+1. keep docs aligned with the audited capability matrix
+2. implement `snapshot_import` or explicitly scope it out
+3. align `query_nodes_by_name_pattern` with SQLite `GLOB` semantics if parity is the goal
+4. close the multi-hop Cypher gap on V3
+5. continue expanding V3-native Cypher execution tests

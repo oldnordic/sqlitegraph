@@ -214,4 +214,5 @@ that label metadata has been registered.
 - No WITH or UNWIND
 - No variable bindings carried across patterns (each MATCH is independent)
 - No shortestPath() function
-- Edge patterns require the SQLite backend; the V3 backend returns an error
+- Native-v3 query support is not at full SQLite parity. The audited gaps are documented in [../NATIVE_V3_IMPLEMENTATION_STATUS.md](/home/feanor/Projects/sqlitegraph/NATIVE_V3_IMPLEMENTATION_STATUS.md:1) and [../NATIVE_V3_AUDIT.md](/home/feanor/Projects/sqlitegraph/NATIVE_V3_AUDIT.md:1).
+- In particular, native-v3 still does not implement `snapshot_import`, does not yet have fully proven multi-hop Cypher parity, and still differs from SQLite in helper name-pattern semantics.

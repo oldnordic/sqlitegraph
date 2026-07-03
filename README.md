@@ -37,6 +37,28 @@ benchmarks below for workload-specific behavior.
 
 **Keyword index:** embedded graph database · HNSW vector search · Cypher · MVCC · write-ahead log · persistent homology · temporal versioning · louvain · SQLite · Native V3 · Python bindings · Rust
 
+## What's New in 3.6.0
+
+The 3.6.0 minor release tightens native-v3 query support and corrects the
+public capability story:
+
+- **Trait-level pattern search now works on native-v3** — `V3Backend::pattern_search()`
+  now supports ordered leg expansion with root and per-leg node constraints.
+- **Edge-pattern semantic filters improved** — native-v3 edge-pattern matching
+  now honors semantic node fields such as `name`, `kind`, and `file_path`.
+- **User-facing status is now audited rather than aspirational** — the native-v3
+  status docs now describe the verified feature matrix instead of claiming full
+  Cypher parity.
+
+Known native-v3 gaps remain:
+
+- multi-hop Cypher still fails on V3
+- `query_nodes_by_name_pattern(...)` still uses substring semantics instead of SQLite `GLOB`
+- `snapshot_import(...)` is still unsupported
+
+See [NATIVE_V3_IMPLEMENTATION_STATUS.md](./NATIVE_V3_IMPLEMENTATION_STATUS.md) for the
+current capability matrix.
+
 ## What's New in 3.4.6
 
 The 3.4.6 patch release tightens the native-v3 traversal path for weighted
@@ -116,7 +138,7 @@ HNSW and traversal improvements:
 
 | Feature | SQLite | Native V3 |
 |---------|--------|-----------|
-| Status | Stable | Experimental (Bugs should be reported) |
+| Status | Stable | Experimental (storage/features strong, query parity partial) |
 | Storage | `.db` file | `.graph` file |
 | Capacity model | Storage-limited | Storage-limited |
 | Graph algorithms | 35+ | 35+ |
@@ -161,10 +183,10 @@ cargo bench --features native-v3 --bench sqlite_v3_curated
 ```toml
 [dependencies]
 # SQLite backend (default)
-sqlitegraph = "3.4.6"
+sqlitegraph = "3.6.0"
 
 # OR Native V3 backend (graph-oriented storage)
-sqlitegraph = { version = "3.4.6", features = ["native-v3"] }
+sqlitegraph = { version = "3.6.0", features = ["native-v3"] }
 ```
 
 ```rust

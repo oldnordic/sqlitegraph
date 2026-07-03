@@ -19,73 +19,128 @@ use sqlitegraph::backend::native::v3::V3Backend;
 use tempfile::TempDir;
 
 /// Helper to create a V3-backed graph
-fn create_v3_backend() -> (V3Backend, TempDir) {
+fn create_v3_backend() -> (TempDir, V3Backend) {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test_v3.graph");
     let backend = V3Backend::create(&db_path).unwrap();
-    (backend, temp_dir)
+    (temp_dir, backend)
 }
 
 #[test]
-fn test_v3_pattern_search_returns_unimplemented_error() {
-    // BEFORE FIX: pattern_search returned fake vec![PatternMatch { nodes: vec![start] }]
-    // AFTER FIX: pattern_search should return explicit Unsupported error
-    let (backend, _temp_dir) = create_v3_backend();
+fn test_v3_pattern_search_matches_kind_chain() {
+    let (_temp_dir, backend) = create_v3_backend();
 
-    // Create a node to start from
-    let start_id = backend
+    let f1 = backend
         .insert_node(NodeSpec {
-            kind: "TestNode".to_string(),
-            name: "test".to_string(),
+            kind: "Function".to_string(),
+            name: "A_func".to_string(),
             file_path: None,
+            data: serde_json::json!({"name": "A_func"}),
+        })
+        .unwrap();
+    let f2 = backend
+        .insert_node(NodeSpec {
+            kind: "Function".to_string(),
+            name: "B_func".to_string(),
+            file_path: None,
+            data: serde_json::json!({"name": "B_func"}),
+        })
+        .unwrap();
+    let f3 = backend
+        .insert_node(NodeSpec {
+            kind: "Function".to_string(),
+            name: "C_func".to_string(),
+            file_path: None,
+            data: serde_json::json!({"name": "C_func"}),
+        })
+        .unwrap();
+    let s1 = backend
+        .insert_node(NodeSpec {
+            kind: "Struct".to_string(),
+            name: "S_alpha".to_string(),
+            file_path: None,
+            data: serde_json::json!({"name": "S_alpha"}),
+        })
+        .unwrap();
+    let s2 = backend
+        .insert_node(NodeSpec {
+            kind: "Struct".to_string(),
+            name: "S_beta".to_string(),
+            file_path: None,
+            data: serde_json::json!({"name": "S_beta"}),
+        })
+        .unwrap();
+
+    backend
+        .insert_edge(sqlitegraph::backend::EdgeSpec {
+            from: f1,
+            to: f2,
+            edge_type: "CALLS".to_string(),
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+    backend
+        .insert_edge(sqlitegraph::backend::EdgeSpec {
+            from: f2,
+            to: s1,
+            edge_type: "USES".to_string(),
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+    backend
+        .insert_edge(sqlitegraph::backend::EdgeSpec {
+            from: f1,
+            to: f3,
+            edge_type: "CALLS".to_string(),
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+    backend
+        .insert_edge(sqlitegraph::backend::EdgeSpec {
+            from: f3,
+            to: s2,
+            edge_type: "USES".to_string(),
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+    backend
+        .insert_edge(sqlitegraph::backend::EdgeSpec {
+            from: f2,
+            to: f3,
+            edge_type: "CALLS".to_string(),
             data: serde_json::json!({}),
         })
         .unwrap();
 
-    // Create a simple pattern query
     let pattern = PatternQuery {
-        root: None,
-        legs: vec![PatternLeg {
-            edge_type: None,
-            direction: BackendDirection::Outgoing,
-            constraint: Some(NodeConstraint::kind("TargetNode")),
-        }],
+        root: Some(NodeConstraint::kind("Function")),
+        legs: vec![
+            PatternLeg {
+                direction: BackendDirection::Outgoing,
+                edge_type: Some("CALLS".into()),
+                constraint: Some(NodeConstraint::kind("Function")),
+            },
+            PatternLeg {
+                direction: BackendDirection::Outgoing,
+                edge_type: Some("USES".into()),
+                constraint: Some(NodeConstraint::kind("Struct")),
+            },
+        ],
     };
 
-    // Attempt pattern search - should explicitly fail, not return fake results
-    let result = backend.pattern_search(sqlitegraph::SnapshotId::current(), start_id, &pattern);
+    let matches = backend
+        .pattern_search(sqlitegraph::SnapshotId::current(), f1, &pattern)
+        .expect("pattern search should succeed");
+    let sequences: Vec<Vec<i64>> = matches.into_iter().map(|m| m.nodes).collect();
 
-    // Verify we get an explicit Unsupported error, not silent fake results
-    match result {
-        Err(SqliteGraphError::Unsupported(msg)) => {
-            // Success! Error message should be informative
-            assert!(
-                msg.contains("pattern_search"),
-                "Error message should mention pattern_search"
-            );
-            assert!(
-                msg.contains("V3"),
-                "Error message should mention V3 backend"
-            );
-        }
-        Ok(matches) => {
-            panic!(
-                "pattern_search should NOT succeed with fake results! Got: {:?} \
-                   This indicates the stub is still returning fake data.",
-                matches
-            );
-        }
-        Err(other) => {
-            panic!("Expected Unsupported error, got: {:?}", other);
-        }
-    }
+    assert_eq!(sequences, vec![vec![f1, f2, s1], vec![f1, f3, s2]]);
 }
 
 #[test]
 fn test_v3_snapshot_import_returns_unimplemented_error() {
     // BEFORE FIX: snapshot_import returned ImportMetadata with zeros (pretending success)
     // AFTER FIX: snapshot_import should return explicit Unsupported error
-    let (backend, _temp_dir) = create_v3_backend();
+    let (_temp_dir, backend) = create_v3_backend();
 
     // Attempt snapshot import - should explicitly fail
     let result = backend.snapshot_import(_temp_dir.path());
@@ -121,7 +176,7 @@ fn test_v3_query_nodes_by_name_pattern_substring_not_glob() {
     // This test documents the SEMANTIC_MISMATCH between V3 and SQLite:
     // - SQLite: GLOB pattern matching (wildcards: *, ?, [chars])
     // - V3: Substring matching (contains), case-sensitive
-    let (backend, _temp_dir) = create_v3_backend();
+    let (_temp_dir, backend) = create_v3_backend();
 
     // Create nodes with specific names
     let _user = backend
@@ -168,10 +223,8 @@ fn test_v3_query_nodes_by_name_pattern_substring_not_glob() {
 }
 
 #[test]
-fn test_v3_query_nodes_by_kind_correct_but_slow() {
-    // This test documents that query_nodes_by_kind is CORRECT but uses O(n) scan
-    // vs SQLite's O(log n) indexed lookup
-    let (backend, _temp_dir) = create_v3_backend();
+fn test_v3_query_nodes_by_kind_uses_kind_index_correctly() {
+    let (_temp_dir, backend) = create_v3_backend();
 
     // Create nodes of different kinds
     let _user1 = backend
@@ -208,5 +261,5 @@ fn test_v3_query_nodes_by_kind_correct_but_slow() {
 
     assert_eq!(result.len(), 2, "Should find exactly 2 User nodes");
 
-    // Results are correct; performance is the concern (documented in code comments)
+    // Results are correct; current implementation uses the kind index.
 }
