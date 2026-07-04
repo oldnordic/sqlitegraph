@@ -7,22 +7,27 @@
 //! caused inconsistent file size metadata and data corruption during concurrent
 //! page writes.
 //!
-//! **Solution:** Single shared file handle with mutex-protected write operations.
+//! **Solution:** Single shared file handle with RwLock-protected I/O. Reads
+//! take a shared lock (concurrent readers); writes take an exclusive lock.
 
 use crate::backend::native::v3::constants::{DEFAULT_PAGE_SIZE, V3_HEADER_SIZE};
 use crate::backend::native::{NativeBackendError, NativeResult};
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use std::fs::OpenOptions;
-use std::io::{Read, Seek, SeekFrom, Write};
+#[cfg(unix)]
+use std::os::unix::fs::FileExt;
+#[cfg(windows)]
+use std::os::windows::fs::FileExt;
 use std::path::Path;
 
 /// Coordinated file handle for all V3 main DB file I/O
 ///
 /// All writes to the main DB file MUST go through this coordinator to ensure
 /// file size metadata consistency and prevent race conditions.
+/// Reads use a shared lock, enabling concurrent readers across threads.
 pub struct FileCoordinator {
     /// The underlying file handle (kept open for the lifetime of the coordinator)
-    file: Mutex<CoordinatedFile>,
+    file: RwLock<CoordinatedFile>,
     /// Path to the database file (for reopen on error)
     db_path: std::path::PathBuf,
 }
@@ -59,50 +64,31 @@ impl FileCoordinator {
         let cached_size = file.metadata().map(|m| m.len()).unwrap_or(0);
 
         Ok(Self {
-            file: Mutex::new(CoordinatedFile { file, cached_size }),
+            file: RwLock::new(CoordinatedFile { file, cached_size }),
             db_path: db_path.to_path_buf(),
         })
     }
 
     /// Write a page of data to the file at the specified offset
     ///
-    /// This method:
-    /// 1. Seeks to the offset (automatically extends file if needed)
-    /// 2. Writes the data
-    /// 3. Syncs to ensure durability
-    /// 4. Updates the cached size
-    ///
-    /// All operations are protected by a mutex to ensure atomicity.
+    /// Uses positioned I/O (`write_at`) so the file offset is not changed,
+    /// allowing concurrent writes at different offsets under the write lock.
+    /// Syncs to ensure durability and updates the cached size.
     pub fn write_page(&self, page_id: u64, data: &[u8]) -> NativeResult<()> {
-        let mut coord = self.file.lock();
+        let mut coord = self.file.write();
 
-        // Calculate offset
         let offset = Self::page_offset(page_id);
-        let _required_len = offset + data.len() as u64;
 
-        // Seek to offset (extends file automatically if beyond EOF)
-        coord
-            .file
-            .seek(SeekFrom::Start(offset))
-            .map_err(|e| NativeBackendError::IoError {
-                context: format!("Failed to seek to page {} at offset {}", page_id, offset),
-                source: e,
-            })?;
+        write_all_at(&coord.file, data, offset).map_err(|e| NativeBackendError::IoError {
+            context: format!(
+                "Failed to write page {} data ({} bytes) at offset {}",
+                page_id,
+                data.len(),
+                offset
+            ),
+            source: e,
+        })?;
 
-        // Write data
-        coord
-            .file
-            .write_all(data)
-            .map_err(|e| NativeBackendError::IoError {
-                context: format!(
-                    "Failed to write page {} data ({} bytes)",
-                    page_id,
-                    data.len()
-                ),
-                source: e,
-            })?;
-
-        // Sync to disk - ensures both data and metadata are flushed
         coord
             .file
             .sync_all()
@@ -111,7 +97,6 @@ impl FileCoordinator {
                 source: e,
             })?;
 
-        // Update cached size to actual file size (may have grown)
         let actual_size = coord.file.metadata().map(|m| m.len()).unwrap_or(0);
         coord.cached_size = actual_size;
 
@@ -120,17 +105,15 @@ impl FileCoordinator {
 
     /// Read a page of data from the file at the specified offset
     ///
-    /// Reads exactly `buffer.len()` bytes from the file. Returns an error if
-    /// the file is shorter than expected (e.g., reading beyond EOF).
+    /// Uses positioned I/O (`read_at`) so the file offset is not changed,
+    /// enabling truly concurrent reads from multiple threads under a shared
+    /// read lock. Returns an error if the file is shorter than expected.
     pub fn read_page(&self, page_id: u64, buffer: &mut [u8]) -> NativeResult<()> {
-        let mut coord = self.file.lock();
+        let coord = self.file.read();
 
-        // Calculate offset
         let offset = Self::page_offset(page_id);
         let required_len = offset + buffer.len() as u64;
 
-        // CRITICAL: Check if file is large enough before reading
-        // This provides a better error message than UnexpectedEof
         if coord.cached_size < required_len {
             return Err(NativeBackendError::IoError {
                 context: format!(
@@ -147,55 +130,31 @@ impl FileCoordinator {
             });
         }
 
-        // Seek to offset
-        coord
-            .file
-            .seek(SeekFrom::Start(offset))
-            .map_err(|e| NativeBackendError::IoError {
-                context: format!("Failed to seek to page {} at offset {}", page_id, offset),
-                source: e,
-            })?;
-
-        // Read exact number of bytes - fail if file is too short
-        coord
-            .file
-            .read_exact(buffer)
-            .map_err(|e| NativeBackendError::IoError {
-                context: format!("Failed to read page {} from disk", page_id),
-                source: e,
-            })?;
+        read_all_at(&coord.file, buffer, offset).map_err(|e| NativeBackendError::IoError {
+            context: format!(
+                "Failed to read page {} from disk at offset {}",
+                page_id, offset
+            ),
+            source: e,
+        })?;
 
         Ok(())
     }
 
     /// Write raw data at a specific offset (for external node data)
     ///
-    /// Used by V3Backend for storing large node data that doesn't fit inline.
-    /// This method extends the file if needed and writes the data atomically.
+    /// Uses positioned I/O. Extends the file if needed and writes the data
+    /// atomically under the write lock.
     pub fn write_data_at_offset(&self, offset: u64, data: &[u8]) -> NativeResult<()> {
-        let mut coord = self.file.lock();
+        let mut coord = self.file.write();
 
         let required_len = offset + data.len() as u64;
 
-        // Seek to offset (extends file automatically if needed)
-        coord
-            .file
-            .seek(SeekFrom::Start(offset))
-            .map_err(|e| NativeBackendError::IoError {
-                context: format!("Failed to seek to offset {}", offset),
-                source: e,
-            })?;
+        write_all_at(&coord.file, data, offset).map_err(|e| NativeBackendError::IoError {
+            context: format!("Failed to write external data at offset {}", offset),
+            source: e,
+        })?;
 
-        // Write data
-        coord
-            .file
-            .write_all(data)
-            .map_err(|e| NativeBackendError::IoError {
-                context: "Failed to write external data".to_string(),
-                source: e,
-            })?;
-
-        // Sync to disk
         coord
             .file
             .sync_all()
@@ -204,7 +163,6 @@ impl FileCoordinator {
                 source: e,
             })?;
 
-        // Update cached size
         if required_len > coord.cached_size {
             coord.cached_size = required_len;
         }
@@ -214,13 +172,13 @@ impl FileCoordinator {
 
     /// Get the current file size
     pub fn file_size(&self) -> u64 {
-        self.file.lock().cached_size
+        self.file.read().cached_size
     }
 
     /// Flush all pending writes to disk
     pub fn sync_all(&self) -> NativeResult<()> {
         self.file
-            .lock()
+            .write()
             .file
             .sync_all()
             .map_err(|e| NativeBackendError::IoError {
@@ -242,6 +200,45 @@ impl FileCoordinator {
     pub fn db_path(&self) -> &Path {
         &self.db_path
     }
+}
+
+/// Write all bytes at the given offset using positioned I/O.
+///
+/// Loops until all bytes are written, since `write_at` may return fewer
+/// bytes than requested. Works on `&File` without changing the file offset.
+fn write_all_at(file: &std::fs::File, mut data: &[u8], mut offset: u64) -> std::io::Result<()> {
+    while !data.is_empty() {
+        let written = file.write_at(data, offset)?;
+        if written == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::WriteZero,
+                "write_at returned 0 bytes",
+            ));
+        }
+        data = &data[written..];
+        offset += written as u64;
+    }
+    Ok(())
+}
+
+/// Read exactly `buffer.len()` bytes at the given offset using positioned I/O.
+///
+/// Loops until the buffer is full, since `read_at` may return fewer bytes
+/// than requested. Works on `&File` without changing the file offset.
+fn read_all_at(file: &std::fs::File, buffer: &mut [u8], mut offset: u64) -> std::io::Result<()> {
+    let mut filled = 0;
+    while filled < buffer.len() {
+        let read = file.read_at(&mut buffer[filled..], offset)?;
+        if read == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::UnexpectedEof,
+                "read_at returned 0 bytes before buffer was full",
+            ));
+        }
+        filled += read;
+        offset += read as u64;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

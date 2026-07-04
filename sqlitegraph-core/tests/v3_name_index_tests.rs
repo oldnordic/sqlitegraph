@@ -198,13 +198,27 @@ fn test_name_index_special_patterns() {
         .unwrap();
     assert_eq!(result.len(), 1, "middle some_*func should match some_func");
 
-    // Single char wildcard → exact match (no literal some_func? exists)
+    // Single char wildcard (?) — GLOB parity: matches exactly one char.
+    // "some_func?" matches "some_func1" but not "some_func" (no trailing char).
+    backend
+        .insert_node(NodeSpec {
+            kind: "Function".to_string(),
+            name: "some_func1".to_string(),
+            file_path: None,
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+
     let result = backend
         .query_nodes_by_name_pattern(SnapshotId::current(), "some_func?")
         .unwrap();
-    assert_eq!(result.len(), 0, "? is treated as literal, no match");
+    assert_eq!(
+        result.len(),
+        1,
+        "? is a single-char GLOB wildcard: 'some_func?' should match 'some_func1'"
+    );
 
-    // Character class → exact match (no literal some_func[abc] exists)
+    // Character class ([abc]) — not supported by V3, treated as literal.
     let result = backend
         .query_nodes_by_name_pattern(SnapshotId::current(), "some_func[abc]")
         .unwrap();

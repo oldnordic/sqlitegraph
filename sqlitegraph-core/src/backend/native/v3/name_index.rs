@@ -4,11 +4,10 @@
 //! - Exact match: "my_func" → O(1) lookup
 //! - Prefix match: "my_func*" → O(k) lookup where k = matches
 //! - Substring match: "func" → O(n) lookup where n = unique names (contains)
+//! - GLOB match: "my_*func?" → O(n) lookup with `*` (any sequence) and
+//!   `?` (exactly one char) wildcards, mirroring SQLite GLOB semantics.
 //!
 //! Does NOT support:
-//! - Suffix match: "*func"
-//! - Middle wildcard: "my*func"
-//! - Single char wildcard: "func?bar"
 //! - Character classes: "func[abc]"
 
 use parking_lot::RwLock;
@@ -82,6 +81,23 @@ impl NameIndex {
         result
     }
 
+    /// GLOB match lookup.
+    ///
+    /// Matches names against a SQLite-style GLOB pattern where `*` matches any
+    /// sequence of characters (including empty) and `?` matches exactly one
+    /// character. The match is case-sensitive and the whole name must match
+    /// (anchored). This is O(n) where n = unique names in the index.
+    pub fn get_glob(&self, pattern: &str) -> Vec<i64> {
+        let index = self.inner.read();
+        let mut result = Vec::new();
+        for (name, ids) in index.iter() {
+            if glob_match(pattern, name) {
+                result.extend(ids.clone());
+            }
+        }
+        result
+    }
+
     /// Get index statistics
     pub fn stats(&self) -> NameIndexStats {
         let index = self.inner.read();
@@ -112,9 +128,112 @@ impl NameIndex {
     }
 }
 
+/// Match a string against a SQLite-style GLOB pattern.
+///
+/// Wildcards: `*` matches any sequence of characters (including empty), `?`
+/// matches exactly one character. The match is case-sensitive and anchored
+/// (the entire `text` must match the entire `pattern`). This mirrors the
+/// semantics of SQLite's `name GLOB pattern` operator for the `*` and `?`
+/// metacharacters (character classes `[...]` are intentionally not supported
+/// and are treated as literals).
+///
+/// Implemented as a recursive backtracking matcher over `&str` slices.
+fn glob_match(pattern: &str, text: &str) -> bool {
+    let mut p = pattern.chars().peekable();
+    let t: Vec<char> = text.chars().collect();
+    glob_match_inner(&mut p, &t, 0)
+}
+
+/// Recursive core of [`glob_match`].
+///
+/// `p` is the remaining pattern (peekable char iterator) and `chars` is the
+/// full text with `idx` pointing at the current character under consideration.
+fn glob_match_inner<I: Iterator<Item = char>>(
+    p: &mut std::iter::Peekable<I>,
+    chars: &[char],
+    mut idx: usize,
+) -> bool {
+    loop {
+        match p.next() {
+            None => return idx == chars.len(),
+            Some('?') => {
+                // Exactly one character required.
+                if idx >= chars.len() {
+                    return false;
+                }
+                idx += 1;
+            }
+            Some('*') => {
+                // Collapse consecutive '*' (a**b === a*b).
+                while p.peek() == Some(&'*') {
+                    p.next();
+                }
+                // '*' can match the rest greedily; try every possible split,
+                // including matching zero characters (idx unchanged).
+                let rest: Vec<char> = p.by_ref().collect();
+                for end in idx..=chars.len() {
+                    let mut rp = rest.iter().copied().peekable();
+                    if glob_match_inner(&mut rp, chars, end) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            Some(literal) => {
+                if idx >= chars.len() || chars[idx] != literal {
+                    return false;
+                }
+                idx += 1;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_glob_match_basic() {
+        // No wildcards → exact, anchored.
+        assert!(glob_match("User", "User"));
+        assert!(!glob_match("User", "SuperUser"));
+        assert!(!glob_match("User", "UserAdmin"));
+        assert!(!glob_match("User", "Use"));
+        // Trailing star → prefix.
+        assert!(glob_match("User*", "User"));
+        assert!(glob_match("User*", "UserAdmin"));
+        assert!(!glob_match("User*", "SuperUser"));
+        // Leading star → suffix.
+        assert!(glob_match("*User", "User"));
+        assert!(glob_match("*User", "SuperUser"));
+        assert!(!glob_match("*User", "UserAdmin"));
+        // Star both sides → contains.
+        assert!(glob_match("*User*", "User"));
+        assert!(glob_match("*User*", "SuperUser"));
+        assert!(glob_match("*User*", "UserAdmin"));
+        // Single-char wildcard '?'.
+        assert!(glob_match("User?", "User1"));
+        assert!(!glob_match("User?", "User"));
+        assert!(!glob_match("User?", "User12"));
+        assert!(glob_match("?ser", "User"));
+        assert!(glob_match("Us?r", "User"));
+        // Mixed wildcards.
+        assert!(glob_match("U*r?", "User1"));
+        assert!(glob_match("U*r?", "Usr1"));
+        assert!(!glob_match("U*r?", "Usr"));
+        // Bare star matches everything (including empty).
+        assert!(glob_match("*", ""));
+        assert!(glob_match("*", "anything"));
+        // Consecutive stars collapse.
+        assert!(glob_match("a**b", "axyzb"));
+        assert!(glob_match("a**b", "ab"));
+        // Empty pattern matches only empty text.
+        assert!(glob_match("", ""));
+        assert!(!glob_match("", "x"));
+        // Case sensitivity (GLOB is case-sensitive).
+        assert!(!glob_match("user", "User"));
+    }
 
     #[test]
     fn test_exact_match() {

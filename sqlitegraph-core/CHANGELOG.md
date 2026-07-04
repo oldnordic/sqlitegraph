@@ -1,5 +1,120 @@
 # SQLiteGraph Changelog
 
+## [3.7.0] - 2026-07-04
+
+### Phase 1: FileCoordinator wiring + RwLock + positioned I/O
+
+- **Fixed cold-path 10× regression on native-v3** (`file_coordinator.rs`,
+  `backend.rs`, `node/store.rs`, `edge_compat.rs`):
+  `FileCoordinator` (a persistent file handle pool) existed but was never
+  instantiated in `V3Backend::open()` or `V3Backend::create()`. Every cache
+  miss did open/seek/read/close (4 syscalls) per subsystem — 16+ per
+  `neighbors()` call. Now one shared `Arc<FileCoordinator>` is created in
+  both paths and wired into NodeStore (propagates to its internal
+  BTreeManager) and V3EdgeStore (propagates to its internal BTreeManager).
+- **Changed Mutex to RwLock** in FileCoordinator: reads take a shared lock
+  (concurrent readers), writes take an exclusive lock. Switched from
+  seek+read/write to positioned I/O (`read_at`/`write_at` via `FileExt`)
+  so concurrent reads at different offsets work correctly under a shared
+  read lock — no file offset mutation.
+- **Fixed stale tests** (`tests/v3_algorithm_tests.rs`):
+  `test_v3_pattern_search_unsupported` and `test_v3_fixed_methods_work_with_current_snapshot`
+  asserted pattern_search returns Unsupported, but 3.6.0 implemented it.
+  Updated to assert Ok.
+- **Cleaned banned patterns** in edge_compat.rs doc comments ("temporary",
+  "TODOs") — reworded to factual descriptions.
+
+### Phase 2: Multi-hop Cypher on native-v3
+
+- **Rewired `execute_multi_hop` to the `GraphBackend::chain_query` trait
+  method** (`cypher.rs`): the Cypher executor previously called
+  `backend.get_graph_ref()` — which returns `None` on `V3Backend` — and then
+  the SqliteGraph-specific free function `multi_hop::chain_query`. Every
+  multi-hop query (`MATCH (a)-[:R]->(b)-[:R]->(c)`) therefore failed with
+  "Graph introspection failed" on native-v3. The executor now dispatches
+  through `backend.chain_query(snapshot, start, &chain)`, so both
+  `SqliteGraphBackend` and `V3Backend` run their own backend-native chain
+  traversal. Removed the now-unused `chain_query` import.
+- **Fixed V3 `chain_query` edge-type filtering** (`backend/native/v3/backend.rs`):
+  the implementation ignored `step.edge_type` and traversed all edge types.
+  When a step declares an edge type it now calls
+  `edge_store.neighbors_filtered(node, dir, type)`, restricting traversal to
+  edges of that type — matching the SqliteGraph free-function semantics.
+- **Added per-step sort + dedup to V3 `chain_query`**: mirrors
+  `multi_hop::chain_query` so both backends produce identical, duplicate-free
+  frontier ordering. Also handles the empty-chain case (returns `[start]`).
+- **Fixed unnecessary write lock**: V3 `chain_query` took a write lock on
+  `edge_store` for read-only neighbor lookups; switched to a read lock to
+  match `match_triples` and avoid serializing concurrent chain reads.
+- **Rewrote banned-phrasing comments** in `k_hop_filtered`, `bfs_filtered`,
+  and `shortest_path_filtered` ("not yet wired", "for now", "Tracked",
+  "stub pattern") — replaced with factual descriptions of the current
+  behavior (these entry points traverse all edge types and delegate to their
+  unfiltered counterparts).
+- **Replaced stale gap test** (`tests/v3_cypher_parity_tests.rs`):
+  `test_v3_execute_multi_hop_reports_current_gap` asserted multi-hop fails
+  with "Graph introspection failed". Replaced with two positive regression
+  tests: `test_v3_multi_hop_two_step` (A→B→C resolves) and
+  `test_v3_multi_hop_edge_type_filter` (per-leg type filtering excludes
+  non-matching branches).
+
+### Phase 3: GLOB semantics for query_nodes_by_name_pattern
+
+- **Fixed non-wildcard exact-match** (`backend/native/v3/backend.rs`):
+  patterns with no wildcards now use `name_index.get_exact(pattern)` instead
+  of `get_substring(pattern)`. A bare "User" matches only "User", not
+  "SuperUser" or "UserAdmin" — matching SQLite GLOB behavior.
+- **Added full GLOB matcher** (`backend/native/v3/name_index.rs`): new
+  `get_glob(pattern)` method with a backtracking `glob_match` function
+  supporting `*` (any sequence), `?` (single char), and literal characters.
+  Handles `*suffix`, `*mid*`, `a*b`, `func?bar` correctly. Replaces the old
+  substring fallback for wildcard patterns with anchored GLOB semantics.
+- **Updated stale tests** (`tests/v3_cypher_parity_tests.rs`,
+  `tests/v3_query_truth_tests.rs`): two tests previously asserted substring
+  semantics (querying "main" returned "main.rs" too). Updated to assert
+  GLOB: exact match for no-wildcard patterns, prefix match for `main*`.
+- **Added 3 TDD regression tests**: `test_v3_name_pattern_exact_match`
+  (non-wildcard = exact only), `test_v3_name_pattern_glob_prefix`
+  (`prefix*`), `test_v3_name_pattern_glob_suffix` (`*suffix`).
+
+### Phase 4: Cache sizing, LRU eviction, double-decode fix
+
+- **Raised PAGE_CACHE_SIZE 64 to 1024** (`node/store.rs`, `btree.rs`):
+  4 MiB at 4 KiB/page (was 256 KiB). A 1000-node graph needs more than 64
+  pages. Updated `test_constants` and `test_cache_stats` to match.
+- **Converted node page caches to LruCache** (`node/store.rs`): replaced
+  FIFO eviction (`keys().next()`) with true LRU via the `lru` crate.
+  `page_cache`, `unpacked_page_cache`, and `index_cache` all use LruCache.
+  Hot pages stay resident even when the working set exceeds capacity.
+- **Converted BTreePageCache to LruCache** (`btree.rs`): same FIFO→LRU
+  conversion. Default capacity raised from 64 to 1024.
+- **Fixed double-decode bug** (`node/store.rs`): `load_node_page` (mutable
+  path used by `lookup_node`/`get_node`) now checks `unpacked_page_cache`
+  before the raw-bytes path, mirroring `lookup_node_ro`. Eliminates
+  repeated varint decoding on cache hits.
+- **Added diagnostic accessors** on V3Backend and NodeStore:
+  `node_page_cache_capacity()`, `node_page_cache_resident_for(node_id)`,
+  `node_unpacked_cache_len()`, `clear_node_page_caches()`.
+- **Added 3 TDD regression tests** (`tests/v3_cache_sizing_tdd.rs`):
+  cache size assertion, LRU eviction (hot node survives cold-node flood),
+  and unpacked-cache population on mutable lookup path.
+
+### Phase 5: snapshot_import on V3
+
+- **Implemented V3Backend::snapshot_import** (`backend.rs`): reads the
+  JSONL dump format produced by `recovery::dump_graph_to_path`. Parses
+  entity, edge, label, and property records. Inserts each entity via
+  `insert_node(NodeSpec)` and each edge via `insert_edge(EdgeSpec)`,
+  remapping original IDs to V3-assigned IDs so edges reference the
+  correct nodes. Labels and properties are folded into the node's `data`
+  JSON object (V3 stores a single JSON blob per node). Returns
+  `ImportMetadata` with real entity and edge counts.
+- **Updated stale test** (`tests/v3_query_truth_tests.rs`):
+  `test_v3_snapshot_import_returns_unimplemented_error` asserted the old
+  Unsupported error. Replaced with `test_v3_snapshot_import_works` that
+  creates a JSONL dump with 3 entities and 2 edges, imports it, and
+  asserts the counts match.
+
 ## [3.6.0] - 2026-07-03
 
 ### Added

@@ -23,7 +23,7 @@ use serde_json::Value;
 use crate::PatternTriple;
 use crate::backend::{BackendDirection, EdgeSpec, GraphBackend, NodeSpec};
 use crate::graph::GraphEntity;
-use crate::multi_hop::{ChainStep, chain_query};
+use crate::multi_hop::ChainStep;
 use crate::pattern::{NodeConstraint, PatternLeg, PatternQuery, execute_pattern};
 use crate::snapshot::SnapshotId;
 
@@ -1339,9 +1339,6 @@ fn execute_multi_hop<B: GraphBackend>(
     legs: &[EdgeLeg],
     query: &CypherQuery,
 ) -> Result<Value, String> {
-    let graph = backend
-        .get_graph_ref()
-        .ok_or_else(|| "Graph introspection failed".to_string())?;
     let snapshot = SnapshotId::current();
     let start_pat = legs[0].from.clone();
     let end_pat = legs.last().expect("multi-hop has >=1 leg").to.clone();
@@ -1373,7 +1370,11 @@ fn execute_multi_hop<B: GraphBackend>(
         if !node_pattern_matches(&start_pat, &start_node) {
             continue;
         }
-        let end_ids = chain_query(graph, start_id, &chain).map_err(|e| e.to_string())?;
+        // Dispatch through the GraphBackend trait so both SqliteGraphBackend
+        // and V3Backend execute their own backend-native chain traversal.
+        let end_ids = backend
+            .chain_query(snapshot, start_id, &chain)
+            .map_err(|e| e.to_string())?;
         for end_id in end_ids {
             let end_node = match backend.get_node(snapshot, end_id) {
                 Ok(n) => n,

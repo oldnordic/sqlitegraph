@@ -1,6 +1,6 @@
 [package]
 name = "sqlitegraph"
-version = "3.6.0"
+version = "3.7.0"
 edition = "2024"
 rust-version = "1.89"
 description = "Embedded graph database with full ACID transactions, HNSW vector search, dual backend support, and comprehensive graph algorithms library"
@@ -182,6 +182,10 @@ harness = false
 required-features = ["native-v3"]
 
 # Parallel BFS benchmarks (requires native-v3 feature)
+[[bench]]
+name = "readpath_probe"
+harness = false
+required-features = ["native-v3"]
 [[bench]]
 name = "parallel_bfs"
 harness = false

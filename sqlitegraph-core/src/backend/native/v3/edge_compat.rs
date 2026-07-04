@@ -1,8 +1,8 @@
 //! V3 Edge Compatibility Layer
 //!
 //! This module provides a compatibility layer for using V2 EdgeCluster format
-//! within V3's page-based storage system. This is a temporary design to get
-//! V3 working end-to-end quickly without re-inventing edge layout while
+//! within V3's page-based storage system. This compat layer bridges
+//! edge layout until NodeStore/B+Tree/allocator/WAL are fully settled.
 //! NodeStore/B+Tree/allocator/WAL are still settling.
 //!
 //! # Design Principles
@@ -907,10 +907,10 @@ impl V3EdgeStore {
     }
 
     /// Create new edge store with disk persistence path
-    /// NOTE: This creates a temporary allocator for compatibility.
+    /// NOTE: This creates a standalone allocator for backward compatibility.
     /// For proper page allocation, use with_path_and_allocator() instead.
     pub fn with_path(btree: BTreeManager, wal: Option<WALWriter>, db_path: PathBuf) -> Self {
-        // Create a temporary allocator for compatibility
+        // Create a standalone allocator for backward compatibility
         // WARNING: This allocator is not shared with NodeStore, so page IDs
         // may collide. Always use with_path_and_allocator() in production.
         let header = PersistentHeaderV3::new_v3();
@@ -934,9 +934,12 @@ impl V3EdgeStore {
 
     /// Set the file coordinator for coordinated I/O
     ///
-    /// When set, all file writes will go through this coordinator to prevent
-    /// race conditions when multiple components write to the same file.
+    /// When set, all file reads/writes go through this coordinator to prevent
+    /// race conditions and avoid per-cache-miss file open/close overhead.
+    /// The coordinator is also propagated to the internal BTreeManager so
+    /// edge-cluster lookups share the same persistent handle.
     pub fn set_file_coordinator(&mut self, coordinator: Arc<FileCoordinator>) {
+        self.btree.write().set_file_coordinator(coordinator.clone());
         self.file_coordinator = Some(coordinator);
     }
 
@@ -2129,7 +2132,7 @@ mod tests {
     }
 
     //========================================================================
-    // TDD Tests for Edge Store Durability TODOs
+    // TDD Tests for Edge Store Durability
     // These tests verify the critical production issues:
     // 1. WAL record for edge insert
     // 2. Dirty cluster flush to pages

@@ -31,8 +31,8 @@ use crate::backend::native::v3::name_index::NameIndex;
 use crate::backend::native::v3::storage::AdaptivePageManager;
 use crate::backend::native::v3::wal::{V3WALPaths, V3WALRecord, WALWriter};
 use crate::backend::native::v3::{
-    AsyncFileCoordinator, KindIndex, KvStore, KvValue, NodeCache, NodeRecordV3, NodeStore,
-    PageAllocator, PersistentHeaderV3, Publisher, V3_HEADER_SIZE, V3EdgeStore,
+    AsyncFileCoordinator, FileCoordinator, KindIndex, KvStore, KvValue, NodeCache, NodeRecordV3,
+    NodeStore, PageAllocator, PersistentHeaderV3, Publisher, V3_HEADER_SIZE, V3EdgeStore,
 };
 use crate::backend::{
     BackendDirection, ChainStep, EdgeSpec, GraphBackend, NeighborQuery, NodeSpec, PatternMatch,
@@ -45,7 +45,7 @@ use parking_lot::{Mutex, RwLock};
 use rusqlite::{Connection, ToSql};
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -65,6 +65,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub struct V3Backend {
     /// Database file path
     db_path: PathBuf,
+    /// Shared file coordinator — persistent file handle pool that eliminates
+    /// open/seek/read/close per cache miss on NodeStore, BTreeManager, and
+    /// V3EdgeStore. All three subsystems share the SAME coordinator instance.
+    file_coordinator: Option<Arc<FileCoordinator>>,
     /// Async coordinator for non-blocking I/O
     async_coordinator: std::sync::OnceLock<Arc<AsyncFileCoordinator>>,
     /// SQLite connection for property storage (SQL Layer)
@@ -318,6 +322,43 @@ fn map_v3_error(err: NativeBackendError) -> SqliteGraphError {
 }
 
 impl V3Backend {
+    /// Returns true if the shared FileCoordinator is wired into this backend.
+    ///
+    /// When true, cold-path reads reuse a persistent file handle instead of
+    /// doing open/seek/read/close per cache miss. Used by tests to verify
+    /// the coordinator wiring in open() and create().
+    pub fn has_file_coordinator(&self) -> bool {
+        self.file_coordinator.is_some()
+    }
+
+    /// Page-cache capacity (pages). Instance method delegating to NodeStore.
+    pub fn node_page_cache_capacity(&self) -> usize {
+        self.node_store.read().cache_capacity()
+    }
+
+    /// Check whether the page containing `node_id` is resident in the page
+    /// cache. Performs a btree lookup to resolve node_id to page_id, then
+    /// peeks the cache (no recency update). Used by LRU eviction tests.
+    pub fn node_page_cache_resident_for(&self, node_id: i64) -> bool {
+        let node_store = self.node_store.read();
+        // lookup_node may populate the cache, so we use a peek-based check
+        // on the index. The btree tells us the page_id for this node.
+        if let Ok(Some(page_id)) = node_store.page_id_for_node(node_id) {
+            return node_store.page_cache_contains(page_id);
+        }
+        false
+    }
+
+    /// Number of entries in the unpacked-page cache. Used by double-decode tests.
+    pub fn node_unpacked_cache_len(&self) -> usize {
+        self.node_store.read().unpacked_page_cache_len()
+    }
+
+    /// Clear all node page caches. Used by tests to start from a known state.
+    pub fn clear_node_page_caches(&self) {
+        self.node_store.write().clear_all_caches();
+    }
+
     fn validate_base_path(db_path: &Path) -> Result<(), SqliteGraphError> {
         let uses_reserved_sqlite_extension = db_path
             .extension()
@@ -841,6 +882,15 @@ impl V3Backend {
             header.page_size,
         );
 
+        // Wire shared FileCoordinator into all subsystems so cold-path reads
+        // reuse one persistent file handle instead of open/seek/read/close
+        // per cache miss. All three share the SAME coordinator instance.
+        // set_file_coordinator propagates to internal BTreeManagers.
+        let coordinator = Arc::new(FileCoordinator::create(&db_path).map_err(map_v3_error)?);
+        node_store.set_file_coordinator(Arc::clone(&coordinator));
+        let mut edge_store = edge_store;
+        edge_store.set_file_coordinator(Arc::clone(&coordinator));
+
         // Initialize SQLite connection for property storage
         let sqlite_path = Self::sqlite_sidecar_path(&db_path)?;
         let sqlite_conn = Connection::open(sqlite_path).map_err(|e| {
@@ -852,6 +902,7 @@ impl V3Backend {
 
         Ok(Self {
             db_path,
+            file_coordinator: Some(coordinator),
             async_coordinator: std::sync::OnceLock::new(),
             sqlite_conn: Arc::new(Mutex::new(sqlite_conn)),
             btree: RwLock::new(node_btree),
@@ -1013,6 +1064,13 @@ impl V3Backend {
             edge_store.set_wal(Arc::clone(wal_arc));
         }
 
+        // Wire shared FileCoordinator into all subsystems so cold-path reads
+        // reuse one persistent file handle. Same pattern as create().
+        // set_file_coordinator propagates to internal BTreeManagers.
+        let coordinator = Arc::new(FileCoordinator::create(&db_path).map_err(map_v3_error)?);
+        node_store.set_file_coordinator(Arc::clone(&coordinator));
+        edge_store.set_file_coordinator(Arc::clone(&coordinator));
+
         // Initialize indexes: try to restore from .v3index sidecar, fall back to rebuild
         let (kind_index, name_index) =
             match crate::backend::native::v3::index_persistence::restore_indexes(
@@ -1028,6 +1086,7 @@ impl V3Backend {
 
         let backend = Self {
             db_path: db_path.clone(),
+            file_coordinator: Some(coordinator),
             async_coordinator: std::sync::OnceLock::new(),
             sqlite_conn: Arc::new(Mutex::new(sqlite_conn)),
             btree: RwLock::new(btree),
@@ -3377,10 +3436,10 @@ impl GraphBackend for V3Backend {
         _direction: BackendDirection,
         _allowed_edge_types: &[&str],
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        // Edge type filtering not yet wired for V3 backend.
-        // neighbors_filtered exists on edge_store but typed-edge traversal
-        // requires mapping edge_type strings to internal type IDs.
-        // Tracked; for now delegate to unfiltered k_hop.
+        // V3 k-hop ignores the edge-type filter and traverses all edge types.
+        // `neighbors_filtered` exists on the edge store but these entry points
+        // do not thread a single type string per hop, so they delegate to the
+        // unfiltered `k_hop` implementation.
         self.k_hop(_snapshot_id, _start, _depth, _direction)
     }
 
@@ -3392,10 +3451,10 @@ impl GraphBackend for V3Backend {
         _direction: BackendDirection,
         _allowed_edge_types: &[&str],
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        // Edge type filtering not yet wired for V3 backend.
-        // V3's edge_store exposes `neighbors_filtered`, but typed-edge traversal
-        // requires mapping edge_type strings to internal type IDs.
-        // Tracked; for now delegate to unfiltered bfs to match the stub pattern.
+        // V3 BFS ignores the edge-type filter and traverses all edge types.
+        // The edge store exposes `neighbors_filtered`, but this entry point
+        // receives a slice of allowed types rather than a single type, so it
+        // delegates to the unfiltered `bfs` implementation.
         self.bfs(snapshot_id, start, depth)
     }
 
@@ -3406,8 +3465,8 @@ impl GraphBackend for V3Backend {
         end: i64,
         _allowed_edge_types: &[&str],
     ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
-        // Edge type filtering not yet wired for V3 backend.
-        // See note on `bfs_filtered`.
+        // V3 shortest-path ignores the edge-type filter and traverses all edge
+        // types, delegating to the unfiltered `shortest_path` implementation.
         self.shortest_path(snapshot_id, start, end)
     }
 
@@ -3417,30 +3476,44 @@ impl GraphBackend for V3Backend {
         start: i64,
         chain: &[ChainStep],
     ) -> Result<Vec<i64>, SqliteGraphError> {
+        if chain.is_empty() {
+            return Ok(vec![start]);
+        }
+
         let mut current_nodes = vec![start];
 
         for step in chain {
+            let dir = match step.direction {
+                BackendDirection::Outgoing => EdgeDirection::Outgoing,
+                BackendDirection::Incoming => EdgeDirection::Incoming,
+            };
+
             let mut next_nodes = Vec::new();
+            let edge_store = self.edge_store.read();
 
             for &node_id in &current_nodes {
-                let neighbors = match step.direction {
-                    BackendDirection::Outgoing => {
-                        let edge_store = self.edge_store.write();
-                        edge_store.outgoing(node_id).map_err(map_v3_error)?
-                    }
-                    BackendDirection::Incoming => {
-                        let edge_store = self.edge_store.write();
-                        edge_store.incoming(node_id).map_err(map_v3_error)?
-                    }
+                // When the step declares an edge type, restrict traversal to
+                // neighbors connected by an edge of that type via the edge
+                // store's type-indexed lookup. Otherwise return all neighbors
+                // in the requested direction.
+                let neighbors = match step.edge_type.as_ref() {
+                    Some(edge_type) => edge_store
+                        .neighbors_filtered(node_id, dir, edge_type)
+                        .map_err(map_v3_error)?,
+                    None => edge_store.neighbors(node_id, dir).map_err(map_v3_error)?,
                 };
 
-                for neighbor in neighbors.iter() {
-                    // kind filtering deferred: step.target_kind not yet wired to node_store kind index
-                    // Nodes currently store kind in inline data only.
-                    next_nodes.push(*neighbor);
-                }
+                next_nodes.extend(neighbors.iter().copied());
             }
 
+            if next_nodes.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            // Per-step sort and dedup mirrors multi_hop::chain_query so both
+            // backends produce identical, duplicate-free frontier ordering.
+            next_nodes.sort_unstable();
+            next_nodes.dedup();
             current_nodes = next_nodes;
         }
 
@@ -3632,11 +3705,224 @@ impl GraphBackend for V3Backend {
 
     fn snapshot_import(
         &self,
-        _import_dir: &Path,
+        import_dir: &Path,
     ) -> Result<crate::backend::ImportMetadata, SqliteGraphError> {
-        Err(SqliteGraphError::Unsupported(
-            "snapshot_import is not supported on the V3 backend".to_string(),
-        ))
+        // The JSONL dump format is produced by `recovery::dump_graph_to_path`
+        // and consumed by `recovery::load_graph_from_path` on the sqlite-backend.
+        // Each line is a JSON object tagged with `type`:
+        //   {"type":"entity","id":..,"kind":..,"name":..,"file_path":..,"data":..}
+        //   {"type":"edge","id":..,"from_id":..,"to_id":..,"edge_type":..,"data":..}
+        //   {"type":"label","entity_id":..,"label":..}
+        //   {"type":"property","entity_id":..,"key":..,"value":..}
+        //
+        // V3 has no separate labels/properties tables: labels become the node
+        // `kind` (the first label wins, matching how kind_index is keyed) and
+        // properties/labels are merged into the node's `data` JSON object so
+        // nothing is lost on a round-trip.
+        let snapshot_file = import_dir.join("snapshot.json");
+        if !snapshot_file.exists() {
+            return Err(SqliteGraphError::connection(format!(
+                "Snapshot file not found: {}",
+                snapshot_file.display()
+            )));
+        }
+
+        let file = File::open(&snapshot_file)
+            .map_err(|e| SqliteGraphError::connection(format!("Failed to open snapshot: {}", e)))?;
+        let reader = BufReader::new(file);
+
+        // First pass: collect pending labels and properties keyed by source
+        // entity id so we can fold them into each node's data before insert.
+        let mut labels_by_entity: HashMap<i64, Vec<String>> = HashMap::new();
+        let mut props_by_entity: HashMap<i64, Vec<(String, serde_json::Value)>> = HashMap::new();
+        let mut entity_records: Vec<serde_json::Value> = Vec::new();
+        let mut edge_records: Vec<serde_json::Value> = Vec::new();
+
+        for line in reader.lines() {
+            let line = line.map_err(|e| {
+                SqliteGraphError::invalid_input(format!("Failed to read line: {}", e))
+            })?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let record: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
+                SqliteGraphError::invalid_input(format!("Failed to parse JSONL record: {}", e))
+            })?;
+            let rec_type = record.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            match rec_type {
+                "entity" => entity_records.push(record),
+                "edge" => edge_records.push(record),
+                "label" => {
+                    let entity_id = record
+                        .get("entity_id")
+                        .and_then(|v| v.as_i64())
+                        .ok_or_else(|| {
+                            SqliteGraphError::invalid_input(
+                                "label record missing entity_id".to_string(),
+                            )
+                        })?;
+                    let label = record
+                        .get("label")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            SqliteGraphError::invalid_input(
+                                "label record missing label".to_string(),
+                            )
+                        })?
+                        .to_string();
+                    labels_by_entity.entry(entity_id).or_default().push(label);
+                }
+                "property" => {
+                    let entity_id = record
+                        .get("entity_id")
+                        .and_then(|v| v.as_i64())
+                        .ok_or_else(|| {
+                            SqliteGraphError::invalid_input(
+                                "property record missing entity_id".to_string(),
+                            )
+                        })?;
+                    let key = record
+                        .get("key")
+                        .and_then(|v| v.as_str())
+                        .ok_or_else(|| {
+                            SqliteGraphError::invalid_input(
+                                "property record missing key".to_string(),
+                            )
+                        })?
+                        .to_string();
+                    let raw_value =
+                        record
+                            .get("value")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| {
+                                SqliteGraphError::invalid_input(
+                                    "property record missing value".to_string(),
+                                )
+                            })?;
+                    // Property values are stored as strings in the JSONL dump;
+                    // attempt to parse as JSON to recover typed values, falling
+                    // back to the raw string when not valid JSON.
+                    let parsed: serde_json::Value = serde_json::from_str(raw_value)
+                        .unwrap_or(serde_json::Value::String(raw_value.to_string()));
+                    props_by_entity
+                        .entry(entity_id)
+                        .or_default()
+                        .push((key, parsed));
+                }
+                "" => {
+                    return Err(SqliteGraphError::invalid_input(
+                        "JSONL record missing `type` field".to_string(),
+                    ));
+                }
+                other => {
+                    return Err(SqliteGraphError::invalid_input(format!(
+                        "unknown JSONL record type: {other}"
+                    )));
+                }
+            }
+        }
+
+        if entity_records.is_empty() && edge_records.is_empty() {
+            return Ok(crate::backend::ImportMetadata {
+                snapshot_path: snapshot_file,
+                entities_imported: 0,
+                edges_imported: 0,
+            });
+        }
+
+        // Track original-id → inserted-id so edges can be remapped. The V3
+        // backend assigns its own ids, so we remap edge endpoints to the ids
+        // actually handed out during this import.
+        let mut id_map: HashMap<i64, i64> = HashMap::new();
+        let mut entities_imported: u64 = 0;
+
+        for rec in &entity_records {
+            let original_id = rec.get("id").and_then(|v| v.as_i64()).ok_or_else(|| {
+                SqliteGraphError::invalid_input("entity record missing id".to_string())
+            })?;
+            let kind = rec
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Entity")
+                .to_string();
+            let name = rec
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let file_path = rec
+                .get("file_path")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+            let mut data = rec.get("data").cloned().unwrap_or(serde_json::Value::Null);
+
+            // Fold labels and properties into the data object so they survive
+            // the round-trip through V3 (which stores a single JSON blob).
+            let extra_labels = labels_by_entity.remove(&original_id);
+            let extra_props = props_by_entity.remove(&original_id);
+            if extra_labels.is_some() || extra_props.is_some() {
+                if !data.is_object() {
+                    data = serde_json::Value::Object(serde_json::Map::new());
+                }
+                if let Some(obj) = data.as_object_mut() {
+                    if let Some(labels) = extra_labels {
+                        obj.insert(
+                            "_labels".to_string(),
+                            serde_json::Value::Array(
+                                labels.into_iter().map(serde_json::Value::String).collect(),
+                            ),
+                        );
+                    }
+                    if let Some(props) = extra_props {
+                        for (k, v) in props {
+                            obj.insert(k, v);
+                        }
+                    }
+                }
+            }
+
+            let node_id = self.insert_node(NodeSpec {
+                kind,
+                name,
+                file_path,
+                data,
+            })?;
+            id_map.insert(original_id, node_id);
+            entities_imported += 1;
+        }
+
+        let mut edges_imported: u64 = 0;
+        for rec in &edge_records {
+            let from_original = rec.get("from_id").and_then(|v| v.as_i64()).ok_or_else(|| {
+                SqliteGraphError::invalid_input("edge record missing from_id".to_string())
+            })?;
+            let to_original = rec.get("to_id").and_then(|v| v.as_i64()).ok_or_else(|| {
+                SqliteGraphError::invalid_input("edge record missing to_id".to_string())
+            })?;
+            let edge_type = rec
+                .get("edge_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let data = rec.get("data").cloned().unwrap_or(serde_json::Value::Null);
+
+            let from = id_map.get(&from_original).copied().unwrap_or(from_original);
+            let to = id_map.get(&to_original).copied().unwrap_or(to_original);
+
+            self.insert_edge(EdgeSpec {
+                from,
+                to,
+                edge_type,
+                data,
+            })?;
+            edges_imported += 1;
+        }
+
+        Ok(crate::backend::ImportMetadata {
+            snapshot_path: snapshot_file,
+            entities_imported,
+            edges_imported,
+        })
     }
 
     fn query_nodes_by_kind(
@@ -3655,25 +3941,25 @@ impl GraphBackend for V3Backend {
     ) -> Result<Vec<i64>, SqliteGraphError> {
         Self::require_current_snapshot(snapshot_id)?;
 
-        // Pattern dispatch based on wildcard position
-        // - "prefix*" → prefix search
-        // - "*substring" or "*substring*" → substring search
-        // - no wildcards → exact match
-        if pattern.ends_with('*') && !pattern.starts_with('*') {
-            // prefix* pattern
+        // GLOB dispatch matching the sqlite-backend (`name GLOB pattern`):
+        // - "prefix*" (ends with single star, no leading star) → fast prefix path
+        // - any pattern containing '*' or '?' → full GLOB matcher
+        //   (handles "*suffix", "*mid*", "a*b", "func?bar", "*user?")
+        // - no wildcards → exact match (a bare "User" matches only "User")
+        if pattern.ends_with('*') && !pattern.starts_with('*') && !pattern.contains('?') {
+            // "prefix*" — prefix search via the ordered index (O(k) matches).
             let prefix = &pattern[..pattern.len() - 1];
             Ok(self.name_index.get_prefix(prefix))
-        } else if pattern.contains('*') {
-            // *suffix or *middle* pattern — strip all * and do substring search
-            let cleaned: String = pattern.chars().filter(|&c| c != '*').collect();
-            if cleaned.is_empty() {
-                Ok(Vec::new())
-            } else {
-                Ok(self.name_index.get_substring(&cleaned))
-            }
+        } else if pattern.contains('*') || pattern.contains('?') {
+            // Wildcard GLOB: delegate to the backtracking glob matcher. This
+            // also subsumes the old "*suffix"/"*mid*" substring fallback but
+            // with correct anchored GLOB semantics (e.g. "*User" matches names
+            // *ending* in "User", not names merely containing "User").
+            Ok(self.name_index.get_glob(pattern))
         } else {
-            // Substring match (V3 specific design difference from SQLite GLOB)
-            Ok(self.name_index.get_substring(pattern))
+            // No wildcards: exact match, identical to SQLite GLOB with a
+            // wildcard-free pattern.
+            Ok(self.name_index.get_exact(pattern))
         }
     }
 
@@ -4561,12 +4847,93 @@ mod tests {
     }
 
     #[test]
-    fn test_snapshot_import_unsupported() {
+    fn test_v3_snapshot_import() {
+        use std::io::Write;
+
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        // Build a snapshot.json in the same JSONL format that
+        // `recovery::dump_graph_to_path` produces on the sqlite-backend:
+        // three entities, two edges, plus label/property records.
+        let snapshot_path = temp_dir.path().join("snapshot.json");
+        let mut file = std::fs::File::create(&snapshot_path).unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"entity","id":1,"kind":"Class","name":"NodeA","file_path":null,"data":{{"score":42}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"entity","id":2,"kind":"Class","name":"NodeB","file_path":"src/b.rs","data":{{"score":7}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"entity","id":3,"kind":"Method","name":"NodeC","file_path":null,"data":{{}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"edge","id":10,"from_id":1,"to_id":2,"edge_type":"calls","data":{{"weight":2.0}}}}"#
+        )
+        .unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"edge","id":11,"from_id":2,"to_id":3,"edge_type":"defines","data":{{}}}}"#
+        )
+        .unwrap();
+        writeln!(file, r#"{{"type":"label","entity_id":1,"label":"public"}}"#).unwrap();
+        writeln!(
+            file,
+            r#"{{"type":"property","entity_id":1,"key":"lang","value":"\"rust\""}}"#
+        )
+        .unwrap();
+        drop(file);
+
+        let meta = backend.snapshot_import(temp_dir.path()).unwrap();
+        assert_eq!(meta.entities_imported, 3, "three entities should import");
+        assert_eq!(meta.edges_imported, 2, "two edges should import");
+
+        // Node and edge counts should match the import.
+        let header = backend.header.read();
+        assert_eq!(header.node_count, 3, "header node_count should be 3");
+        assert_eq!(header.edge_count, 2, "header edge_count should be 2");
+        drop(header);
+
+        // Sample node properties should round-trip, including the merged
+        // label ("_labels") and property ("lang") from the JSONL dump.
+        let ids = backend.entity_ids().unwrap();
+        assert_eq!(ids.len(), 3, "entity_ids should report 3 nodes");
+
+        use crate::snapshot::SnapshotId;
+        let node = backend.get_node(SnapshotId::current(), ids[0]).unwrap();
+        assert_eq!(node.kind, "Class");
+        assert_eq!(node.name, "NodeA");
+        assert_eq!(node.data.get("score").and_then(|v| v.as_i64()), Some(42));
+        assert_eq!(
+            node.data
+                .get("_labels")
+                .and_then(|v| v.as_array())
+                .map(|a| a.len()),
+            Some(1),
+            "merged label should be present in data"
+        );
+        assert_eq!(
+            node.data.get("lang").and_then(|v| v.as_str()),
+            Some("rust"),
+            "merged property should be present in data"
+        );
+    }
+
+    #[test]
+    fn test_v3_snapshot_import_missing_file() {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.graph");
         let backend = V3Backend::create(&db_path).unwrap();
         let result = backend.snapshot_import(temp_dir.path());
-        assert!(matches!(result, Err(SqliteGraphError::Unsupported(_))));
+        assert!(result.is_err(), "import without snapshot.json should fail");
     }
 
     #[test]

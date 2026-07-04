@@ -31,10 +31,12 @@ use crate::backend::native::v3::header::PersistentHeaderV3;
 use crate::backend::native::v3::index::IndexPage;
 use crate::backend::native::v3::node::{NodePage, NodeRecordV3};
 use crate::backend::native::v3::wal::WALWriter;
+use lru::LruCache;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -45,10 +47,24 @@ use std::sync::Arc;
 /// Maximum B+Tree height for safety
 const MAX_TREE_HEIGHT: u32 = 10;
 
-/// Page cache size for NodeStore
-/// Default of 64 pages was determined by cache capacity sweep benchmark
-/// to provide 100% hit rate for typical workloads (256KB at 4KB/page)
-const PAGE_CACHE_SIZE: usize = 64;
+/// Page cache size for NodeStore.
+///
+/// 1024 pages = 4 MiB at the 4 KiB default page size. This holds the working
+/// set of graphs up to ~16k nodes without thrashing. The previous value of 64
+/// pages (256 KiB) evicted constantly on any graph larger than a few hundred
+/// nodes. Eviction is LRU (least-recently-used), so hot pages stay resident
+/// even when the working set exceeds capacity.
+pub const PAGE_CACHE_SIZE: usize = 1024;
+
+/// Construct a page-cache-sized `LruCache` for `PAGE_CACHE_SIZE` entries.
+fn new_page_cache<K: std::hash::Hash + Eq, V>() -> LruCache<K, V> {
+    LruCache::new(NonZeroUsize::new(PAGE_CACHE_SIZE).expect("PAGE_CACHE_SIZE > 0"))
+}
+
+/// Construct an `LruCache` of an explicit capacity (used by `with_capacity`).
+fn new_lru<K: std::hash::Hash + Eq, V>(capacity: usize) -> LruCache<K, V> {
+    LruCache::new(NonZeroUsize::new(capacity.max(1)).expect("capacity must be >= 1"))
+}
 
 /// Default capacity for TraversalCache
 /// Default of 64 pages was determined by cache capacity sweep benchmark
@@ -188,10 +204,12 @@ pub struct NodeStore {
     tree_height: u32,
     /// Thread-safe node page cache - accessible from both read and write contexts
     /// This fixes the cache bypass bug where read-only lookups couldn't populate the cache.
-    page_cache: Arc<RwLock<HashMap<u64, Vec<u8>>>>,
+    /// Bounded LRU cache: hot pages stay resident, least-recently-used evicted on overflow.
+    page_cache: Arc<RwLock<LruCache<u64, Vec<u8>>>>,
     /// Cache of unpacked NodePages - avoids repeated unpacking on cache hits
-    /// This is a separate cache from page_cache because unpacked pages are more expensive to reconstruct
-    unpacked_page_cache: Arc<RwLock<HashMap<u64, Arc<NodePage>>>>,
+    /// This is a separate cache from page_cache because unpacked pages are more expensive to reconstruct.
+    /// Bounded LRU cache (same capacity as `page_cache`).
+    unpacked_page_cache: Arc<RwLock<LruCache<u64, Arc<NodePage>>>>,
     cache_capacity: usize,
     /// Block ID of the most recently accessed page (for block-aware eviction)
     /// PROTOTYPE: Track current access block to prefer retaining same-block pages
@@ -202,7 +220,7 @@ pub struct NodeStore {
     block_preferred_pages: HashMap<i64, Vec<u64>>,
     /// Maximum preferred pages to track per block (tunable)
     max_preferred_pages_per_block: usize,
-    index_cache: HashMap<u64, IndexPage>,
+    index_cache: LruCache<u64, IndexPage>,
     /// B+Tree manager for index operations
     btree_manager: Option<BTreeManager>,
     /// Page allocator for page management (shared with BTreeManager)
@@ -224,13 +242,13 @@ impl NodeStore {
             file_coordinator: None,
             root_page_id: header.root_index_page,
             tree_height: header.btree_height,
-            page_cache: Arc::new(RwLock::new(HashMap::with_capacity(PAGE_CACHE_SIZE))),
-            unpacked_page_cache: Arc::new(RwLock::new(HashMap::with_capacity(PAGE_CACHE_SIZE))),
+            page_cache: Arc::new(RwLock::new(new_page_cache())),
+            unpacked_page_cache: Arc::new(RwLock::new(new_page_cache())),
             cache_capacity: PAGE_CACHE_SIZE,
             current_access_block: std::sync::atomic::AtomicI64::new(-1),
             block_preferred_pages: HashMap::new(),
             max_preferred_pages_per_block: 3,
-            index_cache: HashMap::with_capacity(PAGE_CACHE_SIZE),
+            index_cache: new_page_cache(),
             btree_manager: None,
             page_allocator: None,
             wal_writer: None,
@@ -244,12 +262,47 @@ impl NodeStore {
         &self.btree_manager
     }
 
-    pub fn page_cache_ref(&self) -> &Arc<RwLock<HashMap<u64, Vec<u8>>>> {
+    pub fn page_cache_ref(&self) -> &Arc<RwLock<LruCache<u64, Vec<u8>>>> {
         &self.page_cache
     }
 
-    pub fn unpacked_page_cache_ref(&self) -> &Arc<RwLock<HashMap<u64, Arc<NodePage>>>> {
+    pub fn unpacked_page_cache_ref(&self) -> &Arc<RwLock<LruCache<u64, Arc<NodePage>>>> {
         &self.unpacked_page_cache
+    }
+
+    /// Configured page-cache capacity (pages).
+    pub fn cache_capacity(&self) -> usize {
+        self.cache_capacity
+    }
+
+    /// Current number of resident entries in the raw-bytes page cache.
+    pub fn page_cache_len(&self) -> usize {
+        self.page_cache.read().len()
+    }
+
+    /// Current number of resident entries in the unpacked-page cache.
+    pub fn unpacked_page_cache_len(&self) -> usize {
+        self.unpacked_page_cache.read().len()
+    }
+
+    /// Whether `page_id` is currently resident in the raw-bytes page cache.
+    /// Uses `peek` (no recency update) so the check itself doesn't perturb LRU order.
+    pub fn page_cache_contains(&self, page_id: u64) -> bool {
+        self.page_cache.read().peek(&page_id).is_some()
+    }
+
+    /// Resolve the page_id for a given node_id via the btree index.
+    /// Read-only (no cache side effects). Used by cache-residency tests.
+    pub fn page_id_for_node(&self, node_id: i64) -> NativeResult<Option<u64>> {
+        self.lookup_page_ro(node_id)
+    }
+
+    /// Clear both the raw-bytes page cache and the unpacked-page cache, and the
+    /// index cache. Used by tests and on cache invalidation.
+    pub fn clear_all_caches(&mut self) {
+        self.page_cache.write().clear();
+        self.unpacked_page_cache.write().clear();
+        self.index_cache.clear();
     }
 
     pub fn with_capacity(
@@ -262,13 +315,13 @@ impl NodeStore {
             file_coordinator: None,
             root_page_id: header.root_index_page,
             tree_height: header.btree_height,
-            page_cache: Arc::new(RwLock::new(HashMap::with_capacity(cache_capacity))),
-            unpacked_page_cache: Arc::new(RwLock::new(HashMap::with_capacity(cache_capacity))),
+            page_cache: Arc::new(RwLock::new(new_lru(cache_capacity))),
+            unpacked_page_cache: Arc::new(RwLock::new(new_lru(cache_capacity))),
             cache_capacity,
             current_access_block: std::sync::atomic::AtomicI64::new(-1),
             block_preferred_pages: HashMap::new(),
             max_preferred_pages_per_block: 3,
-            index_cache: HashMap::with_capacity(cache_capacity),
+            index_cache: new_lru(cache_capacity),
             btree_manager: None,
             page_allocator: None,
             wal_writer: None,
@@ -297,9 +350,14 @@ impl NodeStore {
 
     /// Set the file coordinator for coordinated I/O
     ///
-    /// When set, all file writes will go through this coordinator to prevent
-    /// race conditions when multiple components write to the same file.
+    /// When set, all file reads/writes go through this coordinator to prevent
+    /// race conditions and avoid per-cache-miss file open/close overhead.
+    /// The coordinator is also propagated to the internal BTreeManager so
+    /// index-page lookups share the same persistent handle.
     pub fn set_file_coordinator(&mut self, coordinator: Arc<FileCoordinator>) {
+        if let Some(ref mut btree) = self.btree_manager {
+            btree.set_file_coordinator(Arc::clone(&coordinator));
+        }
         self.file_coordinator = Some(coordinator);
     }
 
@@ -900,13 +958,30 @@ impl NodeStore {
             return Ok(page.clone());
         }
 
-        // Try cache next
+        // Check the unpacked-page cache BEFORE the raw-bytes cache. This avoids
+        // re-running NodePage::unpack (varint decode) on every mutable-path hit
+        // — the double-decode bug. lookup_node_ro already did this; load_node_page
+        // (used by the mutable lookup_node path) previously did not, so every
+        // cache hit re-decoded the page.
+        if let Some(cached_page) = self.unpacked_page_cache_get(page_id) {
+            #[cfg(feature = "v3-forensics")]
+            FORENSIC_COUNTERS
+                .node_page_cache_hit_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            return Ok((*cached_page).clone());
+        }
+
+        // Fall back to the raw-bytes page cache. A hit here still requires an
+        // unpack, but we then promote the decoded page into the unpacked cache so
+        // subsequent reads skip the decode.
         if let Some(cached) = self.page_cache_get(page_id) {
             #[cfg(feature = "v3-forensics")]
             FORENSIC_COUNTERS
                 .node_page_cache_hit_count
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            return NodePage::unpack(&cached);
+            let page = NodePage::unpack(&cached)?;
+            self.unpacked_page_cache_insert(page_id, Arc::new(page.clone()));
+            return Ok(page);
         }
 
         // Load from disk (will count page_read_count and track misses)
@@ -915,7 +990,11 @@ impl NodeStore {
         FORENSIC_COUNTERS
             .node_page_cache_miss_count
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        NodePage::unpack(&page_bytes)
+        let page = NodePage::unpack(&page_bytes)?;
+        // Populate both caches so the next read is an unpacked-cache hit.
+        self.page_cache_insert(page_id, page_bytes);
+        self.unpacked_page_cache_insert(page_id, Arc::new(page.clone()));
+        Ok(page)
     }
 
     /// Write a NodePage to disk
@@ -1137,8 +1216,8 @@ impl NodeStore {
             } else {
                 let page_bytes = self.load_page_from_disk(current_page_id)?;
                 let index = IndexPage::unpack(&page_bytes)?;
-                self.evict_index_cache_if_needed();
-                self.index_cache.insert(current_page_id, index.clone());
+                // LruCache::put enforces capacity and evicts the LRU index page.
+                self.index_cache.put(current_page_id, index.clone());
                 index
             };
 
@@ -1295,17 +1374,6 @@ impl NodeStore {
         Some(block_id)
     }
 
-    /// Block-aware page cache eviction
-    ///
-    fn evict_index_cache_if_needed(&mut self) {
-        if self.index_cache.len() >= self.cache_capacity {
-            // Get first key by cloning a key from the map
-            if let Some(key) = self.index_cache.keys().next().copied() {
-                self.index_cache.remove(&key);
-            }
-        }
-    }
-
     pub fn clear_cache(&mut self) {
         self.page_cache.write().clear();
         self.index_cache.clear();
@@ -1319,9 +1387,11 @@ impl NodeStore {
     // Thread-safe page cache helpers
     //=========================================================================
 
-    /// Get page from cache (read-only access)
+    /// Get page from cache. Updates LRU recency on a hit (takes a write lock)
+    /// so that frequently-read pages survive eviction.
     fn page_cache_get(&self, page_id: u64) -> Option<Vec<u8>> {
-        self.page_cache.read().get(&page_id).cloned()
+        let mut cache = self.page_cache.write();
+        cache.get(&page_id).cloned()
     }
 
     /// Insert page into cache (read-only access)
@@ -1339,15 +1409,8 @@ impl NodeStore {
         self.unpacked_page_cache_invalidate(page_id);
 
         let mut cache = self.page_cache.write();
-        cache.insert(page_id, data);
-
-        // Enforce capacity limit
-        if cache.len() > self.cache_capacity {
-            // Simple FIFO: remove oldest entry
-            if let Some(key) = cache.keys().next().copied() {
-                cache.remove(&key);
-            }
-        }
+        // LruCache::put handles capacity enforcement and eviction (LRU) automatically.
+        cache.put(page_id, data);
     }
 
     /// Insert page into cache only if not already present (avoids write lock on concurrent hits)
@@ -1359,10 +1422,11 @@ impl NodeStore {
                 .store(block_id, std::sync::atomic::Ordering::Relaxed);
         }
 
-        // Check if already in cache (read lock) before acquiring write lock
+        // Check if already in cache (read lock) before acquiring write lock.
+        // peek() does not update recency and works under a shared read lock.
         {
             let cache_read = self.page_cache.read();
-            if cache_read.contains_key(&page_id) {
+            if cache_read.peek(&page_id).is_some() {
                 // Another thread already inserted this page, skip write lock
                 return;
             }
@@ -1371,43 +1435,31 @@ impl NodeStore {
         // Acquire write lock only when needed
         let mut cache = self.page_cache.write();
         // Double-check in case another thread inserted while we were waiting for write lock
-        if cache.contains_key(&page_id) {
+        if cache.peek(&page_id).is_some() {
             return;
         }
-        cache.insert(page_id, data);
-
-        // Enforce capacity limit
-        if cache.len() > self.cache_capacity {
-            // Simple FIFO: remove oldest entry
-            if let Some(key) = cache.keys().next().copied() {
-                cache.remove(&key);
-            }
-        }
+        // LruCache::put enforces capacity and evicts the least-recently-used entry.
+        cache.put(page_id, data);
     }
 
-    /// Get an unpacked NodePage from cache
+    /// Get an unpacked NodePage from cache. Updates LRU recency on a hit.
     fn unpacked_page_cache_get(&self, page_id: u64) -> Option<Arc<NodePage>> {
-        let cache = self.unpacked_page_cache.read();
+        let mut cache = self.unpacked_page_cache.write();
         cache.get(&page_id).cloned()
     }
 
     /// Insert an unpacked NodePage into cache
     fn unpacked_page_cache_insert(&self, page_id: u64, page: Arc<NodePage>) {
         let mut cache = self.unpacked_page_cache.write();
-        cache.insert(page_id, page);
-
-        // Enforce capacity limit (share same limit as raw page cache)
-        if cache.len() > self.cache_capacity
-            && let Some(key) = cache.keys().next().copied()
-        {
-            cache.remove(&key);
-        }
+        // LruCache::put enforces capacity (same limit as the raw page cache) and
+        // evicts the least-recently-used unpacked page automatically.
+        cache.put(page_id, page);
     }
 
     /// Invalidate unpacked page cache entry (call after modifying a page)
     fn unpacked_page_cache_invalidate(&self, page_id: u64) {
         let mut cache = self.unpacked_page_cache.write();
-        cache.remove(&page_id);
+        cache.pop(&page_id);
     }
 
     pub fn update_root(&mut self, new_root: u64) {
@@ -1901,7 +1953,7 @@ mod tests {
     #[test]
     fn test_constants() {
         assert_eq!(MAX_TREE_HEIGHT, 10);
-        assert_eq!(PAGE_CACHE_SIZE, 64);
+        assert_eq!(PAGE_CACHE_SIZE, 1024);
     }
 
     #[test]
@@ -1956,8 +2008,8 @@ mod tests {
 /// Standalone async node lookup function that takes references to avoid holding RwLockReadGuard across awaits
 pub async fn lookup_node_async(
     btree_manager: &Option<BTreeManager>,
-    page_cache: &Arc<RwLock<HashMap<u64, Vec<u8>>>>,
-    unpacked_page_cache: &Arc<RwLock<HashMap<u64, Arc<NodePage>>>>,
+    page_cache: &Arc<RwLock<LruCache<u64, Vec<u8>>>>,
+    unpacked_page_cache: &Arc<RwLock<LruCache<u64, Arc<NodePage>>>>,
     node_id: i64,
     async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
 ) -> Result<Option<NodeRecordV3>, crate::errors::SqliteGraphError> {
@@ -1966,10 +2018,10 @@ pub async fn lookup_node_async(
         None => return Ok(None),
     };
 
-    // check unpacked page cache
+    // check unpacked page cache (peek to avoid perturbing LRU order under the read lock)
     {
         let cache = unpacked_page_cache.read();
-        if let Some(cached_page) = cache.get(&page_id) {
+        if let Some(cached_page) = cache.peek(&page_id) {
             return match cached_page.find_node(node_id) {
                 Some(node_ref) => Ok(Some(node_ref.clone())),
                 None => Ok(None),
@@ -1987,7 +2039,7 @@ pub async fn lookup_node_async(
         None => Ok(None),
     };
 
-    unpacked_page_cache.write().insert(page_id, Arc::new(page));
+    unpacked_page_cache.write().put(page_id, Arc::new(page));
     result
 }
 
@@ -2003,13 +2055,15 @@ async fn lookup_page_async(
 }
 
 async fn load_page_cache_async(
-    page_cache: &Arc<RwLock<HashMap<u64, Vec<u8>>>>,
+    page_cache: &Arc<RwLock<LruCache<u64, Vec<u8>>>>,
     page_id: u64,
     async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
 ) -> Result<Vec<u8>, crate::errors::SqliteGraphError> {
     {
+        // peek under a read lock; a real LRU recency bump is not needed on the
+        // async path because the unpacked cache (checked above) is the hot tier.
         let cache = page_cache.read();
-        if let Some(cached) = cache.get(&page_id) {
+        if let Some(cached) = cache.peek(&page_id) {
             return Ok(cached.clone());
         }
     }
@@ -2017,6 +2071,6 @@ async fn load_page_cache_async(
     let buf = vec![0u8; DEFAULT_PAGE_SIZE as usize];
     let (buf, _) = async_coordinator.read_page(page_id, buf).await?;
 
-    page_cache.write().insert(page_id, buf.clone());
+    page_cache.write().put(page_id, buf.clone());
     Ok(buf)
 }

@@ -160,13 +160,14 @@ fn test_v3_execute_edge_pattern_with_name_filters() {
 }
 
 #[test]
-fn test_v3_query_nodes_by_name_pattern_uses_substring_semantics() {
+fn test_v3_query_nodes_by_name_pattern_uses_glob_semantics() {
     let (_temp_dir, backend) = build_test_graph();
-    let node_ids = backend
+
+    // No-wildcard pattern matches exactly (GLOB semantics), not as substring.
+    let exact_ids = backend
         .query_nodes_by_name_pattern(SnapshotId::current(), "main")
         .expect("query nodes by name pattern");
-
-    let mut names: Vec<String> = node_ids
+    let exact_names: Vec<String> = exact_ids
         .into_iter()
         .map(|id| {
             backend
@@ -175,9 +176,26 @@ fn test_v3_query_nodes_by_name_pattern_uses_substring_semantics() {
                 .name
         })
         .collect();
-    names.sort();
+    assert_eq!(exact_names, vec!["main".to_string()]);
 
-    assert_eq!(names, vec!["main".to_string(), "main.rs".to_string()]);
+    // Prefix wildcard "main*" matches main and main.rs.
+    let prefix_ids = backend
+        .query_nodes_by_name_pattern(SnapshotId::current(), "main*")
+        .expect("query nodes by name pattern");
+    let mut prefix_names: Vec<String> = prefix_ids
+        .into_iter()
+        .map(|id| {
+            backend
+                .get_node(SnapshotId::current(), id)
+                .expect("get node")
+                .name
+        })
+        .collect();
+    prefix_names.sort();
+    assert_eq!(
+        prefix_names,
+        vec!["main".to_string(), "main.rs".to_string()]
+    );
 }
 
 #[test]
@@ -192,15 +210,103 @@ fn test_v3_execute_variable_depth() {
     assert_eq!(results.len(), 2);
 }
 
+/// Two-step multi-hop over a chain A→B→C must resolve the terminal node.
+///
+/// Regression for the Phase 2 wiring: previously `execute_multi_hop` called
+/// `backend.get_graph_ref()` which returns `None` on V3Backend, so every
+/// multi-hop query failed with "Graph introspection failed". After the rewire
+/// to `backend.chain_query()`, the result must contain C.
 #[test]
-fn test_v3_execute_multi_hop_reports_current_gap() {
+fn test_v3_multi_hop_two_step() {
     let (_temp_dir, backend) = build_test_graph();
+    // build_test_graph wires main -[:CALLS]-> helper -[:CALLS]-> util.
     let query = cypher::parse("MATCH (a)-[:CALLS]->(b)-[:CALLS]->(c) RETURN a.name, c.name")
         .expect("parse");
-    let err = cypher::execute(&backend, &query).expect_err("multi-hop should fail on V3 today");
+    let result = cypher::execute(&backend, &query).expect("execute");
 
-    assert!(
-        err.contains("Graph introspection failed"),
-        "unexpected V3 multi-hop error: {err}"
+    let pairs = sorted_name_pairs(&result, "a.name", "c.name");
+    assert_eq!(
+        pairs,
+        vec![("main".to_string(), "util".to_string())],
+        "two-step multi-hop must resolve main -> util"
+    );
+}
+
+/// Edge-type filtering across hops: only paths whose every leg matches the
+/// declared edge type survive. With KNOWS and LIKES legs, a KNOWS-only
+/// branch (A-[:KNOWS]->D) must NOT appear in the LIKES-filtered second hop.
+#[test]
+fn test_v3_multi_hop_edge_type_filter() {
+    let (_temp_dir, backend) = create_v3_backend();
+
+    let a = backend
+        .insert_node(NodeSpec {
+            kind: "Person".into(),
+            name: "A".into(),
+            file_path: None,
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+    let b = backend
+        .insert_node(NodeSpec {
+            kind: "Person".into(),
+            name: "B".into(),
+            file_path: None,
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+    let c = backend
+        .insert_node(NodeSpec {
+            kind: "Person".into(),
+            name: "C".into(),
+            file_path: None,
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+    let d = backend
+        .insert_node(NodeSpec {
+            kind: "Person".into(),
+            name: "D".into(),
+            file_path: None,
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+
+    backend
+        .insert_edge(EdgeSpec {
+            from: a,
+            to: b,
+            edge_type: "KNOWS".into(),
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+    backend
+        .insert_edge(EdgeSpec {
+            from: b,
+            to: c,
+            edge_type: "LIKES".into(),
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+    backend
+        .insert_edge(EdgeSpec {
+            from: a,
+            to: d,
+            edge_type: "KNOWS".into(),
+            data: serde_json::json!({}),
+        })
+        .unwrap();
+
+    // First hop KNOWS, second hop LIKES. Only A-[:KNOWS]->B-[:LIKES]->C
+    // survives; D has no outgoing LIKES edge.
+    let query = cypher::parse("MATCH (a)-[:KNOWS]->(b)-[:LIKES]->(c) RETURN a.name, c.name")
+        .expect("parse");
+    let result = cypher::execute(&backend, &query).expect("execute");
+
+    let pairs = sorted_name_pairs(&result, "a.name", "c.name");
+    assert_eq!(
+        pairs,
+        vec![("A".to_string(), "C".to_string())],
+        "edge-type-filtered multi-hop must return only A->C, not D"
     );
 }

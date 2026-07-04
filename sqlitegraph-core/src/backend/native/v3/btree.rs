@@ -53,39 +53,33 @@ use std::sync::Arc;
 /// enabling cache persistence across backend reopen cycles.
 #[derive(Clone)]
 pub struct BTreePageCache {
-    inner: Arc<RwLock<HashMap<u64, IndexPage>>>,
+    inner: Arc<RwLock<lru::LruCache<u64, IndexPage>>>,
     capacity: usize,
 }
 
 impl BTreePageCache {
     /// Create a new shared page cache with the given capacity
     pub fn new(capacity: usize) -> Self {
+        let cap = std::num::NonZeroUsize::new(capacity.max(1)).expect("capacity must be >= 1");
         Self {
-            inner: Arc::new(RwLock::new(HashMap::with_capacity(capacity))),
+            inner: Arc::new(RwLock::new(lru::LruCache::new(cap))),
             capacity,
         }
     }
 
-    /// Create a new shared page cache with default capacity (64 pages)
+    /// Create a new shared page cache with default capacity (1024 pages = 4 MiB)
     pub fn with_default_capacity() -> Self {
-        Self::new(64)
+        Self::new(1024)
     }
 
-    /// Get a page from the cache (returns clone if found)
+    /// Get a page from the cache (returns clone if found, updates recency)
     pub fn get(&self, page_id: u64) -> Option<IndexPage> {
-        self.inner.read().get(&page_id).cloned()
+        self.inner.write().get(&page_id).cloned()
     }
 
-    /// Insert a page into the cache, evicting old entries if at capacity
+    /// Insert a page into the cache. LRU eviction handles capacity automatically.
     pub fn insert(&self, page_id: u64, page: IndexPage) {
-        let mut cache = self.inner.write();
-        if cache.len() >= self.capacity && !cache.contains_key(&page_id) {
-            // Simple FIFO eviction: remove the first key
-            if let Some(&oldest) = cache.keys().next() {
-                cache.remove(&oldest);
-            }
-        }
-        cache.insert(page_id, page);
+        self.inner.write().put(page_id, page);
     }
 
     /// Clear all entries from the cache
@@ -1471,7 +1465,7 @@ mod tests {
 
         let (len, capacity) = manager.cache_stats();
         assert_eq!(len, 0);
-        assert_eq!(capacity, 64);
+        assert_eq!(capacity, 1024);
     }
 
     #[test]

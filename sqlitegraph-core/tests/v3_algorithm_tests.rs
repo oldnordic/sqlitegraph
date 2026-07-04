@@ -4,7 +4,6 @@
 //! using only the GraphBackend trait methods.
 
 use sqlitegraph::{
-    SqliteGraphError,
     backend::native::v3::V3Backend,
     backend::{EdgeSpec, GraphBackend, NodeSpec},
 };
@@ -1621,9 +1620,10 @@ fn test_v3_snapshot_current_works() {
 // historical snapshots.
 // ============================================================================
 
-/// Test that pattern_search returns Unsupported regardless of snapshot
+/// Test that pattern_search works on V3 (implemented in 3.6.0).
+/// Previously returned Unsupported; now returns Ok with match results.
 #[test]
-fn test_v3_pattern_search_unsupported() {
+fn test_v3_pattern_search_implemented() {
     use sqlitegraph::snapshot::SnapshotId;
 
     let (backend, _temp) = create_v3_backend();
@@ -1637,18 +1637,13 @@ fn test_v3_pattern_search_unsupported() {
         })
         .unwrap();
 
-    // pattern_search is not yet implemented for V3 — returns Unsupported for any snapshot
+    // pattern_search is now implemented for V3 — returns Ok with results
     let current = SnapshotId::current();
     let result = backend.pattern_search(current, node1, &Default::default());
     assert!(
-        result.is_err(),
-        "pattern_search should return Unsupported (not yet implemented)"
-    );
-    let err_msg = result.unwrap_err().to_string();
-    assert!(
-        err_msg.contains("does not support pattern_search"),
-        "Error message should explain limitation: {}",
-        err_msg
+        result.is_ok(),
+        "pattern_search should return Ok on V3 (implemented in 3.6.0): {:?}",
+        result.err()
     );
 }
 
@@ -1723,11 +1718,11 @@ fn test_v3_fixed_methods_work_with_current_snapshot() {
 
     let current = SnapshotId::current();
 
-    // pattern_search now returns explicit Unsupported error (truth audit fix)
+    // pattern_search is now implemented on V3 (3.6.0) — should return Ok
     let pattern_result = backend.pattern_search(current, node1, &Default::default());
     assert!(
-        matches!(pattern_result, Err(SqliteGraphError::Unsupported(_))),
-        "pattern_search should return Unsupported error (not yet implemented for V3)"
+        pattern_result.is_ok(),
+        "pattern_search should return Ok on V3 (implemented in 3.6.0)"
     );
 
     // query_nodes_by_kind should work with current snapshot

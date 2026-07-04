@@ -1007,7 +1007,7 @@ impl NodePage {
         data.extend_from_slice(&(self.nodes.len() as u16).to_be_bytes());
         data.extend_from_slice(&self.used_bytes.to_be_bytes());
         data.extend_from_slice(&self.base_id.to_be_bytes());
-        data.extend_from_slice(&[0u8; 4]); // checksum placeholder
+        data.extend_from_slice(&[0u8; 4]); // checksum field (computed on finalize)
 
         // Serialize nodes using compressed format
         if let Ok(node_data) = self.pack_nodes() {
