@@ -29,7 +29,6 @@ use crate::backend::native::v3::forensics::{FORENSIC_COUNTERS, PageType, Subsyst
 use crate::backend::native::v3::index::IndexPage;
 use crate::backend::native::v3::wal::WALWriter;
 use crate::backend::native::v3::write_batch::WriteBatch;
-use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;

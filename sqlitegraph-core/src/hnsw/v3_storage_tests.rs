@@ -3,6 +3,10 @@
 //! These tests verify that V3VectorStorage correctly implements the VectorStorage trait
 //! using V3Backend's KV store as the underlying storage.
 
+#![allow(
+    clippy::unnecessary_unwrap,
+    reason = "test assertions use unwrap on known-Some values"
+)]
 use crate::backend::native::v3::V3Backend;
 use crate::hnsw::storage::VectorBatch;
 use serde_json::json;

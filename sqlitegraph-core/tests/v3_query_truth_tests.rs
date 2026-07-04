@@ -7,7 +7,6 @@
 #![cfg(feature = "native-v3")]
 
 use sqlitegraph::{
-    SqliteGraphError,
     backend::{BackendDirection, GraphBackend, NodeSpec},
     pattern::{NodeConstraint, PatternLeg, PatternQuery},
 };

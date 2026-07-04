@@ -23,6 +23,11 @@
 
 // Note: map_v3_error is defined in graph_validation but not exported.
 // We'll define a local mapping function for V3 errors.
+#![allow(
+    clippy::items_after_test_module,
+    clippy::manual_async_fn,
+    reason = "test modules are mid-file by design in V3; AsyncGraphBackend trait requires impl Future"
+)]
 use crate::SqliteGraphError;
 use crate::backend::native::types::NativeBackendError;
 use crate::backend::native::v3::btree::BTreeManager;
@@ -1680,13 +1685,13 @@ impl V3Backend {
             )));
         }
 
-        if let Some(ef_search) = config.ef_search_override {
-            if ef_search == 0 || ef_search > 200 {
-                return Err(SqliteGraphError::validation(format!(
-                    "Invalid ef_search_override: {}. Must be in 1..=200",
-                    ef_search
-                )));
-            }
+        if let Some(ef_search) = config.ef_search_override
+            && (ef_search == 0 || ef_search > 200)
+        {
+            return Err(SqliteGraphError::validation(format!(
+                "Invalid ef_search_override: {}. Must be in 1..=200",
+                ef_search
+            )));
         }
 
         // Check if we should use turbovec (large dataset)
@@ -5122,6 +5127,10 @@ impl V3Backend {
     }
 }
 
+#[allow(
+    clippy::manual_async_fn,
+    reason = "impl Future return is required by the AsyncGraphBackend trait definition"
+)]
 impl crate::backend::AsyncGraphBackend for V3Backend {
     fn get_node(
         &self,

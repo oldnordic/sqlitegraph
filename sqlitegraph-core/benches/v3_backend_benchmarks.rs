@@ -1,4 +1,14 @@
+#![allow(
+    clippy::needless_range_loop,
+    clippy::redundant_closure_call,
+    reason = "test/bench code"
+)]
 //! V3 Backend Primitive Benchmarks
+#![allow(
+    clippy::needless_range_loop,
+    reason = "bench code uses indexed loops for clarity"
+)]
+
 //!
 //! Run with: cargo bench --features v3-bench -- v3_backend_benchmarks
 //!

@@ -1,3 +1,4 @@
+#![allow(clippy::suspicious_open_options, reason = "test/bench code")]
 //! TDD Tests for Unsafe Code Invariants
 //!
 //! These tests verify the safety properties of unsafe code blocks identified

@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop, reason = "test/bench code")]
 //! Test with 100 nodes to verify persistence and correctness
 //! Run with: cargo test --features native-v3 test_100_nodes -- --nocapture
 

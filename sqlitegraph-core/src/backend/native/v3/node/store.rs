@@ -18,6 +18,10 @@
 //! - For internal pages: binary search keys, descend to child
 //! - For leaf pages: binary search entries for exact match
 
+#![allow(
+    clippy::items_after_test_module,
+    reason = "test modules are mid-file by design in V3"
+)]
 use crate::backend::native::NativeBackendError;
 use crate::backend::native::NativeResult;
 use crate::backend::native::types::NodeFlags;

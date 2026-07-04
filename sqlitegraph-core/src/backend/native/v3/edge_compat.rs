@@ -57,6 +57,12 @@
 //! Insert edge: load cluster (or create), append, maybe split if page full
 //! ```
 
+#![allow(
+    clippy::type_complexity,
+    clippy::collapsible_if,
+    clippy::items_after_test_module,
+    reason = "V3 cache types are complex by design; collapsed let-chains reduce readability"
+)]
 use crate::backend::native::v3::compression::edge_delta::{compress_edge_ids, decompress_edge_ids};
 #[cfg(feature = "v3-forensics")]
 use crate::backend::native::v3::forensics::{
@@ -74,7 +80,7 @@ use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::io::{Seek, SeekFrom, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -776,7 +782,7 @@ impl V3EdgeStore {
     fn read_page_from_disk(
         &self,
         file: &mut std::fs::File,
-        db_path: &PathBuf,
+        db_path: &Path,
         page_id: u64,
     ) -> NativeResult<Vec<u8>> {
         use crate::backend::native::v3::constants::V3_HEADER_SIZE;
@@ -1002,7 +1008,7 @@ impl V3EdgeStore {
         &self,
         src: i64,
         dir: Direction,
-        db_path: &PathBuf,
+        db_path: &Path,
     ) -> NativeResult<Arc<[i64]>> {
         // CRITICAL FIX: Query B+Tree for page_id instead of calculating it
         // This prevents page ID collision with node storage
@@ -1332,7 +1338,7 @@ impl V3EdgeStore {
         &self,
         src: i64,
         dir: Direction,
-        db_path: &PathBuf,
+        db_path: &Path,
     ) -> NativeResult<Arc<[(i64, f32)]>> {
         let key = edge_key(src, dir);
         let btree = self.btree.read();
@@ -1708,7 +1714,7 @@ impl V3EdgeStore {
 
             let encoded_pages =
                 encode_edge_cluster_pages(&cluster_bytes, self.page_size as usize, &page_ids)?;
-            for (page_id, page_bytes) in page_ids.into_iter().zip(encoded_pages.into_iter()) {
+            for (page_id, page_bytes) in page_ids.into_iter().zip(encoded_pages) {
                 self.write_page_to_disk(&db_path, page_id, &page_bytes)?;
             }
 
@@ -1770,7 +1776,7 @@ impl V3EdgeStore {
         page_id: u64,
         src: i64,
         dir: Direction,
-        db_path: &PathBuf,
+        db_path: &Path,
     ) -> NativeResult<V3EdgeCluster> {
         use std::fs::File;
 
@@ -1791,7 +1797,7 @@ impl V3EdgeStore {
         page_id: u64,
         src: i64,
         dir: Direction,
-        db_path: &PathBuf,
+        db_path: &Path,
         first_page: Option<Vec<u8>>,
     ) -> NativeResult<V3EdgeCluster> {
         let mut current_page_id = page_id;
@@ -1924,7 +1930,7 @@ impl V3EdgeStore {
     /// BUG FIX: Previously opened a raw file handle bypassing FileCoordinator,
     /// which could cause data corruption from concurrent writes with NodeStore.
     /// Now routes through FileCoordinator when available.
-    fn write_page_to_disk(&self, db_path: &PathBuf, page_id: u64, data: &[u8]) -> NativeResult<()> {
+    fn write_page_to_disk(&self, db_path: &Path, page_id: u64, data: &[u8]) -> NativeResult<()> {
         #[cfg(feature = "v3-forensics")]
         {
             use crate::backend::native::v3::constants::V3_HEADER_SIZE;
