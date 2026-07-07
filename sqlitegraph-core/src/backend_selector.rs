@@ -1,20 +1,11 @@
-use crate::{SqliteGraphError, backend::SqliteGraphBackend};
-use std::env;
+use crate::{
+    SqliteGraphError,
+    backend::SqliteGraphBackend,
+    config::{GraphConfig, open_graph},
+};
+use std::path::Path;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum BackendKind {
-    Sqlite,
-    Neo4j,
-}
-
-impl BackendKind {
-    pub fn from_env() -> Self {
-        match env::var("GRAPH_BACKEND").as_deref() {
-            Ok("neo4j") => BackendKind::Neo4j,
-            _ => BackendKind::Sqlite,
-        }
-    }
-}
+pub use crate::config::BackendKind;
 
 pub struct GraphBackendFactory {
     kind: BackendKind,
@@ -31,8 +22,18 @@ impl GraphBackendFactory {
 
     pub fn new_sqlite(&self) -> Result<SqliteGraphBackend, SqliteGraphError> {
         match self.kind {
-            BackendKind::Sqlite => SqliteGraphBackend::in_memory(),
-            BackendKind::Neo4j => panic!("Neo4j backend not implemented"),
+            BackendKind::SQLite => SqliteGraphBackend::in_memory(),
+            BackendKind::Native | BackendKind::Combined => Err(SqliteGraphError::invalid_input(
+                "new_sqlite() only supports BackendKind::SQLite; use new_backend(path) for canonical backend selection",
+            )),
         }
+    }
+
+    pub fn new_backend<P: AsRef<Path>>(
+        &self,
+        path: P,
+    ) -> Result<Box<dyn crate::backend::GraphBackend>, SqliteGraphError> {
+        let cfg = GraphConfig::new(self.kind);
+        open_graph(path, &cfg)
     }
 }

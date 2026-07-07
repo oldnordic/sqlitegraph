@@ -3,25 +3,46 @@
 [![crates.io](https://img.shields.io/crates/v/sqlitegraph.svg)](https://crates.io/crates/sqlitegraph)
 [![Documentation](https://docs.rs/sqlitegraph/badge.svg)](https://docs.rs/sqlitegraph)
 
-Embedded graph database with dual backend architecture, graph algorithms,
+Embedded graph database with explicit backend modes, graph algorithms,
 Cypher-inspired queries, and HNSW vector search.
 
 **Positioning:** Single-binary embedded database (no server). Persistent storage with
 atomic batch commits. Graph algorithms + HNSW vector search in one engine.
 SQLite: stable, mature, and easy to inspect with standard tooling. Native V3:
-graph-oriented storage with cache, KV, pub/sub, and traversal features. See the
-benchmarks below for workload-specific behavior.
+experimental graph-oriented storage with cache, KV, pub/sub, and traversal
+features. Native-v3 runtime traversal now layers CSR runtime views on top of
+the V3 edge-store/B+Tree source of truth for supported neighbor/traversal
+reads, but CSR/sharding is still not a standalone backend traversal engine.
+See the benchmarks below for workload-specific behavior.
 
 ## Technical Architecture
 
-**Dual backend**
+**Backend modes**
 - SQLite backend — stable, mature, inspectable with standard tooling
-- Native V3 backend — graph-oriented storage with bounded adjacency cache, KV, pub/sub, and traversal primitives
+- Native V3 backend — experimental graph-oriented storage with bounded adjacency cache, KV, pub/sub, and traversal primitives
+- Combined mode — explicit SQLite-authoritative contract that currently opens
+  as `CombinedGraphBackend`, using SQLite as the only source of truth while
+  the atomic graph-materialization layer is still being built
+  - optional `CombinedReadMode::PreferMaterialized` currently applies only to
+    live untyped `neighbors()`/`bfs()`/`k_hop()`/`node_degree()`/`shortest_path()` via
+    `csr_shards`, with SQLite fallback
+  - materialized reads are version-gated: combined mode only trusts CSR when
+    `materialized_version >= authoritative_version`
+  - `publish_materialized_views()` rebuilds and publishes CSR from SQLite truth
+  - under `PreferMaterialized`, edge inserts/deletes incrementally refresh the
+    affected CSR rows and node-only writes keep authoritative/materialized
+    versions aligned
 
 **Vector + graph queries**
 - HNSW vector similarity search (`HnswIndex`, batch insert, cosine guard)
+- Native-v3 HNSW routing with optional turbovec acceleration for large vector sets
 - Cypher-inspired query layer — `pattern_match`, structural graph queries
 - Graph algorithms — BFS, k-hop, shortest path, louvain community detection, SCC, A*
+
+**Native V3 current state**
+- Query truth, Cypher parity, graph algorithm, HNSW, turbovec, and native-v3 comprehensive suites are green in local verification
+- Edge-store remains the authoritative adjacency store; CSR runtime views are rebuilt from it and consulted first for supported current-snapshot neighbor/traversal reads
+- CSR runtime coverage now includes outgoing, incoming, typed, and weighted neighbor-backed traversal paths, but CSR/sharding is still not the backend-default standalone engine
 
 **Concurrency & durability**
 - MVCC snapshot reads during traversal (`src/mvcc.rs`)
@@ -92,18 +113,19 @@ See [CHANGELOG](https://github.com/oldnordic/sqlitegraph/blob/main/CHANGELOG.md)
 
 ## Backends
 
-| Feature | SQLite | Native V3 |
-|---------|--------|-----------|
-| Status | Stable | Experimental (Bugs should be reported) |
-| Storage | `.db` file | `.graph` file |
-| Capacity model | Storage-limited | Storage-limited |
-| Graph algorithms | 35+ | 35+ |
-| HNSW vectors | Yes | Yes |
-| Pub/Sub | Yes | Yes |
-| LRU Cache | No | Yes |
-| Parallel BFS | No | Yes |
-| MVCC snapshots | Yes (v8) | Yes (v8) |
-| Time-travel queries | Yes (optimized v9) | Yes (optimized v9) |
+| Feature | SQLite | Native V3 | Combined |
+|---------|--------|-----------|----------|
+| Status | Stable | Experimental (Bugs should be reported) | Phase 2 authority seam |
+| Authority | SQLite | Native V3 | SQLite |
+| Storage | `.db` file | `.graph` file | `.db` file |
+| Graph algorithms | 35+ | 35+ | Delegates to SQLite today |
+| HNSW vectors | Yes | Yes | Delegates to SQLite today |
+| Turbovec acceleration | No | Yes (feature-gated, large-vector routing) | No |
+| MVCC snapshots | Yes (v8) | Yes (v8) | Delegates to SQLite today |
+| Time-travel queries | Yes (optimized v9) | Yes (optimized v9) | Delegates to SQLite today |
+| Default traversal runtime | SQLite table/index path | V3 edge-store / B+Tree path | SQLite table/index path today via `CombinedGraphBackend` |
+| Optional materialized live reads | N/A | CSR runtime views | Untyped `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` via opt-in CSR fallback |
+| Atomic SQLite + graph materialization | N/A | N/A | Not yet implemented |
 
 ## Benchmarks
 
@@ -140,10 +162,10 @@ See [examples/](https://github.com/oldnordic/sqlitegraph/tree/main/sqlitegraph-c
 ```toml
 [dependencies]
 # SQLite backend (default)
-sqlitegraph = "3.4"
+sqlitegraph = "3.8"
 
 # OR Native V3 backend (graph-oriented storage)
-sqlitegraph = { version = "3.4", features = ["native-v3"] }
+sqlitegraph = { version = "3.8", features = ["native-v3"] }
 ```
 
 ```rust

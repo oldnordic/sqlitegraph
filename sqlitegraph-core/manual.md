@@ -5,6 +5,22 @@ and the provided CLI tooling. It complements the examples and serves as an
 operator guide for TDD, benchmarking, dual-read/write migration, and CLI
 operations.
 
+Current backend modes:
+
+- `sqlite` — stable SQLite-backed mode
+- `native-v3` — experimental native graph storage mode
+- `combined` — explicit SQLite-authoritative mode exposed as
+  `CombinedGraphBackend`; SQLite remains the only source of truth today while
+  atomic SQLite + graph materialization is still planned
+  - optional `CombinedReadMode::PreferMaterialized` enables live untyped
+    `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` reads from
+    `csr_shards`, with SQLite fallback when a materialized row is unavailable
+  - these reads are additionally freshness-gated by
+    `materialized_version >= authoritative_version`
+  - `publish_materialized_views()` is the current explicit rebuild/publish step
+  - under `PreferMaterialized`, edge inserts/deletes incrementally refresh the
+    affected CSR rows and node-only writes keep versions synchronized
+
 ---
 
 ## 1. Building & Testing
@@ -57,6 +73,10 @@ all benches sequentially and surfaces pass/fail summaries.
   multi-hop functions.
 - `SqliteGraphBackend` is the sqlite-backed implementation (supports `in_memory`
   and `from_graph`).
+- `CombinedGraphBackend` is the explicit SQLite-authoritative combined-mode
+  wrapper. In the current slice it forwards to `SqliteGraphBackend` while
+  preserving a separate public type for future graph materialization logic.
+  It also supports `CombinedConfig` for explicit read policy selection.
 - `BackendClient` wraps any `GraphBackend` and provides ergonomic helpers using
   wrapper types:
   - `NodeId` / `EdgeId` newtypes (deterministic ordering guarantees).

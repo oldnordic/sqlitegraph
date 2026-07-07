@@ -1,5 +1,71 @@
 # SQLiteGraph Changelog
 
+## [3.9.0] - 2026-07-07
+
+### Backend Modes
+
+- Added an explicit `BackendKind::Combined` public mode plus
+  `GraphConfig::combined()`.
+- `GRAPH_BACKEND=combined` now resolves through the canonical config layer.
+- Added a public `CombinedGraphBackend` wrapper type as the Phase 2 authority
+  seam for combined mode.
+- `open_graph(path, &GraphConfig::combined())` now returns
+  `CombinedGraphBackend`, which is SQLite-authoritative by construction and
+  delegates to the SQLite backend until graph materialization lands.
+- Added `CombinedConfig` / `CombinedReadMode` to make combined-mode fallback
+  behavior explicit.
+- Combined mode can now opt into `PreferMaterialized` live traversal reads:
+  untyped `neighbors()`, `bfs()`, `k_hop()`, `node_degree()`, and
+  `shortest_path()` consult
+  `csr_shards` first and fall back per-node or per-direction to authoritative
+  SQLite reads when materialized rows are absent.
+- Added authoritative/materialized version tracking in `graph_meta`.
+  Combined mode now uses materialized traversal reads only when
+  `materialized_version >= authoritative_version`; stale CSR rows are ignored.
+- Added `CombinedGraphBackend::publish_materialized_views()`, which rebuilds
+  outgoing/incoming CSR rows from authoritative SQLite edges and publishes the
+  current `materialized_version` atomically.
+- Combined mode now incrementally refreshes affected CSR rows for
+  `insert_edge()` and `delete_entity()` when
+  `CombinedReadMode::PreferMaterialized` is enabled, and keeps
+  `materialized_version` synchronized on node-only writes.
+- Updated the README, manual, crate docs, and package metadata to describe the
+  three current backend modes without over-claiming combined-mode atomicity.
+
+### Documentation
+
+- Clarified the user-facing native-v3 status in `README.md`, crate docs, and
+  `Cargo.toml` feature comments.
+- Documented the current executed state:
+  - native-v3 query truth, Cypher parity, graph algorithm, HNSW, turbovec, and
+    comprehensive feature suites are passing locally
+  - native-v3 runtime traversal now has a CSR runtime view layered on top of
+    the V3 edge-store/B+Tree source of truth
+  - CSR/sharding is still not a standalone backend-default engine; edge-store
+    remains authoritative and CSR rows are rebuilt from it
+
+### Native V3
+
+- Added a CSR runtime bridge for native-v3 traversal reads.
+- `neighbors_shared`, `neighbors_weighted_shared`, and the async
+  `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
+  current-snapshot outgoing, incoming, typed, and weighted neighbor reads, then
+  fall back to the existing V3 edge-store path when CSR data is unavailable.
+- `bfs`, `shortest_path`, `k_hop` (both directions), and `node_degree` now
+  reuse the same CSR-backed neighbor accessor instead of bypassing it with
+  direct edge-store reads in the supported cases.
+- Added `csr_edge_types` and a deterministic CSR rebuild path from the live
+  V3 edge-store. Native-v3 now refreshes CSR runtime views on edge insert so
+  typed and reverse adjacency are populated from real graph data instead of
+  test-only shard rows.
+- Added parity regressions proving:
+  - outgoing unfiltered reads can be served from CSR when present
+  - incoming unfiltered reads can be served from CSR when present
+  - typed outgoing reads can be served from CSR when present
+  - BFS, shortest-path, and k-hop traversal honor CSR ordering when
+    shard data is present
+  - node degree honors CSR-backed adjacency when shard data is present
+
 ## [3.7.0] - 2026-07-04
 
 ### Phase 1: FileCoordinator wiring + RwLock + positioned I/O

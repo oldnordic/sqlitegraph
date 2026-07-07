@@ -92,6 +92,7 @@ pub fn create_benchmark_graph(backend: BackendKind, spec: &BenchmarkGraph) -> Be
     let config = match backend {
         BackendKind::SQLite => GraphConfig::sqlite(),
         BackendKind::Native => GraphConfig::native(),
+        BackendKind::Combined => GraphConfig::combined(),
     };
     let graph = open_graph(&db_path, &config).expect("Failed to create benchmark graph");
 

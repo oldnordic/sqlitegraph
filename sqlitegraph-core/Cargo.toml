@@ -1,9 +1,9 @@
 [package]
 name = "sqlitegraph"
-version = "3.7.0"
+version = "3.9.0"
 edition = "2024"
 rust-version = "1.89"
-description = "Embedded graph database with full ACID transactions, HNSW vector search, dual backend support, and comprehensive graph algorithms library"
+description = "Embedded graph database with explicit SQLite, native-v3, and combined backend modes; HNSW vector search; and graph algorithms"
 license = "GPL-3.0-only"
 repository = "https://github.com/oldnordic/sqlitegraph"
 documentation = "https://docs.rs/sqlitegraph"
@@ -71,7 +71,7 @@ default = ["sqlite-backend"]
 
 # Backend selection
 sqlite-backend = []          # SQLite backend (mature, ACID transactions)
-native-v3 = []                # Native V3 backend (B+Tree index, unlimited capacity - stable)
+native-v3 = []               # Native V3 backend (experimental, edge-store/B+Tree traversal path)
 
 # Optimization features
 turbovec = ["dep:turbovec"]   # Turbovec SIMD search for large-scale embeddings (requires OpenBLAS)

@@ -1,6 +1,8 @@
 //! Main configuration for graph construction.
 
-use super::{kinds::BackendKind, native::NativeConfig, sqlite::SqliteConfig};
+use super::{
+    combined::CombinedConfig, kinds::BackendKind, native::NativeConfig, sqlite::SqliteConfig,
+};
 
 /// Complete configuration for graph construction.
 ///
@@ -14,13 +16,15 @@ pub struct GraphConfig {
     pub sqlite: SqliteConfig,
     /// Native-specific configuration options
     pub native: NativeConfig,
+    /// Combined-mode configuration options
+    pub combined: CombinedConfig,
 }
 
 impl GraphConfig {
     /// Create a new configuration with the specified backend.
     pub fn new(backend: BackendKind) -> Self {
         let sqlite_config = match backend {
-            BackendKind::SQLite => SqliteConfig::default(),
+            BackendKind::SQLite | BackendKind::Combined => SqliteConfig::default(),
             BackendKind::Native => SqliteConfig {
                 without_migrations: true,
                 ..Default::default()
@@ -31,6 +35,7 @@ impl GraphConfig {
             backend,
             sqlite: sqlite_config,
             native: NativeConfig::default(),
+            combined: CombinedConfig::default(),
         }
     }
 
@@ -42,6 +47,15 @@ impl GraphConfig {
     /// Create a configuration for Native backend.
     pub fn native() -> Self {
         Self::new(BackendKind::Native)
+    }
+
+    /// Create a configuration for Combined backend mode.
+    ///
+    /// Combined mode is SQLite-authoritative. In the current Phase 1 contract,
+    /// it opens through the SQLite path while reserving a distinct backend mode
+    /// for future native graph materialization work.
+    pub fn combined() -> Self {
+        Self::new(BackendKind::Combined)
     }
 
     /// Set the CPU profile for the Native backend (builder pattern)
@@ -71,6 +85,15 @@ impl GraphConfig {
         F: FnOnce(NativeConfig) -> NativeConfig,
     {
         self.native = config_fn(self.native);
+        self
+    }
+
+    /// Configure Combined backend settings (builder pattern)
+    pub fn with_combined_config<F>(mut self, config_fn: F) -> Self
+    where
+        F: FnOnce(CombinedConfig) -> CombinedConfig,
+    {
+        self.combined = config_fn(self.combined);
         self
     }
 }

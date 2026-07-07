@@ -1,6 +1,8 @@
 //! Configuration for backend selection and backend-specific options.
 
 // Re-export public types
+pub use combined::CombinedConfig;
+pub use combined::CombinedReadMode;
 pub use factory::open_graph;
 pub use graph_config::GraphConfig;
 pub use kinds::BackendKind;
@@ -8,6 +10,7 @@ pub use native::NativeConfig;
 pub use sqlite::SqliteConfig;
 
 // Private modules
+mod combined;
 mod factory;
 mod graph_config;
 mod kinds;
@@ -32,6 +35,14 @@ mod tests {
 
         let native_cfg = GraphConfig::native();
         assert_eq!(native_cfg.backend, BackendKind::Native);
+
+        let combined_cfg = GraphConfig::combined();
+        assert_eq!(combined_cfg.backend, BackendKind::Combined);
+        assert!(!combined_cfg.sqlite.without_migrations);
+        assert_eq!(
+            combined_cfg.combined.read_mode,
+            CombinedReadMode::SqliteOnly
+        );
     }
 
     #[test]
@@ -69,6 +80,27 @@ mod tests {
     }
 
     #[test]
+    fn test_open_graph_combined() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_combined.db");
+
+        let cfg = GraphConfig::combined();
+        let result = open_graph(&db_path, &cfg);
+        assert!(result.is_ok());
+        assert!(db_path.exists());
+    }
+
+    #[test]
+    fn test_open_graph_combined_exposes_sqlite_graph_ref() {
+        let temp_dir = tempdir().unwrap();
+        let db_path = temp_dir.path().join("test_combined_graph_ref.db");
+
+        let cfg = GraphConfig::combined();
+        let backend = open_graph(&db_path, &cfg).expect("combined open should succeed");
+        assert!(backend.get_graph_ref().is_some());
+    }
+
+    #[test]
     fn test_graph_config_with_cpu_profile() {
         let config = GraphConfig::native().with_cpu_profile(CpuProfile::X86Zen4);
         assert_eq!(config.native.cpu_profile, Some(CpuProfile::X86Zen4));
@@ -93,5 +125,17 @@ mod tests {
 
         assert_eq!(config.cpu_profile, Some(CpuProfile::X86Avx2));
         assert_eq!(config.effective_cpu_profile(), CpuProfile::X86Avx2);
+    }
+
+    #[test]
+    fn test_combined_config_builder() {
+        let config =
+            GraphConfig::combined().with_combined_config(|cfg| cfg.with_materialized_reads());
+
+        assert_eq!(
+            config.combined.read_mode,
+            CombinedReadMode::PreferMaterialized
+        );
+        assert_eq!(config.backend, BackendKind::Combined);
     }
 }

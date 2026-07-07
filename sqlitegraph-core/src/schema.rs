@@ -157,6 +157,18 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
             "INSERT INTO graph_meta_history(version) VALUES(9)",
         ],
     },
+    MigrationStep {
+        target_version: 10,
+        statements: &[
+            "ALTER TABLE graph_meta ADD COLUMN authoritative_version INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE graph_meta ADD COLUMN materialized_version INTEGER NOT NULL DEFAULT 0",
+            "UPDATE graph_meta
+             SET authoritative_version = COALESCE(authoritative_version, 0),
+                 materialized_version = COALESCE(materialized_version, 0)
+             WHERE id = 1",
+            "INSERT INTO graph_meta_history(version) VALUES(10)",
+        ],
+    },
 ];
 
 pub const SCHEMA_VERSION: i64 = BASE_SCHEMA_VERSION + MIGRATION_STEPS.len() as i64;
@@ -220,7 +232,9 @@ fn ensure_base_schema(conn: &Connection) -> Result<(), SqliteGraphError> {
         CREATE INDEX IF NOT EXISTS idx_entities_kind_id ON graph_entities(kind, id);
         CREATE TABLE IF NOT EXISTS graph_meta (
             id INTEGER PRIMARY KEY CHECK (id = 1),
-            schema_version INTEGER NOT NULL
+            schema_version INTEGER NOT NULL,
+            authoritative_version INTEGER NOT NULL DEFAULT 0,
+            materialized_version INTEGER NOT NULL DEFAULT 0
         );
         "#,
     )
@@ -333,7 +347,8 @@ fn ensure_meta(conn: &Connection) -> Result<(), SqliteGraphError> {
         }
         None => {
             conn.execute(
-                "INSERT INTO graph_meta(id, schema_version) VALUES(1, ?1)",
+                "INSERT INTO graph_meta(id, schema_version, authoritative_version, materialized_version)
+                 VALUES(1, ?1, 0, 0)",
                 [BASE_SCHEMA_VERSION],
             )
             .map_err(|e| SqliteGraphError::schema(e.to_string()))?;
@@ -376,6 +391,17 @@ fn ensure_native_v3_tables(conn: &Connection) -> Result<(), SqliteGraphError> {
     )
     .map_err(|e| {
         SqliteGraphError::SchemaError(format!("Failed to create csr_shards table: {}", e))
+    })?;
+
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS csr_edge_types (
+            type_id INTEGER PRIMARY KEY,
+            edge_type TEXT NOT NULL UNIQUE
+        )",
+        [],
+    )
+    .map_err(|e| {
+        SqliteGraphError::SchemaError(format!("Failed to create csr_edge_types table: {}", e))
     })?;
 
     // HNSW vectors table (MVCC: snapshot isolation)

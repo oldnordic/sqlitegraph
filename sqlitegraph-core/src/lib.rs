@@ -3,7 +3,7 @@
 // Individual items may still need specific allows where truly unused
 //!
 //! `sqlitegraph` provides a lightweight, deterministic graph database for embedded Rust applications.
-//! It supports both SQLite and Native storage backends through a unified API.
+//! It supports explicit SQLite, Native V3, and Combined backend modes through a unified API.
 //!
 //! # Architecture
 //!
@@ -26,7 +26,7 @@
 //!
 //! # Features
 //!
-//! - **Dual Backend Support**: Choose between SQLite (feature-rich) and Native (performance-optimized) backends
+//! - **Explicit Backend Modes**: Choose SQLite, Native V3, or Combined mode through one config surface
 //! - **Entity and Edge Storage**: Rich metadata support with JSON serialization
 //! - **Pattern Matching**: Efficient triple pattern matching with cache-enabled fast-path
 //! - **Traversal Algorithms**: Built-in BFS, k-hop, and shortest path algorithms
@@ -46,8 +46,12 @@
 //! let cfg = GraphConfig::sqlite();
 //! let graph = open_graph("my_graph.db", &cfg)?;
 //!
-//! // Or use Native backend (V3 production standard)
+//! // Or use Native backend (V3 experimental backend)
 //! let cfg = GraphConfig::native();
+//! let graph = open_graph("my_graph.db", &cfg)?;
+//!
+//! // Or use Combined mode (SQLite-authoritative contract; CombinedGraphBackend today)
+//! let cfg = GraphConfig::combined();
 //! let graph = open_graph("my_graph.db", &cfg)?;
 //!
 //! // Both backends support the same operations
@@ -59,19 +63,23 @@
 //!
 //! ## Feature Matrix
 //!
-//! | Feature | SQLite Backend | Native Backend |
-//! |---------|----------------|----------------|
-//! | **ACID Transactions** | ✅ Full | ✅ WAL-based |
-//! | **Graph Algorithms** | ✅ Full support | ✅ Full support |
-//! | **HNSW Vector Search** | ✅ With persistence | ✅ With persistence (V3 KV) |
-//! | **MVCC Snapshots** | ✅ | ✅ |
-//! | **Pattern Matching** | ✅ | ✅ |
-//! | **Raw SQL Access** | ✅ Native | ❌ Not supported |
-//! | **File Format** | SQLite DB | Custom binary (V3) |
-//! | **Startup Time** | Fast | Faster |
-//! | **Dependencies** | libsqlite3 | None (pure Rust) |
-//! | **Write Performance** | Good | Better |
-//! | **Query Performance** | Good | Better |
+//! | Feature | SQLite Backend | Native Backend | Combined Backend |
+//! |---------|----------------|----------------|------------------|
+//! | **Status** | Stable | Experimental | Phase 2 authority seam |
+//! | **Authority** | SQLite | Native V3 | SQLite |
+//! | **ACID Transactions** | ✅ Full | ✅ WAL-based | Delegates to SQLite today |
+//! | **Graph Algorithms** | ✅ Full support | ✅ Full support | Delegates to SQLite today |
+//! | **HNSW Vector Search** | ✅ With persistence | ✅ With persistence (V3 KV) | Delegates to SQLite today |
+//! | **Turbovec Acceleration** | ❌ | ✅ Feature-gated, large-vector routing | ❌ |
+//! | **MVCC Snapshots** | ✅ | ✅ | Delegates to SQLite today |
+//! | **Pattern Matching** | ✅ | ✅ | Delegates to SQLite today |
+//! | **Raw SQL Access** | ✅ Native | ❌ Not supported | ✅ Native |
+//! | **File Format** | SQLite DB | Custom binary (V3) | SQLite DB |
+//! | **Default Traversal Runtime** | SQLite table/index path | V3 edge-store / B+Tree path | SQLite table/index path today via `CombinedGraphBackend` |
+//! | **Optional materialized live reads** | N/A | CSR runtime views | Untyped `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` via opt-in CSR fallback |
+//! | **Atomic SQLite + graph materialization** | N/A | N/A | Not yet implemented |
+//! | **Materialized freshness gate** | N/A | Backend-local runtime versioning | `materialized_version >= authoritative_version` required |
+//! | **Incremental materialized maintenance** | N/A | N/A | Combined mode refreshes affected CSR rows on edge insert/delete when `PreferMaterialized` is enabled |
 //!
 //! ## When to Use SQLite Backend
 //!
@@ -89,6 +97,27 @@
 //! - **No external dependencies** desired (pure Rust)
 //! - **Fast startup** with large datasets
 //! - **Custom binary format (V3)** acceptable
+//! - **You can tolerate experimental backend status** while native-v3 traversal
+//!   uses CSR runtime views layered over the edge-store/B+Tree source of truth,
+//!   with CSR/sharding still treated as experimental infrastructure
+//!
+//! ## When to Use Combined Backend
+//!
+//! Choose Combined mode when:
+//! - **You want an explicit SQLite-authoritative contract** today
+//! - **You intend to adopt future SQLite + graph materialization work** without
+//!   changing the public mode selection later
+//! - **You want an explicit combined-mode type today**, where
+//!   `CombinedGraphBackend` preserves a separate public seam without yet
+//!   providing a distinct atomic graph-materialization boundary
+//! - **You may want to opt into materialized live traversal reads** later via
+//!   `CombinedConfig`, while keeping SQLite as the fallback authority
+//! - **You want stale materialized views rejected automatically**, not merely
+//!   bypassed when rows are missing
+//! - **You want an explicit rebuild/publish step** via
+//!   `CombinedGraphBackend::publish_materialized_views()`
+//! - **You want incremental upkeep for affected live traversal rows** without
+//!   turning graph materialization into a second source of truth
 //!
 //! # Thread Safety
 //!
@@ -212,11 +241,13 @@
 //! - [`GraphEdge`] - Graph edge/relationship representation
 //! - [`GraphBackend`] - Unified trait for backend implementations
 //! - [`SqliteGraphBackend`] - SQLite backend implementation
+//! - [`CombinedGraphBackend`] - Combined-mode SQLite-authoritative wrapper
 //! - [`V3Backend`] - Native V3 backend implementation
 //!
 //! ## Configuration
 //! - [`BackendKind`] - Runtime backend selection enum
 //! - [`GraphConfig`] - Unified configuration for both backends
+//! - [`CombinedConfig`] - Combined-mode read/fallback configuration
 //! - [`SqliteConfig`] - SQLite-specific options
 //! - [`NativeConfig`] - Native-specific options
 //! - [`open_graph()`] - Unified factory function

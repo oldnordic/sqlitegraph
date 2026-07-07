@@ -55,6 +55,26 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+const CSR_SHARD_OUTGOING: i64 = 0;
+const CSR_SHARD_INCOMING: i64 = 1;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CsrEdgeTypeLookup {
+    MissingTable,
+    MissingType,
+    Found(u32),
+}
+
+fn encode_csr_adjacency(entries: &[(u32, f32, u32)]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(entries.len() * 12);
+    for &(dst, weight, flags) in entries {
+        buf.extend_from_slice(&dst.to_le_bytes());
+        buf.extend_from_slice(&weight.to_le_bytes());
+        buf.extend_from_slice(&flags.to_le_bytes());
+    }
+    buf
+}
+
 /// V3 Backend implementation with interior mutability
 ///
 /// This struct implements the GraphBackend trait using V3's page-based
@@ -357,6 +377,351 @@ impl V3Backend {
     /// Number of entries in the unpacked-page cache. Used by double-decode tests.
     pub fn node_unpacked_cache_len(&self) -> usize {
         self.node_store.read().unpacked_page_cache_len()
+    }
+
+    fn csr_shard_id(direction: BackendDirection) -> i64 {
+        match direction {
+            BackendDirection::Outgoing => CSR_SHARD_OUTGOING,
+            BackendDirection::Incoming => CSR_SHARD_INCOMING,
+        }
+    }
+
+    fn lookup_csr_edge_type_id(
+        &self,
+        edge_type: &str,
+    ) -> Result<CsrEdgeTypeLookup, SqliteGraphError> {
+        let conn = self.sqlite_conn.lock();
+        let mut stmt = match conn.prepare("SELECT type_id FROM csr_edge_types WHERE edge_type = ?1")
+        {
+            Ok(stmt) => stmt,
+            Err(e) if e.to_string().contains("no such table: csr_edge_types") => {
+                return Ok(CsrEdgeTypeLookup::MissingTable);
+            }
+            Err(e) => {
+                return Err(SqliteGraphError::query(format!(
+                    "Failed to prepare CSR edge type lookup: {}",
+                    e
+                )));
+            }
+        };
+
+        let mut rows = stmt.query([edge_type]).map_err(|e| {
+            SqliteGraphError::query(format!("Failed to execute CSR edge type lookup: {}", e))
+        })?;
+
+        let Some(row) = rows.next().map_err(|e| {
+            SqliteGraphError::query(format!("Failed to read CSR edge type row: {}", e))
+        })?
+        else {
+            return Ok(CsrEdgeTypeLookup::MissingType);
+        };
+
+        let type_id: i64 = row.get(0).map_err(|e| {
+            SqliteGraphError::query(format!("Failed to load CSR edge type id: {}", e))
+        })?;
+        Ok(CsrEdgeTypeLookup::Found(type_id as u32))
+    }
+
+    fn load_csr_adjacency(
+        &self,
+        node_id: i64,
+        visible_version: u64,
+        direction: BackendDirection,
+        edge_type: Option<&str>,
+    ) -> Result<Option<Vec<(i64, f32)>>, SqliteGraphError> {
+        let expected_type_id = match edge_type {
+            Some(edge_type) => match self.lookup_csr_edge_type_id(edge_type)? {
+                CsrEdgeTypeLookup::MissingTable => return Ok(None),
+                CsrEdgeTypeLookup::MissingType => return Ok(Some(Vec::new())),
+                CsrEdgeTypeLookup::Found(type_id) => Some(type_id),
+            },
+            None => None,
+        };
+
+        let conn = self.sqlite_conn.lock();
+        let mut stmt = match conn.prepare(
+            "SELECT shard_data
+             FROM csr_shards
+             WHERE shard_id = ?1 AND node_id = ?2 AND visible_at <= ?3
+             ORDER BY version DESC
+             LIMIT 1",
+        ) {
+            Ok(stmt) => stmt,
+            Err(e) if e.to_string().contains("no such table: csr_shards") => return Ok(None),
+            Err(e) => {
+                return Err(SqliteGraphError::query(format!(
+                    "Failed to prepare CSR lookup: {}",
+                    e
+                )));
+            }
+        };
+
+        let mut rows = stmt
+            .query([
+                Self::csr_shard_id(direction),
+                node_id,
+                visible_version as i64,
+            ])
+            .map_err(|e| SqliteGraphError::query(format!("Failed to execute CSR lookup: {}", e)))?;
+
+        let Some(row) = rows
+            .next()
+            .map_err(|e| SqliteGraphError::query(format!("Failed to read CSR row: {}", e)))?
+        else {
+            return Ok(None);
+        };
+
+        let blob: Option<Vec<u8>> = row
+            .get(0)
+            .map_err(|e| SqliteGraphError::query(format!("Failed to load CSR blob: {}", e)))?;
+
+        let Some(blob) = blob else {
+            return Ok(Some(Vec::new()));
+        };
+
+        if blob.len() % 12 != 0 {
+            return Err(SqliteGraphError::GraphCorruption(format!(
+                "CSR shard_data for node {} has invalid length {} (expected 12-byte records)",
+                node_id,
+                blob.len()
+            )));
+        }
+
+        let mut neighbors = Vec::with_capacity(blob.len() / 12);
+        for chunk in blob.chunks_exact(12) {
+            let dst = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]) as i64;
+            let weight = f32::from_le_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]);
+            let flags = u32::from_le_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]);
+            if expected_type_id.is_none_or(|type_id| flags == type_id) {
+                neighbors.push((dst, weight));
+            }
+        }
+
+        Ok(Some(neighbors))
+    }
+
+    fn csr_neighbors_shared(
+        &self,
+        snapshot_id: SnapshotId,
+        node: i64,
+        query: &NeighborQuery,
+    ) -> Result<Option<Arc<[i64]>>, SqliteGraphError> {
+        let visible_version = if snapshot_id == SnapshotId::current() {
+            *self.current_snapshot_version.read()
+        } else {
+            snapshot_id.as_u64()
+        };
+
+        let Some(adjacency) = self.load_csr_adjacency(
+            node,
+            visible_version,
+            query.direction,
+            query.edge_type.as_deref(),
+        )?
+        else {
+            return Ok(None);
+        };
+
+        let ids: Vec<i64> = adjacency.into_iter().map(|(dst, _)| dst).collect();
+        Ok(Some(Arc::from(ids.into_boxed_slice())))
+    }
+
+    fn csr_neighbors_weighted_shared(
+        &self,
+        snapshot_id: SnapshotId,
+        node: i64,
+        query: &NeighborQuery,
+    ) -> Result<Option<Arc<[(i64, f32)]>>, SqliteGraphError> {
+        let visible_version = if snapshot_id == SnapshotId::current() {
+            *self.current_snapshot_version.read()
+        } else {
+            snapshot_id.as_u64()
+        };
+
+        let Some(adjacency) = self.load_csr_adjacency(
+            node,
+            visible_version,
+            query.direction,
+            query.edge_type.as_deref(),
+        )?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(Arc::from(adjacency.into_boxed_slice())))
+    }
+
+    fn rebuild_csr_runtime_views(&self, visible_version: u64) -> Result<(), SqliteGraphError> {
+        let node_ids = self.get_all_node_ids()?;
+
+        let (outgoing_rows, incoming_rows, distinct_types) = {
+            let edge_store = self.edge_store.read();
+            let edge_types = edge_store.edge_types_lock().read();
+            let mut distinct_types = std::collections::BTreeSet::new();
+
+            let collect_rows = |direction: EdgeDirection| -> Result<
+                Vec<(i64, Vec<(u32, f32, String)>)>,
+                SqliteGraphError,
+            > {
+                node_ids
+                    .iter()
+                    .map(|&node_id| {
+                        let weighted = edge_store
+                            .neighbors_weighted(node_id, direction)
+                            .map_err(map_v3_error)?;
+                        let entries = weighted
+                            .iter()
+                            .filter_map(|&(dst, weight)| {
+                                edge_types
+                                    .get(&(node_id, dst, direction))
+                                    .cloned()
+                                    .map(|edge_type| (dst as u32, weight, edge_type))
+                            })
+                            .collect();
+                        Ok((node_id, entries))
+                    })
+                    .collect()
+            };
+
+            let outgoing_rows = collect_rows(EdgeDirection::Outgoing)?;
+            let incoming_rows = collect_rows(EdgeDirection::Incoming)?;
+
+            for (_, entries) in outgoing_rows.iter().chain(incoming_rows.iter()) {
+                for (_, _, edge_type) in entries {
+                    distinct_types.insert(edge_type.clone());
+                }
+            }
+
+            (outgoing_rows, incoming_rows, distinct_types)
+        };
+
+        let type_ids = self.ensure_csr_edge_type_ids(distinct_types.into_iter().collect())?;
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        let conn = self.sqlite_conn.lock();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_shards (
+                shard_id INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                shard_data BLOB,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                visible_at INTEGER NOT NULL,
+                PRIMARY KEY (shard_id, node_id, version)
+            )",
+            [],
+        )
+        .map_err(|e| {
+            SqliteGraphError::connection(format!("Failed to ensure csr_shards table: {}", e))
+        })?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_edge_types (
+                type_id INTEGER PRIMARY KEY,
+                edge_type TEXT NOT NULL UNIQUE
+            )",
+            [],
+        )
+        .map_err(|e| {
+            SqliteGraphError::connection(format!("Failed to ensure csr_edge_types table: {}", e))
+        })?;
+
+        let insert_rows = |shard_id: i64,
+                           rows: &Vec<(i64, Vec<(u32, f32, String)>)>|
+         -> Result<(), SqliteGraphError> {
+            for (node_id, entries) in rows {
+                let encoded_entries: Vec<(u32, f32, u32)> = entries
+                    .iter()
+                    .map(|&(dst, weight, ref edge_type)| {
+                        let type_id = *type_ids.get(edge_type).expect("CSR edge type id missing");
+                        (dst, weight, type_id)
+                    })
+                    .collect();
+                let blob = encode_csr_adjacency(&encoded_entries);
+                conn.execute(
+                    "INSERT OR REPLACE INTO csr_shards
+                     (shard_id, node_id, shard_data, version, created_at, visible_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![
+                        shard_id,
+                        *node_id,
+                        blob,
+                        visible_version as i64,
+                        timestamp,
+                        visible_version as i64
+                    ],
+                )
+                .map_err(|e| {
+                    SqliteGraphError::connection(format!("Failed to write CSR shard row: {}", e))
+                })?;
+            }
+            Ok(())
+        };
+
+        insert_rows(CSR_SHARD_OUTGOING, &outgoing_rows)?;
+        insert_rows(CSR_SHARD_INCOMING, &incoming_rows)?;
+
+        Ok(())
+    }
+
+    fn ensure_csr_edge_type_ids(
+        &self,
+        edge_types: Vec<String>,
+    ) -> Result<HashMap<String, u32>, SqliteGraphError> {
+        let conn = self.sqlite_conn.lock();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_edge_types (
+                type_id INTEGER PRIMARY KEY,
+                edge_type TEXT NOT NULL UNIQUE
+            )",
+            [],
+        )
+        .map_err(|e| {
+            SqliteGraphError::connection(format!("Failed to ensure csr_edge_types table: {}", e))
+        })?;
+
+        let mut existing = HashMap::new();
+        let mut next_type_id = 1_u32;
+        {
+            let mut stmt = conn
+                .prepare("SELECT type_id, edge_type FROM csr_edge_types")
+                .map_err(|e| {
+                    SqliteGraphError::query(format!("Failed to prepare CSR edge type scan: {}", e))
+                })?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, i64>(0)? as u32, row.get::<_, String>(1)?))
+                })
+                .map_err(|e| {
+                    SqliteGraphError::query(format!("Failed to scan CSR edge types: {}", e))
+                })?;
+            for row in rows {
+                let (type_id, edge_type) = row.map_err(|e| {
+                    SqliteGraphError::query(format!("Failed to read CSR edge type row: {}", e))
+                })?;
+                next_type_id = next_type_id.max(type_id.saturating_add(1));
+                existing.insert(edge_type, type_id);
+            }
+        }
+
+        for edge_type in edge_types {
+            if existing.contains_key(&edge_type) {
+                continue;
+            }
+            conn.execute(
+                "INSERT INTO csr_edge_types (type_id, edge_type) VALUES (?1, ?2)",
+                rusqlite::params![next_type_id as i64, edge_type],
+            )
+            .map_err(|e| {
+                SqliteGraphError::connection(format!("Failed to insert CSR edge type: {}", e))
+            })?;
+            existing.insert(edge_type, next_type_id);
+            next_type_id = next_type_id.saturating_add(1);
+        }
+
+        Ok(existing)
     }
 
     /// Clear all node page caches. Used by tests to start from a known state.
@@ -1721,6 +2086,9 @@ impl V3Backend {
         query: NeighborQuery,
     ) -> Result<Arc<[i64]>, SqliteGraphError> {
         Self::require_current_snapshot(snapshot_id)?;
+        if let Some(csr_neighbors) = self.csr_neighbors_shared(snapshot_id, node, &query)? {
+            return Ok(csr_neighbors);
+        }
         let edge_store = self.edge_store.read();
 
         if let Some(ref edge_type) = query.edge_type {
@@ -1750,6 +2118,11 @@ impl V3Backend {
         query: NeighborQuery,
     ) -> Result<Arc<[(i64, f32)]>, SqliteGraphError> {
         Self::require_current_snapshot(snapshot_id)?;
+        if let Some(csr_neighbors) =
+            self.csr_neighbors_weighted_shared(snapshot_id, node, &query)?
+        {
+            return Ok(csr_neighbors);
+        }
         let edge_store = self.edge_store.read();
 
         let dir = match query.direction {
@@ -3046,6 +3419,8 @@ impl GraphBackend for V3Backend {
         ).map_err(|e| SqliteGraphError::connection(format!("Failed to insert edge attributes: {}", e)))?;
         drop(conn);
 
+        self.rebuild_csr_runtime_views(next_version)?;
+
         // Increment snapshot version after successful insert
         self.advance_snapshot_version();
 
@@ -3261,36 +3636,18 @@ impl GraphBackend for V3Backend {
         node: i64,
         query: NeighborQuery,
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        Self::require_current_snapshot(snapshot_id)?;
-        let edge_store = self.edge_store.read();
-
-        let neighbors_arc = if let Some(ref edge_type) = query.edge_type {
-            let dir = match query.direction {
-                BackendDirection::Outgoing => EdgeDirection::Outgoing,
-                BackendDirection::Incoming => EdgeDirection::Incoming,
-            };
-            edge_store
-                .neighbors_filtered(node, dir, edge_type)
-                .map_err(map_v3_error)?
-        } else {
-            match query.direction {
-                BackendDirection::Outgoing => edge_store.outgoing(node).map_err(map_v3_error)?,
-                BackendDirection::Incoming => edge_store.incoming(node).map_err(map_v3_error)?,
-            }
-        };
-
-        // Convert Arc<[i64]> to Vec<i64> for the API
-        Ok(neighbors_arc.to_vec())
+        Ok(self.neighbors_shared(snapshot_id, node, query)?.to_vec())
     }
 
     fn bfs(
         &self,
-        _snapshot_id: SnapshotId,
+        snapshot_id: SnapshotId,
         start: i64,
         depth: u32,
     ) -> Result<Vec<i64>, SqliteGraphError> {
         use std::collections::{HashSet, VecDeque};
 
+        Self::require_current_snapshot(snapshot_id)?;
         let mut visited = HashSet::new();
         let mut result = Vec::new();
         let mut queue = VecDeque::new();
@@ -3306,8 +3663,14 @@ impl GraphBackend for V3Backend {
             result.push(node_id);
 
             if current_depth < depth {
-                let edge_store = self.edge_store.write();
-                let neighbors = edge_store.outgoing(node_id).map_err(map_v3_error)?;
+                let neighbors = self.neighbors_shared(
+                    snapshot_id,
+                    node_id,
+                    NeighborQuery {
+                        direction: BackendDirection::Outgoing,
+                        edge_type: None,
+                    },
+                )?;
 
                 for neighbor in neighbors.iter() {
                     if visited.insert(*neighbor) {
@@ -3322,11 +3685,13 @@ impl GraphBackend for V3Backend {
 
     fn shortest_path(
         &self,
-        _snapshot_id: SnapshotId,
+        snapshot_id: SnapshotId,
         start: i64,
         end: i64,
     ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
         use std::collections::{HashMap, VecDeque};
+
+        Self::require_current_snapshot(snapshot_id)?;
 
         if start == end {
             return Ok(Some(vec![start]));
@@ -3339,8 +3704,14 @@ impl GraphBackend for V3Backend {
         queue.push_back(start);
 
         while let Some(node_id) = queue.pop_front() {
-            let edge_store = self.edge_store.write();
-            let neighbors = edge_store.outgoing(node_id).map_err(map_v3_error)?;
+            let neighbors = self.neighbors_shared(
+                snapshot_id,
+                node_id,
+                NeighborQuery {
+                    direction: BackendDirection::Outgoing,
+                    edge_type: None,
+                },
+            )?;
 
             for neighbor in neighbors.iter() {
                 if !visited.contains_key(neighbor) {
@@ -3373,20 +3744,39 @@ impl GraphBackend for V3Backend {
 
     fn node_degree(
         &self,
-        _snapshot_id: SnapshotId,
+        snapshot_id: SnapshotId,
         node: i64,
     ) -> Result<(usize, usize), SqliteGraphError> {
-        let edge_store = self.edge_store.write();
+        Self::require_current_snapshot(snapshot_id)?;
 
-        let outgoing = edge_store.outgoing(node).map_err(map_v3_error)?.len();
-        let incoming = edge_store.incoming(node).map_err(map_v3_error)?.len();
+        let outgoing = self
+            .neighbors_shared(
+                snapshot_id,
+                node,
+                NeighborQuery {
+                    direction: BackendDirection::Outgoing,
+                    edge_type: None,
+                },
+            )?
+            .len();
+
+        let incoming = self
+            .neighbors_shared(
+                snapshot_id,
+                node,
+                NeighborQuery {
+                    direction: BackendDirection::Incoming,
+                    edge_type: None,
+                },
+            )?
+            .len();
 
         Ok((outgoing, incoming))
     }
 
     fn k_hop(
         &self,
-        _snapshot_id: SnapshotId,
+        snapshot_id: SnapshotId,
         start: i64,
         depth: u32,
         direction: BackendDirection,
@@ -3394,6 +3784,7 @@ impl GraphBackend for V3Backend {
         // For k_hop, we use BFS with direction filtering
         use std::collections::{HashSet, VecDeque};
 
+        Self::require_current_snapshot(snapshot_id)?;
         let mut visited = HashSet::new();
         let mut result = Vec::new();
         let mut queue = VecDeque::new();
@@ -3412,14 +3803,22 @@ impl GraphBackend for V3Backend {
 
             if current_depth < depth {
                 let neighbors = match direction {
-                    BackendDirection::Outgoing => {
-                        let edge_store = self.edge_store.write();
-                        edge_store.outgoing(node_id).map_err(map_v3_error)?
-                    }
-                    BackendDirection::Incoming => {
-                        let edge_store = self.edge_store.write();
-                        edge_store.incoming(node_id).map_err(map_v3_error)?
-                    }
+                    BackendDirection::Outgoing => self.neighbors_shared(
+                        snapshot_id,
+                        node_id,
+                        NeighborQuery {
+                            direction: BackendDirection::Outgoing,
+                            edge_type: None,
+                        },
+                    )?,
+                    BackendDirection::Incoming => self.neighbors_shared(
+                        snapshot_id,
+                        node_id,
+                        NeighborQuery {
+                            direction: BackendDirection::Incoming,
+                            edge_type: None,
+                        },
+                    )?,
                 };
 
                 for neighbor in neighbors.iter() {
@@ -4345,6 +4744,16 @@ mod tests {
     use crate::backend::native::v3::{V3_FORMAT_VERSION, V3_MAGIC};
     use tempfile::TempDir;
 
+    fn encode_csr_adjacency(entries: &[(u32, f32, u32)]) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(entries.len() * 12);
+        for &(dst, weight, flags) in entries {
+            buf.extend_from_slice(&dst.to_le_bytes());
+            buf.extend_from_slice(&weight.to_le_bytes());
+            buf.extend_from_slice(&flags.to_le_bytes());
+        }
+        buf
+    }
+
     #[test]
     fn test_v3_backend_create() {
         let temp_dir = TempDir::new().unwrap();
@@ -4550,6 +4959,819 @@ mod tests {
         // Verify entity count
         let ids = backend.entity_ids().unwrap();
         assert_eq!(ids.len(), 1);
+    }
+
+    #[test]
+    fn test_neighbors_shared_uses_csr_for_outgoing_unfiltered() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("csr_neighbors.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        let n1 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n1".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n2 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n2".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n3 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n3".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n2,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n3,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        let manual_version = backend.current_snapshot_version() + 1;
+        let csr_blob = encode_csr_adjacency(&[(n3 as u32, 0.7, 0), (n2 as u32, 0.2, 0)]);
+        let conn = backend.sqlite_conn.lock();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_shards (
+                shard_id INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                shard_data BLOB,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                visible_at INTEGER NOT NULL,
+                PRIMARY KEY (shard_id, node_id, version)
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+                "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+                 VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![0_i64, n1, csr_blob, manual_version as i64],
+        )
+        .unwrap();
+        drop(conn);
+        backend.set_graph_version(manual_version);
+
+        let neighbors = backend
+            .neighbors_shared(
+                SnapshotId::current(),
+                n1,
+                NeighborQuery {
+                    direction: BackendDirection::Outgoing,
+                    edge_type: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            &*neighbors,
+            &[n3, n2],
+            "outgoing unfiltered path should prefer CSR"
+        );
+
+        let weighted = backend
+            .neighbors_weighted_shared(
+                SnapshotId::current(),
+                n1,
+                NeighborQuery {
+                    direction: BackendDirection::Outgoing,
+                    edge_type: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(&*weighted, &[(n3, 0.7), (n2, 0.2)]);
+    }
+
+    #[test]
+    fn test_neighbors_shared_keeps_filtered_queries_on_edge_store() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("csr_fallback.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        let n1 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n1".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n2 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n2".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n3 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n3".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n2,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n3,
+                edge_type: "USES".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        let csr_blob = encode_csr_adjacency(&[(n3 as u32, 0.7, 0), (n2 as u32, 0.2, 0)]);
+        let conn = backend.sqlite_conn.lock();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_shards (
+                shard_id INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                shard_data BLOB,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                visible_at INTEGER NOT NULL,
+                PRIMARY KEY (shard_id, node_id, version)
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+                "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+                 VALUES (?1, ?2, ?3, 1, 0, 0)",
+            rusqlite::params![0_i64, n1, csr_blob],
+        )
+        .unwrap();
+        drop(conn);
+
+        let filtered = backend
+            .neighbors_shared(
+                SnapshotId::current(),
+                n1,
+                NeighborQuery {
+                    direction: BackendDirection::Outgoing,
+                    edge_type: Some("CALLS".to_string()),
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            &*filtered,
+            &[n2],
+            "typed queries should stay on edge-store filtering"
+        );
+    }
+
+    #[test]
+    fn test_bfs_uses_csr_for_outgoing_unfiltered() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("csr_bfs.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        let n1 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n1".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n2 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n2".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n3 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n3".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n4 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n4".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n2,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n3,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n3,
+                to: n4,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        let manual_version = backend.current_snapshot_version() + 1;
+        let conn = backend.sqlite_conn.lock();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_shards (
+                shard_id INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                shard_data BLOB,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                visible_at INTEGER NOT NULL,
+                PRIMARY KEY (shard_id, node_id, version)
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![
+                0_i64,
+                n1,
+                encode_csr_adjacency(&[(n3 as u32, 0.7, 0), (n2 as u32, 0.2, 0)]),
+                manual_version as i64
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![0_i64, n3, encode_csr_adjacency(&[(n4 as u32, 0.9, 0)]), manual_version as i64],
+        )
+        .unwrap();
+        drop(conn);
+        backend.set_graph_version(manual_version);
+
+        let bfs = backend.bfs(SnapshotId::current(), n1, 2).unwrap();
+        assert_eq!(bfs, vec![n1, n3, n2, n4]);
+    }
+
+    #[test]
+    fn test_shortest_path_uses_csr_for_outgoing_unfiltered() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("csr_shortest_path.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        let n1 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n1".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n2 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n2".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n3 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n3".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n4 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n4".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n2,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n3,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n3,
+                to: n4,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n2,
+                to: n4,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        let manual_version = backend.current_snapshot_version() + 1;
+        let conn = backend.sqlite_conn.lock();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_shards (
+                shard_id INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                shard_data BLOB,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                visible_at INTEGER NOT NULL,
+                PRIMARY KEY (shard_id, node_id, version)
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![
+                0_i64,
+                n1,
+                encode_csr_adjacency(&[(n3 as u32, 0.9, 0), (n2 as u32, 0.2, 0)]),
+                manual_version as i64
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![0_i64, n3, encode_csr_adjacency(&[(n4 as u32, 0.8, 0)]), manual_version as i64],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![0_i64, n2, encode_csr_adjacency(&[(n4 as u32, 0.1, 0)]), manual_version as i64],
+        )
+        .unwrap();
+        drop(conn);
+        backend.set_graph_version(manual_version);
+
+        let path = backend
+            .shortest_path(SnapshotId::current(), n1, n4)
+            .unwrap()
+            .unwrap();
+        assert_eq!(path, vec![n1, n3, n4]);
+    }
+
+    #[test]
+    fn test_k_hop_uses_csr_for_outgoing_unfiltered() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("csr_k_hop.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        let n1 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n1".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n2 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n2".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n3 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n3".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n4 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n4".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n2,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n3,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n3,
+                to: n4,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        let manual_version = backend.current_snapshot_version() + 1;
+        let conn = backend.sqlite_conn.lock();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_shards (
+                shard_id INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                shard_data BLOB,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                visible_at INTEGER NOT NULL,
+                PRIMARY KEY (shard_id, node_id, version)
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![
+                0_i64,
+                n1,
+                encode_csr_adjacency(&[(n3 as u32, 0.7, 0), (n2 as u32, 0.2, 0)]),
+                manual_version as i64
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![0_i64, n3, encode_csr_adjacency(&[(n4 as u32, 0.9, 0)]), manual_version as i64],
+        )
+        .unwrap();
+        drop(conn);
+        backend.set_graph_version(manual_version);
+
+        let hop = backend
+            .k_hop(SnapshotId::current(), n1, 2, BackendDirection::Outgoing)
+            .unwrap();
+        assert_eq!(hop, vec![n3, n2, n4]);
+    }
+
+    #[test]
+    fn test_node_degree_uses_csr_for_outgoing_unfiltered() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("csr_node_degree.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        let n1 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n1".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n2 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n2".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n3 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n3".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n2,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n3,
+                to: n1,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        let manual_version = backend.current_snapshot_version() + 1;
+        let conn = backend.sqlite_conn.lock();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_shards (
+                shard_id INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                shard_data BLOB,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                visible_at INTEGER NOT NULL,
+                PRIMARY KEY (shard_id, node_id, version)
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![
+                0_i64,
+                n1,
+                encode_csr_adjacency(&[(n2 as u32, 0.7, 0), (n3 as u32, 0.3, 0)]),
+                manual_version as i64
+            ],
+        )
+        .unwrap();
+        drop(conn);
+        backend.set_graph_version(manual_version);
+
+        let degree = backend.node_degree(SnapshotId::current(), n1).unwrap();
+        assert_eq!(degree, (2, 1));
+    }
+
+    #[test]
+    fn test_neighbors_shared_uses_csr_for_incoming_unfiltered() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("csr_incoming_neighbors.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        let n1 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n1".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n2 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n2".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n3 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n3".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n3,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n2,
+                to: n3,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        let manual_version = backend.current_snapshot_version() + 1;
+        let conn = backend.sqlite_conn.lock();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_shards (
+                shard_id INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                shard_data BLOB,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                visible_at INTEGER NOT NULL,
+                PRIMARY KEY (shard_id, node_id, version)
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![
+                1_i64,
+                n3,
+                encode_csr_adjacency(&[(n2 as u32, 0.9, 0), (n1 as u32, 0.4, 0)]),
+                manual_version as i64
+            ],
+        )
+        .unwrap();
+        drop(conn);
+        backend.set_graph_version(manual_version);
+
+        let incoming = backend
+            .neighbors_shared(
+                SnapshotId::current(),
+                n3,
+                NeighborQuery {
+                    direction: BackendDirection::Incoming,
+                    edge_type: None,
+                },
+            )
+            .unwrap();
+        assert_eq!(&*incoming, &[n2, n1]);
+    }
+
+    #[test]
+    fn test_neighbors_shared_uses_csr_for_typed_outgoing() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("csr_typed_neighbors.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        let n1 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n1".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n2 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n2".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n3 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n3".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        let n4 = backend
+            .insert_node(NodeSpec {
+                kind: "Fn".to_string(),
+                name: "n4".to_string(),
+                file_path: None,
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n2,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n3,
+                edge_type: "USES".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+        backend
+            .insert_edge(EdgeSpec {
+                from: n1,
+                to: n4,
+                edge_type: "CALLS".to_string(),
+                data: serde_json::json!({}),
+            })
+            .unwrap();
+
+        let manual_version = backend.current_snapshot_version() + 1;
+        let conn = backend.sqlite_conn.lock();
+        let calls_type_id: i64 = conn
+            .query_row(
+                "SELECT type_id FROM csr_edge_types WHERE edge_type = 'CALLS'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let uses_type_id: i64 = conn
+            .query_row(
+                "SELECT type_id FROM csr_edge_types WHERE edge_type = 'USES'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS csr_shards (
+                shard_id INTEGER NOT NULL,
+                node_id INTEGER NOT NULL,
+                shard_data BLOB,
+                version INTEGER NOT NULL DEFAULT 1,
+                created_at INTEGER NOT NULL,
+                visible_at INTEGER NOT NULL,
+                PRIMARY KEY (shard_id, node_id, version)
+            )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO csr_shards (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, 0, ?4)",
+            rusqlite::params![
+                0_i64,
+                n1,
+                encode_csr_adjacency(&[
+                    (n4 as u32, 0.9, calls_type_id as u32),
+                    (n3 as u32, 0.7, uses_type_id as u32),
+                    (n2 as u32, 0.5, calls_type_id as u32),
+                ]),
+                manual_version as i64
+            ],
+        )
+        .unwrap();
+        drop(conn);
+        backend.set_graph_version(manual_version);
+
+        let typed = backend
+            .neighbors_shared(
+                SnapshotId::current(),
+                n1,
+                NeighborQuery {
+                    direction: BackendDirection::Outgoing,
+                    edge_type: Some("CALLS".to_string()),
+                },
+            )
+            .unwrap();
+        assert_eq!(&*typed, &[n4, n2]);
     }
 
     /// Test inserting a node with large data (>64 bytes) that requires external storage
@@ -5252,6 +6474,9 @@ impl crate::backend::AsyncGraphBackend for V3Backend {
     ) -> impl std::future::Future<Output = Result<Vec<i64>, SqliteGraphError>> + Send {
         async move {
             Self::require_current_snapshot(snapshot_id)?;
+            if let Some(csr_neighbors) = self.csr_neighbors_shared(snapshot_id, node, &query)? {
+                return Ok(csr_neighbors.to_vec());
+            }
             let async_coordinator = self.get_async_coordinator()?;
 
             if let Some(ref edge_type) = query.edge_type {

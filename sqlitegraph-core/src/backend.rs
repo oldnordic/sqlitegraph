@@ -4,12 +4,14 @@
 //! backend implementations. SQLite-specific implementations are in the sqlite submodule.
 
 // Include the modular backend structure
+mod combined;
 mod sqlite;
 
 // Include native backend storage layer (no GraphBackend implementation yet)
 pub mod native;
 
 // Re-export from sqlite submodule
+pub use combined::CombinedGraphBackend;
 pub use sqlite::SqliteGraphBackend;
 
 // Re-export from native submodule

@@ -26,6 +26,7 @@ impl SqliteGraph {
             )
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;
         self.invalidate_caches();
+        self.bump_authoritative_version()?;
         Ok(self.connection().last_insert_rowid())
     }
 
@@ -80,6 +81,7 @@ impl SqliteGraph {
                     .execute_batch("COMMIT")
                     .map_err(|e| SqliteGraphError::query(e.to_string()))?;
                 self.invalidate_caches();
+                self.bump_authoritative_version()?;
                 Ok(ids)
             }
             Err(err) => {
@@ -113,6 +115,7 @@ impl SqliteGraph {
             return Err(SqliteGraphError::not_found(format!("edge {id}")));
         }
         self.invalidate_caches();
+        self.bump_authoritative_version()?;
         Ok(())
     }
 }

@@ -38,6 +38,7 @@ impl SqliteGraph {
             )
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;
         }
+        self.bump_authoritative_version()?;
         Ok(id)
     }
 
@@ -101,6 +102,7 @@ impl SqliteGraph {
                 conn.underlying()
                     .execute_batch("COMMIT")
                     .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+                self.bump_authoritative_version()?;
                 Ok(ids)
             }
             Err(err) => {
@@ -150,6 +152,7 @@ impl SqliteGraph {
         if affected == 0 {
             return Err(SqliteGraphError::not_found(format!("entity {}", entity.id)));
         }
+        self.bump_authoritative_version()?;
         Ok(())
     }
 
@@ -168,6 +171,7 @@ impl SqliteGraph {
             )
             .map_err(|e| SqliteGraphError::query(e.to_string()))?;
         self.invalidate_caches();
+        self.bump_authoritative_version()?;
         Ok(())
     }
 

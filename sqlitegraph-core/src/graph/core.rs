@@ -816,6 +816,61 @@ impl SqliteGraph {
         Ok(version)
     }
 
+    /// Get the authoritative SQLite mutation version.
+    pub fn get_authoritative_version(&self) -> Result<i64, SqliteGraphError> {
+        self.with_connection(|conn| {
+            conn.query_row(
+                "SELECT authoritative_version FROM graph_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| SqliteGraphError::QueryError(e.to_string()))
+        })
+    }
+
+    /// Get the version of the currently published materialized graph view.
+    pub fn get_materialized_version(&self) -> Result<i64, SqliteGraphError> {
+        self.with_connection(|conn| {
+            conn.query_row(
+                "SELECT materialized_version FROM graph_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| SqliteGraphError::QueryError(e.to_string()))
+        })
+    }
+
+    /// Advance the authoritative SQLite mutation version after a committed write.
+    pub fn bump_authoritative_version(&self) -> Result<i64, SqliteGraphError> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "UPDATE graph_meta
+                 SET authoritative_version = authoritative_version + 1
+                 WHERE id = 1",
+                [],
+            )
+            .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+            conn.query_row(
+                "SELECT authoritative_version FROM graph_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| SqliteGraphError::QueryError(e.to_string()))
+        })
+    }
+
+    /// Publish the latest materialized graph view version.
+    pub fn set_materialized_version(&self, version: i64) -> Result<(), SqliteGraphError> {
+        self.with_connection(|conn| {
+            conn.execute(
+                "UPDATE graph_meta SET materialized_version = ?1 WHERE id = 1",
+                rusqlite::params![version],
+            )
+            .map_err(|e| SqliteGraphError::QueryError(e.to_string()))?;
+            Ok(())
+        })
+    }
+
     /// List all snapshots with metadata.
     ///
     /// Returns snapshot records sorted by creation time (newest first).
