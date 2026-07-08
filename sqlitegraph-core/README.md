@@ -27,7 +27,8 @@ See the benchmarks below for workload-specific behavior.
     live untyped `neighbors()`/`bfs()`/`k_hop()`/`node_degree()`/`shortest_path()` via
     `csr_shards`, with SQLite fallback
   - `PreferMaterialized` remains an explicit opt-in specialist mode: current
-    local benches show modest cold-read gains, but materially slower writes
+    local benches show modest cold-read gains, materially slower writes, and
+    no end-to-end win yet on the current mixed-workload benchmarks
   - materialized reads are version-gated: combined mode only trusts CSR when
     `materialized_version >= authoritative_version`
   - `publish_materialized_views()` rebuilds and publishes CSR from SQLite truth

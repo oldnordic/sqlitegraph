@@ -113,7 +113,8 @@
 //! - **You may want to opt into materialized live traversal reads** later via
 //!   `CombinedConfig`, while keeping SQLite as the fallback authority
 //! - **You accept the current tradeoff**: modest cold-read gains in exchange
-//!   for materially slower writes when `PreferMaterialized` is enabled
+//!   for materially slower writes when `PreferMaterialized` is enabled, with
+//!   no current end-to-end mixed-workload win
 //! - **You want stale materialized views rejected automatically**, not merely
 //!   bypassed when rows are missing
 //! - **You want an explicit rebuild/publish step** via

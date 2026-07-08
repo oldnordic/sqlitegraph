@@ -248,6 +248,9 @@ Implemented so far:
     node-only writes
   - current local benchmark finding: modest cold-read gains do not yet justify
     default-on write amplification
+  - broader mixed-workload and reopen benchmarks currently do not justify a
+    default-on policy either; current read-heavy mixed workloads are still
+    slower end-to-end than SQLite-only
 
 Not implemented yet:
 

@@ -106,7 +106,8 @@ Status:
     `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` from `csr_shards`
     with per-node or per-direction SQLite fallback
   - `PreferMaterialized` remains opt-in specialist behavior for now; benchmark
-    evidence shows only modest cold-read gains against materially slower writes
+    evidence shows only modest cold-read gains against materially slower writes,
+    and the current mixed-workload benchmarks still lose end-to-end
   - materialized combined reads are now guarded by an explicit freshness check
     against `graph_meta.authoritative_version` / `materialized_version`
   - `publish_materialized_views()` now rebuilds and publishes combined CSR

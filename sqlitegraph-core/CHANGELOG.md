@@ -22,6 +22,14 @@
 - Benchmarked current `PreferMaterialized` tradeoff: it remains an explicit
   opt-in specialist mode, not the default. Current local cold-read benches show
   modest gains, while incremental maintenance materially increases write cost.
+- Added broader combined-mode benchmark coverage for:
+  - cold rebuild-per-read comparisons
+  - on-disk reopen reads
+  - `publish_materialized_views()` rebuild cost
+  - mixed read/write workloads
+- Current benchmark conclusion remains negative for default-on combined
+  materialization: even the current read-heavy mixed workload is slower
+  end-to-end than SQLite-only, so `PreferMaterialized` stays specialist opt-in.
 - Added authoritative/materialized version tracking in `graph_meta`.
   Combined mode now uses materialized traversal reads only when
   `materialized_version >= authoritative_version`; stale CSR rows are ignored.
