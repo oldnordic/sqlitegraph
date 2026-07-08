@@ -24,7 +24,6 @@ use crate::PatternTriple;
 use crate::backend::{BackendDirection, EdgeSpec, GraphBackend, NodeSpec};
 use crate::graph::GraphEntity;
 use crate::multi_hop::ChainStep;
-use crate::pattern::{NodeConstraint, PatternLeg, PatternQuery, execute_pattern};
 use crate::snapshot::SnapshotId;
 
 // ── Public types ─────────────────────────────────────────────
@@ -2022,15 +2021,4 @@ fn edge_direction_to_backend(dir: EdgeDirection) -> BackendDirection {
         // only used by chain_query (multi-hop), which defaults to Outgoing.
         EdgeDirection::Both => BackendDirection::Outgoing,
     }
-}
-
-// Silence unused-imports until the chain_query path is fully wired.
-#[allow(dead_code)]
-fn _silence_unused() -> Option<(
-    &'static PatternQuery,
-    &'static PatternLeg,
-    &'static NodeConstraint,
-)> {
-    let _ = execute_pattern as fn(_, _, _) -> _;
-    None
 }

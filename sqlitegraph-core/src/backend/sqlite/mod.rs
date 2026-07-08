@@ -15,5 +15,8 @@ mod pubsub_tests;
 pub use impl_::SqliteGraphBackend;
 
 // Re-export public types for external use
-#[allow(unused_imports)] // Future extension points for SQLite backend API
+#[allow(
+    unused_imports,
+    reason = "public backend API re-export is consumed externally even when unused inside this crate"
+)]
 pub use types::{BackendDirection, EdgeSpec, NeighborQuery, NodeSpec};

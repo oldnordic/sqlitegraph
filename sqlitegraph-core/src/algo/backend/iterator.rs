@@ -469,14 +469,13 @@ mod tests {
         (backend, temp_dir)
     }
 
-    #[allow(dead_code)]
     struct TestGraph {
         backend: V3Backend,
         _temp: TempDir,
         n0: i64,
         n1: i64,
-        n2: i64,
-        n3: i64,
+        _n2: i64,
+        _n3: i64,
     }
 
     fn make_test_graph() -> TestGraph {
@@ -550,8 +549,8 @@ mod tests {
             _temp: temp,
             n0,
             n1,
-            n2,
-            n3,
+            _n2: n2,
+            _n3: n3,
         }
     }
 

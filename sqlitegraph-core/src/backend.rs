@@ -19,7 +19,6 @@ pub use native::NativeGraphBackend;
 
 // Re-export types for external users
 pub use crate::multi_hop::ChainStep;
-#[allow(unused_imports)] // Backend trait API types for future GraphBackend implementations
 pub use sqlite::types::{BackendDirection, EdgeSpec, NeighborQuery, NodeSpec};
 
 // KV store types (re-exported for public API)

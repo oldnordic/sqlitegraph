@@ -271,7 +271,12 @@ impl<'a> WriteBatchGuard<'a> {
             let next_version = self.backend.next_graph_version();
             let timestamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .map_err(|e| {
+                    SqliteGraphError::connection(format!(
+                        "System clock before UNIX epoch during batch commit: {}",
+                        e
+                    ))
+                })?
                 .as_secs() as i64;
             if self.node_count > 0 {
                 let conn = self.backend.sqlite_conn.lock();
@@ -6392,8 +6397,14 @@ impl V3Backend {
         }
         let coord = AsyncFileCoordinator::create(&self.db_path)?;
         let arc = Arc::new(coord);
-        let _ = self.async_coordinator.set(Arc::clone(&arc));
-        Ok(self.async_coordinator.get().cloned().unwrap())
+        if self.async_coordinator.set(Arc::clone(&arc)).is_ok() {
+            return Ok(arc);
+        }
+        self.async_coordinator.get().cloned().ok_or_else(|| {
+            SqliteGraphError::connection(
+                "async coordinator initialization raced without publishing coordinator".to_string(),
+            )
+        })
     }
 
     async fn get_node_internal_async(
