@@ -95,6 +95,10 @@
 - Extracted `SqlValue` / `SqlRow` from `backend/native/v3/backend.rs` into the
   new `backend/native/v3/sql_value.rs` child module. The query-facing types
   remain re-exported through `backend.rs`, so this is structure cleanup only.
+- Extracted the native-v3 graph transaction frame/state helper block into the
+  new `backend/native/v3/transaction_state.rs` child module. This moved the
+  frame/state structs plus backup/discard/rollback/reload helpers without
+  changing behavior or widening visibility.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
