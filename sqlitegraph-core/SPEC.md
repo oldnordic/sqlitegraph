@@ -246,11 +246,14 @@ Implemented so far:
   - under `PreferMaterialized`, combined mode now incrementally refreshes the
     affected CSR rows for edge insert/delete and keeps versions synchronized on
     node-only writes
+    - current optimization slice narrows insert maintenance further by patching
+      only the two touched CSR rows directly from the latest materialized blobs
   - current local benchmark finding: modest cold-read gains do not yet justify
     default-on write amplification
   - broader mixed-workload and reopen benchmarks currently do not justify a
-    default-on policy either; current read-heavy mixed workloads are still
-    slower end-to-end than SQLite-only
+    default-on policy either; current mixed workloads improved materially, but
+    both read-heavy and balanced cases are still slower end-to-end than
+    SQLite-only
 
 Not implemented yet:
 

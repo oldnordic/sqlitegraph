@@ -106,8 +106,9 @@ Status:
     `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` from `csr_shards`
     with per-node or per-direction SQLite fallback
   - `PreferMaterialized` remains opt-in specialist behavior for now; benchmark
-    evidence shows only modest cold-read gains against materially slower writes,
-    and the current mixed-workload benchmarks still lose end-to-end
+    evidence shows only modest cold-read gains against slower writes overall,
+    and the current mixed-workload benchmarks still lose end-to-end despite
+    recent insert-path improvements
   - materialized combined reads are now guarded by an explicit freshness check
     against `graph_meta.authoritative_version` / `materialized_version`
   - `publish_materialized_views()` now rebuilds and publishes combined CSR
@@ -115,6 +116,9 @@ Status:
   - combined mode now incrementally refreshes affected CSR rows for edge
     inserts/deletes under `PreferMaterialized`, while node-only writes keep
     authoritative/materialized versions aligned
+    - current insert maintenance patches the two touched CSR rows directly from
+      the latest materialized blobs instead of rebuilding them from SQLite
+      adjacency scans
 
 ## Phase 3: Atomic SQLite + Graph Materialization
 
@@ -211,6 +215,93 @@ Files:
 Verification:
 - docs reviewed against spec
 - feature matrix consistent across all docs
+
+## Current Reality (2026-07-08)
+
+- Phase 0 contract cleanup: complete
+- Phase 1 open-path separation: complete
+- Phase 2 combined authority boundary: partially complete
+- native-v3 batch commit semantics: repaired for both edge and node metadata
+  visibility, with the local lib suite green again
+
+What is true right now:
+
+- SQLite is still the safest and most operationally mature backend
+- native-v3 is broad and working, but still experimental by architecture
+- combined mode is useful as an explicit SQLite-authoritative composition seam,
+  but `PreferMaterialized` is still opt-in specialist behavior rather than a
+  default-worthy backend policy
+
+## Immediate Completion Plan
+
+### Slice A: Finish combined incremental maintenance semantics
+
+Goal:
+- close the remaining semantic and performance gaps in incremental combined
+  maintenance
+
+Remaining work:
+- optimize `delete_entity()` / row-rebuild maintenance in
+  [src/backend/combined.rs](/home/feanor/Projects/sqlitegraph/sqlitegraph-core/src/backend/combined.rs:263)
+- add focused regression coverage for combined incremental maintenance around
+  insert/delete/version freshness behavior
+- rerun mixed-workload and reopen benchmarks after each narrow optimization
+
+Exit criteria:
+- no freshness regressions in targeted combined tests
+- mixed-workload benchmarks are re-measured from a clean baseline
+- docs/changelog reflect actual measured behavior only
+
+### Slice B: Decide the combined default threshold honestly
+
+Goal:
+- make the default/no-default decision on evidence, not aspiration
+
+Remaining work:
+- benchmark read-heavy, balanced, and write-heavy mixed workloads after Slice A
+- compare combined `PreferMaterialized` against SQLite-only on reopen and
+  steady-state workloads
+- keep `PreferMaterialized` opt-in unless it wins end-to-end on representative
+  mixed workloads
+
+Exit criteria:
+- explicit decision recorded in docs/spec:
+  - either "still opt-in specialist mode"
+  - or "default-worthy for named workload classes"
+
+### Slice C: Native-v3 stabilization pass
+
+Goal:
+- move native-v3 from "broad experimental surface" toward "semantically stable
+  experimental backend"
+
+Remaining work:
+- audit remaining batch/write paths for parity with direct paths
+- add regression coverage where direct and batched semantics must match
+- review snapshot-version and metadata visibility invariants around node/edge
+  create-update-delete flows
+
+Exit criteria:
+- direct vs batched write semantics covered by targeted tests
+- local lib suite remains green after the audit
+- invariants documented in spec/manual/changelog as needed
+
+### Slice D: Atomic combined-mode boundary
+
+Goal:
+- implement or explicitly defer the true atomic SQLite + graph materialization
+  contract
+
+Remaining work:
+- define one visibility boundary for authoritative SQL truth plus published
+  materialized graph rows
+- add rollback/crash/reopen tests for the combined publish path
+- decide whether atomicity lands in the current architecture or is deferred in
+  favor of SQLite + optional derived views
+
+Exit criteria:
+- either atomic combined semantics are real and tested
+- or the product contract is narrowed explicitly so docs do not imply them
 
 ## Risk Register
 

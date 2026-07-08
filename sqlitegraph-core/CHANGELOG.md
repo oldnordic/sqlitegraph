@@ -21,7 +21,8 @@
   SQLite reads when materialized rows are absent.
 - Benchmarked current `PreferMaterialized` tradeoff: it remains an explicit
   opt-in specialist mode, not the default. Current local cold-read benches show
-  modest gains, while incremental maintenance materially increases write cost.
+  modest gains, while incremental maintenance still increases write cost
+  overall even after recent insert-path reductions.
 - Added broader combined-mode benchmark coverage for:
   - cold rebuild-per-read comparisons
   - on-disk reopen reads
@@ -30,6 +31,22 @@
 - Current benchmark conclusion remains negative for default-on combined
   materialization: even the current read-heavy mixed workload is slower
   end-to-end than SQLite-only, so `PreferMaterialized` stays specialist opt-in.
+- Narrowed the incremental write overhead in combined mode:
+  - `ensure_edge_type_ids()` now resolves only the requested edge types instead
+    of scanning the full type table
+  - incremental maintenance no longer rebuilds `csr_manifest` on every edge
+    change
+  - `insert_edge()` now patches the two affected CSR rows directly from the
+    latest materialized blobs instead of re-reading full SQLite adjacency rows
+- Updated local benchmark samples after the incremental fast path work:
+  - `combined_incremental_writes/insert_edge/prefer_materialized` improved from
+    roughly `74–76 µs` to `64.6–66.2 µs`
+  - `combined_mixed_workloads/read_heavy_90_10/prefer_materialized` improved to
+    roughly `641–663 µs`
+  - `combined_mixed_workloads/balanced_50_50/prefer_materialized` improved to
+    roughly `482–496 µs`
+  - combined mode still loses end-to-end to SQLite-only in the current mixed
+    workloads, so this remains an opt-in specialist path, not a default policy
 - Added authoritative/materialized version tracking in `graph_meta`.
   Combined mode now uses materialized traversal reads only when
   `materialized_version >= authoritative_version`; stale CSR rows are ignored.

@@ -16,13 +16,17 @@ Current backend modes:
     `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` reads from
     `csr_shards`, with SQLite fallback when a materialized row is unavailable
   - this remains an explicit opt-in specialist mode; current local benches show
-    modest cold-read gains but materially slower writes, and the current
-    read-heavy mixed workload is still slower end-to-end than SQLite-only
+    modest cold-read gains plus reduced insert overhead, but writes are still
+    slower overall, and the current read-heavy mixed workload is still slower
+    end-to-end than SQLite-only
   - these reads are additionally freshness-gated by
     `materialized_version >= authoritative_version`
   - `publish_materialized_views()` is the current explicit rebuild/publish step
   - under `PreferMaterialized`, edge inserts/deletes incrementally refresh the
     affected CSR rows and node-only writes keep versions synchronized
+    - current insert maintenance patches the two touched CSR rows directly from
+      the latest materialized blobs rather than rebuilding those rows from
+      SQLite adjacency queries
 
 ---
 

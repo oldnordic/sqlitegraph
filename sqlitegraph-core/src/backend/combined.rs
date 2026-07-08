@@ -26,6 +26,25 @@ fn encode_csr_adjacency(entries: &[(u32, f32, u32)]) -> Vec<u8> {
     buf
 }
 
+fn decode_csr_adjacency(blob: &[u8]) -> Result<Vec<(u32, f32, u32)>, SqliteGraphError> {
+    if blob.len() % 12 != 0 {
+        return Err(SqliteGraphError::GraphCorruption(format!(
+            "combined CSR shard_data has invalid length {} (expected 12-byte records)",
+            blob.len()
+        )));
+    }
+
+    let mut entries = Vec::with_capacity(blob.len() / 12);
+    for chunk in blob.chunks_exact(12) {
+        entries.push((
+            u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]),
+            f32::from_le_bytes([chunk[4], chunk[5], chunk[6], chunk[7]]),
+            u32::from_le_bytes([chunk[8], chunk[9], chunk[10], chunk[11]]),
+        ));
+    }
+    Ok(entries)
+}
+
 /// SQLite-authoritative backend mode.
 ///
 /// In the current Phase 2 slice, this is an explicit composition point over the
@@ -137,36 +156,37 @@ impl CombinedGraphBackend {
         conn: &crate::graph::ConnectionWrapper<'_>,
         edge_types: &std::collections::BTreeSet<String>,
     ) -> Result<std::collections::HashMap<String, u32>, SqliteGraphError> {
-        let mut existing = std::collections::HashMap::new();
-        let mut next_type_id = 1_i64;
-        {
-            let mut stmt = conn
-                .prepare_cached("SELECT type_id, edge_type FROM csr_edge_types ORDER BY type_id")
+        let mut existing = std::collections::HashMap::with_capacity(edge_types.len());
+        let mut lookup_stmt = conn
+            .prepare_cached("SELECT type_id FROM csr_edge_types WHERE edge_type = ?1")
+            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+        let mut insert_stmt = conn
+            .prepare_cached("INSERT OR IGNORE INTO csr_edge_types (edge_type) VALUES (?1)")
+            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+        for edge_type in edge_types {
+            let existing_id = lookup_stmt
+                .query_row(rusqlite::params![edge_type], |row| row.get::<_, i64>(0))
+                .optional()
                 .map_err(|e| SqliteGraphError::query(e.to_string()))?;
-            let rows = stmt
-                .query_map([], |row| {
-                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-                })
-                .map_err(|e| SqliteGraphError::query(e.to_string()))?;
-            for row in rows {
-                let (type_id, edge_type) =
-                    row.map_err(|e| SqliteGraphError::query(e.to_string()))?;
-                next_type_id = next_type_id.max(type_id + 1);
-                existing.insert(edge_type, type_id as u32);
-            }
+            let type_id = match existing_id {
+                Some(type_id) => type_id as u32,
+                None => {
+                    insert_stmt
+                        .execute(rusqlite::params![edge_type])
+                        .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+                    lookup_stmt
+                        .query_row(rusqlite::params![edge_type], |row| row.get::<_, i64>(0))
+                        .map_err(|e| SqliteGraphError::query(e.to_string()))?
+                        as u32
+                }
+            };
+            existing.insert(edge_type.clone(), type_id);
         }
 
-        for edge_type in edge_types {
-            if existing.contains_key(edge_type) {
-                continue;
-            }
-            conn.execute(
-                "INSERT INTO csr_edge_types (type_id, edge_type) VALUES (?1, ?2)",
-                rusqlite::params![next_type_id, edge_type],
-            )
-            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
-            existing.insert(edge_type.clone(), next_type_id as u32);
-            next_type_id += 1;
+        if existing.len() != edge_types.len() {
+            return Err(SqliteGraphError::query(
+                "Failed to resolve all combined CSR edge type ids".to_string(),
+            ));
         }
 
         Ok(existing)
@@ -243,50 +263,151 @@ impl CombinedGraphBackend {
         Ok(())
     }
 
-    fn refresh_manifest(
-        &self,
+    fn load_materialized_row_entries(
         conn: &crate::graph::ConnectionWrapper<'_>,
-        timestamp: i64,
-    ) -> Result<(), SqliteGraphError> {
-        let node_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM graph_entities", [], |row| row.get(0))
-            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
-        let edge_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM graph_edges", [], |row| row.get(0))
-            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
-        let (source_start, source_end): (i64, i64) = conn
-            .query_row(
-                "SELECT COALESCE(MIN(id), 0), COALESCE(MAX(id) + 1, 0) FROM graph_entities",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+        node_id: i64,
+        direction: BackendDirection,
+    ) -> Result<Vec<(u32, f32, u32)>, SqliteGraphError> {
+        let mut stmt = match conn.prepare_cached(
+            "SELECT shard_data
+             FROM csr_shards
+             WHERE shard_id = ?1 AND node_id = ?2
+             ORDER BY version DESC
+             LIMIT 1",
+        ) {
+            Ok(stmt) => stmt,
+            Err(e) if e.to_string().contains("no such table: csr_shards") => return Ok(Vec::new()),
+            Err(e) => {
+                return Err(SqliteGraphError::query(format!(
+                    "Failed to prepare combined CSR row lookup: {}",
+                    e
+                )));
+            }
+        };
 
-        for shard_id in [Self::CSR_SHARD_OUTGOING, Self::CSR_SHARD_INCOMING] {
-            conn.execute(
-                "INSERT INTO csr_manifest
-                 (shard_id, source_start, source_end, node_count, edge_count, conflict_resolution, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, 'last-write-wins', ?6)
-                 ON CONFLICT(shard_id) DO UPDATE SET
-                    source_start = excluded.source_start,
-                    source_end = excluded.source_end,
-                    node_count = excluded.node_count,
-                    edge_count = excluded.edge_count,
-                    conflict_resolution = excluded.conflict_resolution,
-                    created_at = excluded.created_at",
-                rusqlite::params![
-                    shard_id,
-                    source_start,
-                    source_end,
-                    node_count,
-                    edge_count,
-                    timestamp
-                ],
+        let blob = stmt
+            .query_row(
+                rusqlite::params![Self::csr_shard_id(direction), node_id],
+                |row| row.get::<_, Option<Vec<u8>>>(0),
             )
-            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+            .optional()
+            .map_err(|e| {
+                SqliteGraphError::query(format!("Failed to execute combined CSR row lookup: {}", e))
+            })?
+            .flatten();
+
+        match blob {
+            Some(blob) => decode_csr_adjacency(&blob),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    fn write_materialized_encoded_row(
+        conn: &crate::graph::ConnectionWrapper<'_>,
+        node_id: i64,
+        direction: BackendDirection,
+        version: i64,
+        timestamp: i64,
+        entries: &[(u32, f32, u32)],
+    ) -> Result<(), SqliteGraphError> {
+        let blob = encode_csr_adjacency(entries);
+        conn.execute(
+            "INSERT OR REPLACE INTO csr_shards
+             (shard_id, node_id, shard_data, version, created_at, visible_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                Self::csr_shard_id(direction),
+                node_id,
+                blob,
+                version,
+                timestamp,
+                version
+            ],
+        )
+        .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+        Ok(())
+    }
+
+    fn insert_encoded_entry(entries: &mut Vec<(u32, f32, u32)>, entry: (u32, f32, u32)) {
+        let insert_at = entries.partition_point(|(dst, _, type_id)| {
+            *dst < entry.0 || (*dst == entry.0 && *type_id <= entry.2)
+        });
+        entries.insert(insert_at, entry);
+    }
+
+    fn refresh_inserted_edge_materialized_rows(
+        &self,
+        edge: &EdgeSpec,
+    ) -> Result<(), SqliteGraphError> {
+        if !self.materialized_maintenance_enabled() {
+            return Ok(());
         }
 
-        Ok(())
+        let version = self.graph().get_authoritative_version()?;
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+
+        let conn = self.graph().connection();
+        conn.underlying()
+            .execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+
+        let refresh_result: Result<(), SqliteGraphError> = (|| {
+            Self::ensure_csr_tables(&conn)?;
+
+            let mut edge_types = std::collections::BTreeSet::new();
+            edge_types.insert(edge.edge_type.clone());
+            let type_ids = Self::ensure_edge_type_ids(&conn, &edge_types)?;
+            let type_id = *type_ids
+                .get(&edge.edge_type)
+                .expect("combined CSR edge type id missing");
+
+            let mut outgoing_entries =
+                Self::load_materialized_row_entries(&conn, edge.from, BackendDirection::Outgoing)?;
+            Self::insert_encoded_entry(&mut outgoing_entries, (edge.to as u32, 1.0, type_id));
+            Self::write_materialized_encoded_row(
+                &conn,
+                edge.from,
+                BackendDirection::Outgoing,
+                version,
+                timestamp,
+                &outgoing_entries,
+            )?;
+
+            let mut incoming_entries =
+                Self::load_materialized_row_entries(&conn, edge.to, BackendDirection::Incoming)?;
+            Self::insert_encoded_entry(&mut incoming_entries, (edge.from as u32, 1.0, type_id));
+            Self::write_materialized_encoded_row(
+                &conn,
+                edge.to,
+                BackendDirection::Incoming,
+                version,
+                timestamp,
+                &incoming_entries,
+            )?;
+
+            conn.execute(
+                "UPDATE graph_meta SET materialized_version = ?1 WHERE id = 1",
+                rusqlite::params![version],
+            )
+            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+            Ok(())
+        })();
+
+        match refresh_result {
+            Ok(()) => {
+                conn.underlying()
+                    .execute_batch("COMMIT")
+                    .map_err(|e| SqliteGraphError::query(e.to_string()))?;
+                Ok(())
+            }
+            Err(err) => {
+                let _ = conn.underlying().execute_batch("ROLLBACK");
+                Err(err)
+            }
+        }
     }
 
     fn sync_materialized_version_only(&self) -> Result<(), SqliteGraphError> {
@@ -370,7 +491,6 @@ impl CombinedGraphBackend {
                 )?;
             }
 
-            self.refresh_manifest(&conn, timestamp)?;
             conn.execute(
                 "UPDATE graph_meta SET materialized_version = ?1 WHERE id = 1",
                 rusqlite::params![version],
@@ -934,10 +1054,8 @@ impl GraphBackend for CombinedGraphBackend {
     }
 
     fn insert_edge(&self, edge: EdgeSpec) -> Result<i64, SqliteGraphError> {
-        let from = edge.from;
-        let to = edge.to;
-        let id = self.sqlite.insert_edge(edge)?;
-        self.refresh_incremental_materialized_rows(&[from], &[to])?;
+        let id = self.sqlite.insert_edge(edge.clone())?;
+        self.refresh_inserted_edge_materialized_rows(&edge)?;
         Ok(id)
     }
 

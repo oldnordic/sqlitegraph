@@ -27,14 +27,18 @@ See the benchmarks below for workload-specific behavior.
     live untyped `neighbors()`/`bfs()`/`k_hop()`/`node_degree()`/`shortest_path()` via
     `csr_shards`, with SQLite fallback
   - `PreferMaterialized` remains an explicit opt-in specialist mode: current
-    local benches show modest cold-read gains, materially slower writes, and
-    no end-to-end win yet on the current mixed-workload benchmarks
+    local benches show modest cold-read gains, improved but still slower write
+    maintenance, and no end-to-end win yet on the current mixed-workload
+    benchmarks
   - materialized reads are version-gated: combined mode only trusts CSR when
     `materialized_version >= authoritative_version`
   - `publish_materialized_views()` rebuilds and publishes CSR from SQLite truth
   - under `PreferMaterialized`, edge inserts/deletes incrementally refresh the
     affected CSR rows and node-only writes keep authoritative/materialized
     versions aligned
+    - the current insert fast path patches the two affected CSR rows directly
+      from the latest materialized blobs; mixed workloads improved, but still
+      do not beat SQLite-only overall
 
 **Vector + graph queries**
 - HNSW vector similarity search (`HnswIndex`, batch insert, cosine guard)
