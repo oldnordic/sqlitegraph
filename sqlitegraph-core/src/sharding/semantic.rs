@@ -7,7 +7,7 @@
 
 use crate::hnsw::{DistanceMetric, HnswConfigBuilder, HnswIndex};
 use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 #[cfg(feature = "turbovec")]
 use turbovec;
@@ -57,6 +57,26 @@ pub struct SemanticLayer {
 const TURBOVEC_THRESHOLD: usize = 1_000;
 
 impl SemanticLayer {
+    fn lock_hnsw(&self) -> MutexGuard<'_, HnswIndex> {
+        self.hnsw_index
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+    }
+
+    #[cfg(feature = "turbovec")]
+    fn lock_turbovec_index(&self) -> MutexGuard<'_, Option<turbovec::IdMapIndex>> {
+        self.turbovec_index
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+    }
+
+    #[cfg(feature = "turbovec")]
+    fn lock_embedding_count(&self) -> MutexGuard<'_, usize> {
+        self.embedding_count
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+    }
+
     /// Create a new semantic layer with given dimension.
     ///
     /// # Arguments
@@ -118,12 +138,12 @@ impl SemanticLayer {
         // Store token_id in metadata for reverse mapping during search
         let metadata = serde_json::json!({ "token_id": token_id });
 
-        let mut hnsw = self.hnsw_index.lock().unwrap();
+        let mut hnsw = self.lock_hnsw();
         hnsw.insert_vector(&embedding, Some(metadata))
             .map_err(|e| format!("HNSW insert failed: {}", e))?;
 
         // Update embedding count
-        let mut count = self.embedding_count.lock().unwrap();
+        let mut count = self.lock_embedding_count();
         *count += 1;
         let current_count = *count;
         drop(count);
@@ -134,7 +154,7 @@ impl SemanticLayer {
             self.build_turbovec_index()?;
         } else if current_count > TURBOVEC_THRESHOLD {
             // Mark turbovec for rebuild (lazy rebuild on next search)
-            let mut turbovec = self.turbovec_index.lock().unwrap();
+            let mut turbovec = self.lock_turbovec_index();
             *turbovec = None; // Clear to trigger rebuild on search
         }
 
@@ -160,20 +180,20 @@ impl SemanticLayer {
         }
 
         // Check if we should use turbovec (large dataset)
-        let count = *self.embedding_count.lock().unwrap();
+        let count = *self.lock_embedding_count();
         if count > TURBOVEC_THRESHOLD {
             // Ensure turbovec index is built
             self.ensure_turbovec_index();
 
             // Try turbovec search first
-            let turbovec = self.turbovec_index.lock().unwrap();
+            let turbovec = self.lock_turbovec_index();
             if let Some(ref index) = *turbovec {
                 return self.turbovec_search(index, query_embedding, k);
             }
         }
 
         // Fall back to HNSW search for small datasets or if turbovec unavailable
-        let hnsw = self.hnsw_index.lock().unwrap();
+        let hnsw = self.lock_hnsw();
 
         // Search HNSW index
         let results = hnsw.search(query_embedding, k);
@@ -210,7 +230,7 @@ impl SemanticLayer {
     /// Extracts all embeddings from HNSW and builds compressed turbovec index.
     #[cfg(feature = "turbovec")]
     fn build_turbovec_index(&self) -> Result<(), String> {
-        let hnsw = self.hnsw_index.lock().unwrap();
+        let hnsw = self.lock_hnsw();
         let count = hnsw.vector_count();
 
         if count == 0 {
@@ -241,7 +261,7 @@ impl SemanticLayer {
             .map_err(|e| format!("Turbovec add failed: {}", e))?;
 
         // Store the index
-        let mut turbovec = self.turbovec_index.lock().unwrap();
+        let mut turbovec = self.lock_turbovec_index();
         *turbovec = Some(turbovec_index);
 
         Ok(())
@@ -252,7 +272,7 @@ impl SemanticLayer {
     /// Called during search when turbovec is needed but not available.
     #[cfg(feature = "turbovec")]
     fn ensure_turbovec_index(&self) {
-        let turbovec = self.turbovec_index.lock().unwrap();
+        let turbovec = self.lock_turbovec_index();
         if turbovec.is_some() {
             return; // Already built
         }
@@ -299,14 +319,14 @@ impl SemanticLayer {
     /// Get the number of embeddings in this layer (turbovec version).
     #[cfg(feature = "turbovec")]
     pub fn embedding_count(&self) -> usize {
-        let count = self.embedding_count.lock().unwrap();
+        let count = self.lock_embedding_count();
         *count
     }
 
     /// Check if a token has an embedding (turbovec version).
     #[cfg(feature = "turbovec")]
     pub fn has_embedding(&self, token_id: u32) -> bool {
-        let hnsw = self.hnsw_index.lock().unwrap();
+        let hnsw = self.lock_hnsw();
 
         // Brute-force search through HNSW to check if token_id exists
         // In production, maintain a separate HashSet for O(1) lookup
@@ -335,7 +355,7 @@ impl SemanticLayer {
     /// Get HNSW index statistics (turbovec version).
     #[cfg(feature = "turbovec")]
     pub fn statistics(&self) -> Option<crate::hnsw::HnswIndexStats> {
-        let hnsw = self.hnsw_index.lock().unwrap();
+        let hnsw = self.lock_hnsw();
         hnsw.statistics().ok()
     }
 }
@@ -363,7 +383,7 @@ impl SemanticLayer {
         }
 
         let metadata = serde_json::json!({ "token_id": token_id });
-        let mut hnsw = self.hnsw_index.lock().unwrap();
+        let mut hnsw = self.lock_hnsw();
         hnsw.insert_vector(&embedding, Some(metadata))
             .map_err(|e| format!("HNSW insert failed: {}", e))?;
         Ok(())
@@ -384,7 +404,7 @@ impl SemanticLayer {
             return Vec::new();
         }
 
-        let hnsw = self.hnsw_index.lock().unwrap();
+        let hnsw = self.lock_hnsw();
         let results = hnsw.search(query_embedding, k);
 
         match results {
@@ -411,14 +431,14 @@ impl SemanticLayer {
 
     /// Get the number of embeddings in this layer (HNSW-only version).
     pub fn embedding_count(&self) -> usize {
-        let hnsw = self.hnsw_index.lock().unwrap();
+        let hnsw = self.lock_hnsw();
         hnsw.vector_count()
     }
 
     /// Check if a token has an embedding (HNSW-only version).
     #[cfg(not(feature = "turbovec"))]
     pub fn has_embedding(&self, token_id: u32) -> bool {
-        let hnsw = self.hnsw_index.lock().unwrap();
+        let hnsw = self.lock_hnsw();
 
         // Brute-force search through HNSW to check if token_id exists
         // In production, maintain a separate HashSet for O(1) lookup
@@ -455,7 +475,7 @@ impl SemanticLayer {
     /// `Some(stats)` if statistics available, `None` if HNSW error occurred.
     #[cfg(not(feature = "turbovec"))]
     pub fn statistics(&self) -> Option<crate::hnsw::HnswIndexStats> {
-        let hnsw = self.hnsw_index.lock().unwrap();
+        let hnsw = self.lock_hnsw();
         hnsw.statistics().ok()
     }
 }
@@ -463,6 +483,7 @@ impl SemanticLayer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::panic::{self, AssertUnwindSafe};
 
     #[test]
     fn test_semantic_layer_creation() {
@@ -487,6 +508,31 @@ mod tests {
 
         let wrong_embedding = vec![0.1, 0.2, 0.3]; // 3D instead of 4D
         assert!(layer.insert_embedding(100, wrong_embedding).is_err());
+    }
+
+    #[test]
+    fn test_has_embedding_recovers_from_poisoned_hnsw_lock() {
+        let layer = SemanticLayer::new(3);
+
+        let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+            let _guard = layer.hnsw_index.lock().unwrap();
+            panic!("poison hnsw mutex");
+        }));
+
+        assert!(!layer.has_embedding(42));
+    }
+
+    #[cfg(feature = "turbovec")]
+    #[test]
+    fn test_embedding_count_recovers_from_poisoned_count_lock() {
+        let layer = SemanticLayer::new(3);
+
+        let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+            let _guard = layer.embedding_count.lock().unwrap();
+            panic!("poison count mutex");
+        }));
+
+        assert_eq!(layer.embedding_count(), 0);
     }
 
     #[test]

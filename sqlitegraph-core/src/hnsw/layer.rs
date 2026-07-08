@@ -158,10 +158,9 @@ impl HnswLayer {
     ///
     /// Ok(HashSet) with connections, or Err if node doesn't exist
     pub fn get_connections(&self, node_id: u64) -> Result<&HashSet<u64>, HnswError> {
-        if !self.contains_node(node_id) {
-            return Err(HnswError::Index(HnswIndexError::NodeNotFound(node_id)));
-        }
-        Ok(&self.nodes[&node_id])
+        self.nodes
+            .get(&node_id)
+            .ok_or(HnswError::Index(HnswIndexError::NodeNotFound(node_id)))
     }
 
     /// Add a node to this layer
@@ -235,7 +234,10 @@ impl HnswLayer {
             return Err(HnswError::Index(HnswIndexError::NodeNotFound(to_node)));
         }
 
-        self.nodes.get_mut(&from_node).unwrap().insert(to_node);
+        self.nodes
+            .get_mut(&from_node)
+            .ok_or(HnswError::Index(HnswIndexError::NodeNotFound(from_node)))?
+            .insert(to_node);
         self.dirty_nodes.insert(from_node);
         Ok(())
     }
@@ -270,8 +272,14 @@ impl HnswLayer {
         }
 
         // Add bidirectional connection
-        self.nodes.get_mut(&node_a).unwrap().insert(node_b);
-        self.nodes.get_mut(&node_b).unwrap().insert(node_a);
+        self.nodes
+            .get_mut(&node_a)
+            .ok_or(HnswError::Index(HnswIndexError::NodeNotFound(node_a)))?
+            .insert(node_b);
+        self.nodes
+            .get_mut(&node_b)
+            .ok_or(HnswError::Index(HnswIndexError::NodeNotFound(node_b)))?
+            .insert(node_a);
         self.dirty_nodes.insert(node_a);
         self.dirty_nodes.insert(node_b);
 
@@ -295,7 +303,9 @@ impl HnswLayer {
             return;
         }
 
-        let connections = self.nodes.get_mut(&node_id).unwrap();
+        let Some(connections) = self.nodes.get_mut(&node_id) else {
+            return;
+        };
         if connections.len() > self.max_connections {
             // NOTE: Pruning by node_id is a simplistic approach that can disconnect
             // the graph. Proper HNSW implementations prune by distance, keeping
@@ -335,7 +345,9 @@ impl HnswLayer {
             return;
         }
 
-        let connections = self.nodes.get_mut(&node_id).unwrap();
+        let Some(connections) = self.nodes.get_mut(&node_id) else {
+            return;
+        };
         if connections.len() > self.max_connections {
             // Sort by distance, keep the closest ones
             let mut conn_with_dist: Vec<(u64, f32)> = connections
@@ -448,7 +460,10 @@ impl HnswLayer {
         if !self.nodes.contains_key(&node_id) {
             return;
         }
-        self.nodes.get_mut(&node_id).unwrap().clear();
+        let Some(connections) = self.nodes.get_mut(&node_id) else {
+            return;
+        };
+        connections.clear();
         self.dirty_nodes.insert(node_id);
         for (other_id, conns) in self.nodes.iter_mut() {
             if *other_id != node_id && conns.remove(&node_id) {

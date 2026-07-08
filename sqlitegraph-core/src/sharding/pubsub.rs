@@ -4,7 +4,7 @@
 //! Supports real-time subscriptions and survives restarts via WAL replay.
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Change types for graph operations.
 #[derive(Debug, Clone, PartialEq)]
@@ -150,6 +150,10 @@ struct ConsumerGroupState {
     pending: Vec<usize>,
 }
 
+fn lock_or_recover<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|err| err.into_inner())
+}
+
 impl PubSub {
     /// Create a new pub/sub system.
     pub fn new() -> Self {
@@ -165,13 +169,13 @@ impl PubSub {
     ///
     /// Returns subscriber ID for unsubscribing later.
     pub fn subscribe(&self, topics: Vec<String>, callback: SubscriberCallback) -> usize {
-        let mut id_guard = self.next_subscriber_id.lock().unwrap();
+        let mut id_guard = lock_or_recover(&self.next_subscriber_id);
         let id = *id_guard;
         *id_guard = id + 1;
 
         let subscriber = Subscriber::new(topics, callback);
 
-        let mut subscribers = self.subscribers.lock().unwrap();
+        let mut subscribers = lock_or_recover(&self.subscribers);
         subscribers.insert(id, subscriber);
 
         id
@@ -179,7 +183,7 @@ impl PubSub {
 
     /// Unsubscribe a subscriber.
     pub fn unsubscribe(&self, subscriber_id: usize) {
-        let mut subscribers = self.subscribers.lock().unwrap();
+        let mut subscribers = lock_or_recover(&self.subscribers);
         subscribers.remove(&subscriber_id);
     }
 
@@ -187,12 +191,12 @@ impl PubSub {
     pub fn publish(&self, change: Change) {
         // Log change for WAL replay
         {
-            let mut log = self.change_log.lock().unwrap();
+            let mut log = lock_or_recover(&self.change_log);
             log.push(change.clone());
         }
 
         // Notify subscribers
-        let subscribers = self.subscribers.lock().unwrap();
+        let subscribers = lock_or_recover(&self.subscribers);
         for subscriber in subscribers.values() {
             subscriber.notify(&change);
         }
@@ -200,8 +204,8 @@ impl PubSub {
 
     /// Replay changes from WAL (after restart).
     pub fn replay_wal(&self) -> Result<usize, String> {
-        let log = self.change_log.lock().unwrap();
-        let subscribers = self.subscribers.lock().unwrap();
+        let log = lock_or_recover(&self.change_log);
+        let subscribers = lock_or_recover(&self.subscribers);
 
         let mut notified = 0;
         for change in log.iter() {
@@ -218,19 +222,19 @@ impl PubSub {
 
     /// Get change log size.
     pub fn change_log_size(&self) -> usize {
-        let log = self.change_log.lock().unwrap();
+        let log = lock_or_recover(&self.change_log);
         log.len()
     }
 
     /// Clear change log (after successful WAL checkpoint).
     pub fn clear_change_log(&self) {
-        let mut log = self.change_log.lock().unwrap();
+        let mut log = lock_or_recover(&self.change_log);
         log.clear();
     }
 
     /// Get subscriber count.
     pub fn subscriber_count(&self) -> usize {
-        let subscribers = self.subscribers.lock().unwrap();
+        let subscribers = lock_or_recover(&self.subscribers);
         subscribers.len()
     }
 
@@ -243,7 +247,7 @@ impl PubSub {
         &self,
         name: String,
     ) -> Result<(), crate::errors::SqliteGraphError> {
-        let mut groups = self.consumer_groups.lock().unwrap();
+        let mut groups = lock_or_recover(&self.consumer_groups);
         if groups.contains_key(&name) {
             return Err(crate::errors::SqliteGraphError::QueryError(format!(
                 "Consumer group '{}' already exists",
@@ -272,7 +276,7 @@ impl PubSub {
         group: &str,
         topics: Vec<String>,
     ) -> Result<usize, crate::errors::SqliteGraphError> {
-        let mut groups = self.consumer_groups.lock().unwrap();
+        let mut groups = lock_or_recover(&self.consumer_groups);
         if !groups.contains_key(group) {
             return Err(crate::errors::SqliteGraphError::QueryError(format!(
                 "Consumer group '{}' not found",
@@ -281,7 +285,12 @@ impl PubSub {
         }
 
         // Store topics in the consumer group
-        let group_state = groups.get_mut(group).unwrap();
+        let group_state = groups.get_mut(group).ok_or_else(|| {
+            crate::errors::SqliteGraphError::QueryError(format!(
+                "Consumer group '{}' not found",
+                group
+            ))
+        })?;
         group_state.topics = topics.clone();
 
         // Subscribe normally (delivery tracking happens in fetch_messages)
@@ -304,8 +313,8 @@ impl PubSub {
         Vec<crate::sharding::streams_spec::ConsumerGroupMessage>,
         crate::errors::SqliteGraphError,
     > {
-        let log = self.change_log.lock().unwrap();
-        let mut groups = self.consumer_groups.lock().unwrap();
+        let log = lock_or_recover(&self.change_log);
+        let mut groups = lock_or_recover(&self.consumer_groups);
 
         let group_state = groups.get_mut(group).ok_or_else(|| {
             crate::errors::SqliteGraphError::QueryError(format!(
@@ -350,7 +359,7 @@ impl PubSub {
     ///
     /// Spec: streams_spec.rs
     pub fn ack(&self, group: &str, offset: usize) -> Result<(), crate::errors::SqliteGraphError> {
-        let mut groups = self.consumer_groups.lock().unwrap();
+        let mut groups = lock_or_recover(&self.consumer_groups);
 
         let group_state = groups.get_mut(group).ok_or_else(|| {
             crate::errors::SqliteGraphError::QueryError(format!(
@@ -375,7 +384,7 @@ impl PubSub {
         &self,
         group: &str,
     ) -> Result<crate::sharding::streams_spec::ConsumerGroup, crate::errors::SqliteGraphError> {
-        let groups = self.consumer_groups.lock().unwrap();
+        let groups = lock_or_recover(&self.consumer_groups);
 
         let group_state = groups.get(group).ok_or_else(|| {
             crate::errors::SqliteGraphError::QueryError(format!(
@@ -393,7 +402,7 @@ impl PubSub {
 
     /// List all consumer groups.
     pub fn list_consumer_groups(&self) -> Result<Vec<String>, crate::errors::SqliteGraphError> {
-        let groups = self.consumer_groups.lock().unwrap();
+        let groups = lock_or_recover(&self.consumer_groups);
         Ok(groups.keys().cloned().collect())
     }
 }
@@ -416,6 +425,7 @@ pub const EDGE_TOPIC: &str = "graph.edge";
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::panic::{self, AssertUnwindSafe};
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -435,6 +445,40 @@ mod tests {
 
         pubsub.unsubscribe(id);
         assert_eq!(pubsub.subscriber_count(), 0);
+    }
+
+    #[test]
+    fn test_subscribe_recovers_from_poisoned_subscriber_id_lock() {
+        let pubsub = PubSub::new();
+
+        let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+            let _guard = pubsub.next_subscriber_id.lock().unwrap();
+            panic!("poison subscriber id mutex");
+        }));
+
+        let id = pubsub.subscribe(vec![NODE_TOPIC.to_string()], Box::new(|_| {}));
+
+        assert_eq!(id, 0);
+        assert_eq!(pubsub.subscriber_count(), 1);
+    }
+
+    #[test]
+    fn test_create_consumer_group_recovers_from_poisoned_group_lock() {
+        let pubsub = PubSub::new();
+
+        let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+            let _guard = pubsub.consumer_groups.lock().unwrap();
+            panic!("poison consumer groups mutex");
+        }));
+
+        pubsub
+            .create_consumer_group("workers".to_string())
+            .expect("consumer group creation should recover from poisoned lock");
+
+        let groups = pubsub
+            .list_consumer_groups()
+            .expect("listing groups should recover from poisoned lock");
+        assert_eq!(groups, vec!["workers".to_string()]);
     }
 
     #[test]

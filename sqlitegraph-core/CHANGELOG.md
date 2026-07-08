@@ -115,6 +115,14 @@
     propagation
   - removed `edge_compat.rs` dirty-cluster cache `unwrap()`s by returning
     explicit `InvalidOperation` errors on impossible map misses
+- Hardened sharding runtime panic paths:
+  - `sharding/semantic.rs` now recovers from poisoned HNSW/turbovec mutexes
+    instead of panicking in production lookup, insert, and statistics paths
+  - `sharding/pubsub.rs` now recovers from poisoned subscriber/change-log/
+    consumer-group mutexes instead of panicking on publish, replay, subscribe,
+    and consumer-group operations
+  - added regression tests proving both modules remain usable after lock
+    poisoning
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for

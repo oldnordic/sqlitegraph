@@ -183,12 +183,15 @@ pub fn strongly_connected_components_snapshot(state: &SnapshotState) -> Vec<Hash
                         lowlink,
                         components,
                     );
-                    let wl = *lowlink.get(&w).unwrap();
-                    let vl = *lowlink.get(&v).unwrap();
-                    lowlink.insert(v, vl.min(wl));
-                } else if on_stack.contains(&w) {
-                    let wi = *indices.get(&w).unwrap();
-                    let vl = *lowlink.get(&v).unwrap();
+                    if let (Some(wl), Some(vl)) =
+                        (lowlink.get(&w).copied(), lowlink.get(&v).copied())
+                    {
+                        lowlink.insert(v, vl.min(wl));
+                    }
+                } else if on_stack.contains(&w)
+                    && let (Some(wi), Some(vl)) =
+                        (indices.get(&w).copied(), lowlink.get(&v).copied())
+                {
                     lowlink.insert(v, vl.min(wi));
                 }
             }

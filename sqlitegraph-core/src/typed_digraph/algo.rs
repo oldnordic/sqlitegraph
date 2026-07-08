@@ -81,35 +81,37 @@ pub fn tarjan_scc<N, E>(graph: &TypedDiGraph<N, E>) -> Vec<Vec<NodeIndex>> {
 
         let mut work: Vec<(NodeIndex, usize)> = vec![(start, 0)];
 
-        while let Some((v, state)) = work.last_mut() {
-            let v = *v;
+        while let Some((v, current_state)) = work.last().copied() {
+            let work_idx = work.len() - 1;
 
-            if state == &0 {
+            if current_state == 0 {
                 node_index[v.0] = Some(index_counter);
                 lowlink[v.0] = index_counter;
                 index_counter += 1;
                 stack.push(v);
                 on_stack[v.0] = true;
-                *state = 1;
+                work[work_idx].1 = 1;
             }
 
             let neighbors: Vec<NodeIndex> =
                 graph.neighbors_directed(v, Direction::Outgoing).collect();
 
             let mut advanced = false;
-            while let Some(i) = work.last_mut().map(|(_, s)| *s).map(|s| s - 1) {
+            while let Some(i) = work[work_idx].1.checked_sub(1) {
                 if i >= neighbors.len() {
                     break;
                 }
                 let w = neighbors[i];
-                *work.last_mut().unwrap() = (v, i + 2);
+                work[work_idx].1 = i + 2;
 
                 if node_index[w.0].is_none() {
                     work.push((w, 0));
                     advanced = true;
                     break;
-                } else if on_stack[w.0] {
-                    lowlink[v.0] = lowlink[v.0].min(node_index[w.0].unwrap());
+                } else if on_stack[w.0]
+                    && let Some(w_index) = node_index[w.0]
+                {
+                    lowlink[v.0] = lowlink[v.0].min(w_index);
                 }
             }
 
@@ -117,7 +119,9 @@ pub fn tarjan_scc<N, E>(graph: &TypedDiGraph<N, E>) -> Vec<Vec<NodeIndex>> {
                 continue;
             }
 
-            if lowlink[v.0] == node_index[v.0].unwrap() {
+            if let Some(v_index) = node_index[v.0]
+                && lowlink[v.0] == v_index
+            {
                 let mut component = Vec::new();
                 loop {
                     let w = stack.pop().expect("invariant: stack non-empty during SCC");
