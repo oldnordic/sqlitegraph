@@ -92,6 +92,9 @@
   `get_async_coordinator`, the internal async node loader, and the
   `AsyncGraphBackend for V3Backend` implementation without changing behavior or
   widening private visibility.
+- Extracted `SqlValue` / `SqlRow` from `backend/native/v3/backend.rs` into the
+  new `backend/native/v3/sql_value.rs` child module. The query-facing types
+  remain re-exported through `backend.rs`, so this is structure cleanup only.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
