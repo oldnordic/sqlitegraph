@@ -19,6 +19,9 @@
   `shortest_path()` consult
   `csr_shards` first and fall back per-node or per-direction to authoritative
   SQLite reads when materialized rows are absent.
+- Benchmarked current `PreferMaterialized` tradeoff: it remains an explicit
+  opt-in specialist mode, not the default. Current local cold-read benches show
+  modest gains, while incremental maintenance materially increases write cost.
 - Added authoritative/materialized version tracking in `graph_meta`.
   Combined mode now uses materialized traversal reads only when
   `materialized_version >= authoritative_version`; stale CSR rows are ignored.

@@ -237,6 +237,8 @@ Implemented so far:
 - opt-in `CombinedReadMode::PreferMaterialized` exists for live untyped
     `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` reads via
     `csr_shards`, with SQLite fallback
+  - `PreferMaterialized` SHALL remain explicit opt-in specialist behavior until
+    broader benchmarks justify changing the default tradeoff
   - materialized combined reads are freshness-gated by
     `materialized_version >= authoritative_version`
   - `publish_materialized_views()` now provides an explicit rebuild/publish
@@ -244,6 +246,8 @@ Implemented so far:
   - under `PreferMaterialized`, combined mode now incrementally refreshes the
     affected CSR rows for edge insert/delete and keeps versions synchronized on
     node-only writes
+  - current local benchmark finding: modest cold-read gains do not yet justify
+    default-on write amplification
 
 Not implemented yet:
 

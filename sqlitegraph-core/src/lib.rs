@@ -76,7 +76,7 @@
 //! | **Raw SQL Access** | ✅ Native | ❌ Not supported | ✅ Native |
 //! | **File Format** | SQLite DB | Custom binary (V3) | SQLite DB |
 //! | **Default Traversal Runtime** | SQLite table/index path | V3 edge-store / B+Tree path | SQLite table/index path today via `CombinedGraphBackend` |
-//! | **Optional materialized live reads** | N/A | CSR runtime views | Untyped `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` via opt-in CSR fallback |
+//! | **Optional materialized live reads** | N/A | CSR runtime views | Untyped `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` via opt-in CSR fallback; specialist mode, not default |
 //! | **Atomic SQLite + graph materialization** | N/A | N/A | Not yet implemented |
 //! | **Materialized freshness gate** | N/A | Backend-local runtime versioning | `materialized_version >= authoritative_version` required |
 //! | **Incremental materialized maintenance** | N/A | N/A | Combined mode refreshes affected CSR rows on edge insert/delete when `PreferMaterialized` is enabled |
@@ -112,6 +112,8 @@
 //!   providing a distinct atomic graph-materialization boundary
 //! - **You may want to opt into materialized live traversal reads** later via
 //!   `CombinedConfig`, while keeping SQLite as the fallback authority
+//! - **You accept the current tradeoff**: modest cold-read gains in exchange
+//!   for materially slower writes when `PreferMaterialized` is enabled
 //! - **You want stale materialized views rejected automatically**, not merely
 //!   bypassed when rows are missing
 //! - **You want an explicit rebuild/publish step** via

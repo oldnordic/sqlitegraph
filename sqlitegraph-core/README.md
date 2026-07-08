@@ -26,6 +26,8 @@ See the benchmarks below for workload-specific behavior.
   - optional `CombinedReadMode::PreferMaterialized` currently applies only to
     live untyped `neighbors()`/`bfs()`/`k_hop()`/`node_degree()`/`shortest_path()` via
     `csr_shards`, with SQLite fallback
+  - `PreferMaterialized` remains an explicit opt-in specialist mode: current
+    local benches show modest cold-read gains, but materially slower writes
   - materialized reads are version-gated: combined mode only trusts CSR when
     `materialized_version >= authoritative_version`
   - `publish_materialized_views()` rebuilds and publishes CSR from SQLite truth
@@ -124,7 +126,7 @@ See [CHANGELOG](https://github.com/oldnordic/sqlitegraph/blob/main/CHANGELOG.md)
 | MVCC snapshots | Yes (v8) | Yes (v8) | Delegates to SQLite today |
 | Time-travel queries | Yes (optimized v9) | Yes (optimized v9) | Delegates to SQLite today |
 | Default traversal runtime | SQLite table/index path | V3 edge-store / B+Tree path | SQLite table/index path today via `CombinedGraphBackend` |
-| Optional materialized live reads | N/A | CSR runtime views | Untyped `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` via opt-in CSR fallback |
+| Optional materialized live reads | N/A | CSR runtime views | Untyped `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` via opt-in CSR fallback; specialist mode, not default |
 | Atomic SQLite + graph materialization | N/A | N/A | Not yet implemented |
 
 ## Benchmarks

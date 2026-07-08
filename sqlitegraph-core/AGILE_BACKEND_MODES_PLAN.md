@@ -105,6 +105,8 @@ Status:
   - opt-in `CombinedReadMode::PreferMaterialized` now serves live untyped
     `neighbors()` / `bfs()` / `k_hop()` / `node_degree()` / `shortest_path()` from `csr_shards`
     with per-node or per-direction SQLite fallback
+  - `PreferMaterialized` remains opt-in specialist behavior for now; benchmark
+    evidence shows only modest cold-read gains against materially slower writes
   - materialized combined reads are now guarded by an explicit freshness check
     against `graph_meta.authoritative_version` / `materialized_version`
   - `publish_materialized_views()` now rebuilds and publishes combined CSR

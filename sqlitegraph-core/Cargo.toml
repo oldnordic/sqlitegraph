@@ -240,6 +240,11 @@ name = "read_path_benchmarks"
 harness = false
 
 [[bench]]
+name = "backend_mode_materialization"
+harness = false
+required-features = ["native-v3"]
+
+[[bench]]
 name = "regression_memory"
 harness = false
 
