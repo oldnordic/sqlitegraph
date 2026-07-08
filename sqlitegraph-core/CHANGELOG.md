@@ -38,13 +38,18 @@
     change
   - `insert_edge()` now patches the two affected CSR rows directly from the
     latest materialized blobs instead of re-reading full SQLite adjacency rows
+  - `delete_entity()` now removes the deleted node directly from the affected
+    materialized blobs and writes empty replacement rows for the deleted node
+    itself instead of rebuilding touched rows from SQLite adjacency scans
 - Updated local benchmark samples after the incremental fast path work:
   - `combined_incremental_writes/insert_edge/prefer_materialized` improved from
     roughly `74–76 µs` to `64.6–66.2 µs`
+  - `combined_incremental_writes/delete_entity/prefer_materialized` now measures
+    roughly `76.1–78.2 µs`
   - `combined_mixed_workloads/read_heavy_90_10/prefer_materialized` improved to
-    roughly `641–663 µs`
+    roughly `639–650 µs`
   - `combined_mixed_workloads/balanced_50_50/prefer_materialized` improved to
-    roughly `482–496 µs`
+    roughly `446–460 µs`
   - combined mode still loses end-to-end to SQLite-only in the current mixed
     workloads, so this remains an opt-in specialist path, not a default policy
 - Added authoritative/materialized version tracking in `graph_meta`.

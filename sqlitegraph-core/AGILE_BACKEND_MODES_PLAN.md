@@ -241,8 +241,8 @@ Goal:
   maintenance
 
 Remaining work:
-- optimize `delete_entity()` / row-rebuild maintenance in
-  [src/backend/combined.rs](/home/feanor/Projects/sqlitegraph/sqlitegraph-core/src/backend/combined.rs:263)
+- `delete_entity()` fast path is now implemented; next work is to measure and
+  decide whether any further delete-path tuning is worth the added complexity
 - add focused regression coverage for combined incremental maintenance around
   insert/delete/version freshness behavior
 - rerun mixed-workload and reopen benchmarks after each narrow optimization

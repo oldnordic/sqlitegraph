@@ -27,6 +27,9 @@ Current backend modes:
     - current insert maintenance patches the two touched CSR rows directly from
       the latest materialized blobs rather than rebuilding those rows from
       SQLite adjacency queries
+    - current delete maintenance removes the deleted node directly from the
+      touched blobs and writes empty replacement rows for that node at the new
+      version
 
 ---
 

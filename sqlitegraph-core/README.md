@@ -37,8 +37,11 @@ See the benchmarks below for workload-specific behavior.
     affected CSR rows and node-only writes keep authoritative/materialized
     versions aligned
     - the current insert fast path patches the two affected CSR rows directly
-      from the latest materialized blobs; mixed workloads improved, but still
-      do not beat SQLite-only overall
+      from the latest materialized blobs
+    - the current delete fast path removes the deleted node directly from the
+      touched blobs and writes empty replacement rows for the deleted node
+    - mixed workloads improved further, but still do not beat SQLite-only
+      overall
 
 **Vector + graph queries**
 - HNSW vector similarity search (`HnswIndex`, batch insert, cosine guard)

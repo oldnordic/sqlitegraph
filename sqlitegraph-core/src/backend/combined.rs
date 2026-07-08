@@ -192,77 +192,6 @@ impl CombinedGraphBackend {
         Ok(existing)
     }
 
-    fn collect_sqlite_row_entries(
-        &self,
-        conn: &crate::graph::ConnectionWrapper<'_>,
-        node_id: i64,
-        direction: BackendDirection,
-    ) -> Result<Vec<(u32, f32, String)>, SqliteGraphError> {
-        let sql = match direction {
-            BackendDirection::Outgoing => {
-                "SELECT to_id, edge_type FROM graph_edges WHERE from_id = ?1 ORDER BY to_id, edge_type, id"
-            }
-            BackendDirection::Incoming => {
-                "SELECT from_id, edge_type FROM graph_edges WHERE to_id = ?1 ORDER BY from_id, edge_type, id"
-            }
-        };
-
-        let mut stmt = conn
-            .prepare_cached(sql)
-            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
-        let rows = stmt
-            .query_map(rusqlite::params![node_id], |row| {
-                Ok((
-                    row.get::<_, i64>(0)? as u32,
-                    1.0_f32,
-                    row.get::<_, String>(1)?,
-                ))
-            })
-            .map_err(|e| SqliteGraphError::query(e.to_string()))?;
-
-        let mut entries = Vec::new();
-        for row in rows {
-            entries.push(row.map_err(|e| SqliteGraphError::query(e.to_string()))?);
-        }
-        Ok(entries)
-    }
-
-    fn write_materialized_row(
-        conn: &crate::graph::ConnectionWrapper<'_>,
-        node_id: i64,
-        direction: BackendDirection,
-        version: i64,
-        timestamp: i64,
-        entries: &[(u32, f32, String)],
-        type_ids: &std::collections::HashMap<String, u32>,
-    ) -> Result<(), SqliteGraphError> {
-        let encoded_entries: Vec<(u32, f32, u32)> = entries
-            .iter()
-            .map(|(dst, weight, edge_type)| {
-                let type_id = *type_ids
-                    .get(edge_type)
-                    .expect("combined CSR edge type id missing");
-                (*dst, *weight, type_id)
-            })
-            .collect();
-        let blob = encode_csr_adjacency(&encoded_entries);
-        conn.execute(
-            "INSERT OR REPLACE INTO csr_shards
-             (shard_id, node_id, shard_data, version, created_at, visible_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                Self::csr_shard_id(direction),
-                node_id,
-                blob,
-                version,
-                timestamp,
-                version
-            ],
-        )
-        .map_err(|e| SqliteGraphError::query(e.to_string()))?;
-        Ok(())
-    }
-
     fn load_materialized_row_entries(
         conn: &crate::graph::ConnectionWrapper<'_>,
         node_id: i64,
@@ -333,6 +262,10 @@ impl CombinedGraphBackend {
             *dst < entry.0 || (*dst == entry.0 && *type_id <= entry.2)
         });
         entries.insert(insert_at, entry);
+    }
+
+    fn remove_encoded_entries(entries: &mut Vec<(u32, f32, u32)>, dst: u32) {
+        entries.retain(|(entry_dst, _, _)| *entry_dst != dst);
     }
 
     fn refresh_inserted_edge_materialized_rows(
@@ -410,16 +343,9 @@ impl CombinedGraphBackend {
         }
     }
 
-    fn sync_materialized_version_only(&self) -> Result<(), SqliteGraphError> {
-        if !self.materialized_maintenance_enabled() {
-            return Ok(());
-        }
-        let version = self.graph().get_authoritative_version()?;
-        self.graph().set_materialized_version(version)
-    }
-
-    fn refresh_incremental_materialized_rows(
+    fn refresh_deleted_entity_materialized_rows(
         &self,
+        id: i64,
         outgoing_nodes: &[i64],
         incoming_nodes: &[i64],
     ) -> Result<(), SqliteGraphError> {
@@ -441,55 +367,56 @@ impl CombinedGraphBackend {
         let refresh_result: Result<(), SqliteGraphError> = (|| {
             Self::ensure_csr_tables(&conn)?;
 
-            let outgoing_set: std::collections::BTreeSet<i64> =
-                outgoing_nodes.iter().copied().collect();
-            let incoming_set: std::collections::BTreeSet<i64> =
-                incoming_nodes.iter().copied().collect();
-
-            let mut edge_types = std::collections::BTreeSet::new();
-            let mut outgoing_entries = Vec::new();
-            for node_id in &outgoing_set {
-                let entries =
-                    self.collect_sqlite_row_entries(&conn, *node_id, BackendDirection::Outgoing)?;
-                for (_, _, edge_type) in &entries {
-                    edge_types.insert(edge_type.clone());
-                }
-                outgoing_entries.push((*node_id, entries));
-            }
-
-            let mut incoming_entries = Vec::new();
-            for node_id in &incoming_set {
-                let entries =
-                    self.collect_sqlite_row_entries(&conn, *node_id, BackendDirection::Incoming)?;
-                for (_, _, edge_type) in &entries {
-                    edge_types.insert(edge_type.clone());
-                }
-                incoming_entries.push((*node_id, entries));
-            }
-
-            let type_ids = Self::ensure_edge_type_ids(&conn, &edge_types)?;
-            for (node_id, entries) in &outgoing_entries {
-                Self::write_materialized_row(
+            for &node_id in outgoing_nodes {
+                let mut entries = Self::load_materialized_row_entries(
                     &conn,
-                    *node_id,
+                    node_id,
+                    BackendDirection::Outgoing,
+                )?;
+                Self::remove_encoded_entries(&mut entries, id as u32);
+                Self::write_materialized_encoded_row(
+                    &conn,
+                    node_id,
                     BackendDirection::Outgoing,
                     version,
                     timestamp,
-                    entries,
-                    &type_ids,
+                    &entries,
                 )?;
             }
-            for (node_id, entries) in &incoming_entries {
-                Self::write_materialized_row(
+
+            for &node_id in incoming_nodes {
+                let mut entries = Self::load_materialized_row_entries(
                     &conn,
-                    *node_id,
+                    node_id,
+                    BackendDirection::Incoming,
+                )?;
+                Self::remove_encoded_entries(&mut entries, id as u32);
+                Self::write_materialized_encoded_row(
+                    &conn,
+                    node_id,
                     BackendDirection::Incoming,
                     version,
                     timestamp,
-                    entries,
-                    &type_ids,
+                    &entries,
                 )?;
             }
+
+            Self::write_materialized_encoded_row(
+                &conn,
+                id,
+                BackendDirection::Outgoing,
+                version,
+                timestamp,
+                &[],
+            )?;
+            Self::write_materialized_encoded_row(
+                &conn,
+                id,
+                BackendDirection::Incoming,
+                version,
+                timestamp,
+                &[],
+            )?;
 
             conn.execute(
                 "UPDATE graph_meta SET materialized_version = ?1 WHERE id = 1",
@@ -511,6 +438,14 @@ impl CombinedGraphBackend {
                 Err(err)
             }
         }
+    }
+
+    fn sync_materialized_version_only(&self) -> Result<(), SqliteGraphError> {
+        if !self.materialized_maintenance_enabled() {
+            return Ok(());
+        }
+        let version = self.graph().get_authoritative_version()?;
+        self.graph().set_materialized_version(version)
     }
 
     /// Rebuild and publish combined-mode materialized traversal views from
@@ -1085,11 +1020,7 @@ impl GraphBackend for CombinedGraphBackend {
 
         self.sqlite.delete_entity(id)?;
 
-        let mut outgoing_refresh = incoming;
-        outgoing_refresh.push(id);
-        let mut incoming_refresh = outgoing;
-        incoming_refresh.push(id);
-        self.refresh_incremental_materialized_rows(&outgoing_refresh, &incoming_refresh)
+        self.refresh_deleted_entity_materialized_rows(id, &incoming, &outgoing)
     }
 
     fn entity_ids(&self) -> Result<Vec<i64>, SqliteGraphError> {

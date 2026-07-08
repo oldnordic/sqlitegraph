@@ -248,6 +248,9 @@ Implemented so far:
     node-only writes
     - current optimization slice narrows insert maintenance further by patching
       only the two touched CSR rows directly from the latest materialized blobs
+    - current optimization slice narrows delete maintenance by removing the
+      deleted node directly from the touched blobs and writing empty
+      replacement rows for the deleted node itself
   - current local benchmark finding: modest cold-read gains do not yet justify
     default-on write amplification
   - broader mixed-workload and reopen benchmarks currently do not justify a
