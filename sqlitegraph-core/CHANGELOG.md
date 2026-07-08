@@ -104,6 +104,10 @@
   `begin_transaction`, `savepoint`, `commit_transaction`,
   `rollback_transaction`, and the savepoint release/rollback helpers without
   changing behavior or public transaction semantics.
+- Extracted the native-v3 snapshot/version metadata block into the new
+  `backend/native/v3/snapshot_meta.rs` child module. This moved version helpers,
+  snapshot registry helpers, and snapshot CRUD helpers without changing
+  behavior or visibility contracts.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
