@@ -87,6 +87,11 @@
   `backend/native/v3/backend.rs` into the new
   `backend/native/v3/transaction_guard.rs` child module with no behavior
   change. The public guard types remain re-exported through `backend.rs`.
+- Extracted the async helper block from `backend/native/v3/backend.rs` into the
+  new `backend/native/v3/async_backend.rs` child module. This moved
+  `get_async_coordinator`, the internal async node loader, and the
+  `AsyncGraphBackend for V3Backend` implementation without changing behavior or
+  widening private visibility.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
