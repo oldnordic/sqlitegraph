@@ -83,6 +83,10 @@
   `backend/native/v3/batch_guard.rs` child module with no behavior change. The
   public type remains re-exported through `backend.rs`, so the cleanup reduces
   `backend.rs` size without widening visibility or changing the batch-write API.
+- Extracted `V3TransactionGuard` / `V3SavepointGuard` from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/transaction_guard.rs` child module with no behavior
+  change. The public guard types remain re-exported through `backend.rs`.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
