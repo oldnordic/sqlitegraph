@@ -181,6 +181,8 @@ pub struct WriteBatchGuard<'a> {
     backend: &'a V3Backend,
     node_count: u64,
     edge_count: u64,
+    staged_nodes: Vec<(i64, String, String, serde_json::Value)>,
+    staged_edges: Vec<EdgeSpec>,
     committed: bool,
 }
 
@@ -197,15 +199,21 @@ impl<'a> WriteBatchGuard<'a> {
             backend,
             node_count: 0,
             edge_count: 0,
+            staged_nodes: Vec::new(),
+            staged_edges: Vec::new(),
             committed: false,
         }
     }
 
     /// Insert a node without syncing (accumulated in batch)
     pub fn insert_node(&mut self, node: NodeSpec) -> Result<i64, SqliteGraphError> {
+        let kind = node.kind.clone();
+        let name = node.name.clone();
+        let data = node.data.clone();
         // Use inner insert that doesn't sync
         let node_id = self.backend.insert_node_inner(node)?;
         self.node_count += 1;
+        self.staged_nodes.push((node_id, kind, name, data));
         Ok(node_id)
     }
 
@@ -222,16 +230,21 @@ impl<'a> WriteBatchGuard<'a> {
             obj.insert("id".to_string(), serde_json::Value::Number(node_id.into()));
             node.data = serde_json::Value::Object(obj);
         }
+        let kind = node.kind.clone();
+        let name = node.name.clone();
+        let data = node.data.clone();
         let node_id = self.backend.insert_node_inner(node)?;
         self.node_count += 1;
+        self.staged_nodes.push((node_id, kind, name, data));
         Ok(node_id)
     }
 
     /// Insert an edge without syncing (accumulated in batch)
     pub fn insert_edge(&mut self, edge: EdgeSpec) -> Result<i64, SqliteGraphError> {
         // Use inner insert that doesn't sync
-        let edge_id = self.backend.insert_edge_inner(edge)?;
+        let edge_id = self.backend.insert_edge_inner(edge.clone())?;
         self.edge_count += 1;
+        self.staged_edges.push(edge);
         Ok(edge_id)
     }
 
@@ -252,6 +265,48 @@ impl<'a> WriteBatchGuard<'a> {
         // Sync header and WAL once for the entire batch
         if self.node_count > 0 || self.edge_count > 0 {
             self.backend.sync_header()?;
+            let next_version = self.backend.next_graph_version();
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            if self.node_count > 0 {
+                let conn = self.backend.sqlite_conn.lock();
+                for (node_id, kind, name, data) in &self.staged_nodes {
+                    let data_json = serde_json::to_string(data).unwrap_or_default();
+                    conn.execute(
+                        "INSERT INTO node_properties (node_id, kind, name, data, created_at, created_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                        [
+                            node_id as &dyn ToSql,
+                            kind as &dyn ToSql,
+                            name as &dyn ToSql,
+                            &data_json as &dyn ToSql,
+                            &timestamp as &dyn ToSql,
+                            &next_version as &dyn ToSql,
+                        ],
+                    ).map_err(|e| SqliteGraphError::connection(format!("Failed to insert node properties: {}", e)))?;
+                }
+                drop(conn);
+            }
+            if self.edge_count > 0 {
+                let conn = self.backend.sqlite_conn.lock();
+                for edge in &self.staged_edges {
+                    let data_json = serde_json::to_string(&edge.data).unwrap_or_default();
+                    conn.execute(
+                        "INSERT OR REPLACE INTO edge_attributes (src, dst, attr_name, attr_value, created_version) VALUES (?1, ?2, ?3, ?4, ?5)",
+                        [
+                            &edge.from as &dyn ToSql,
+                            &edge.to as &dyn ToSql,
+                            &edge.edge_type as &dyn ToSql,
+                            &data_json as &dyn ToSql,
+                            &next_version as &dyn ToSql,
+                        ],
+                    ).map_err(|e| SqliteGraphError::connection(format!("Failed to insert edge attributes: {}", e)))?;
+                }
+                drop(conn);
+                self.backend.rebuild_csr_runtime_views(next_version)?;
+            }
+            self.backend.advance_snapshot_version();
             self.backend.flush_to_disk()?;
         }
 
@@ -4959,6 +5014,32 @@ mod tests {
         // Verify entity count
         let ids = backend.entity_ids().unwrap();
         assert_eq!(ids.len(), 1);
+    }
+
+    #[test]
+    fn test_v3_backend_batch_insert_node_persists_node_properties() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("batch_node.graph");
+        let backend = V3Backend::create(&db_path).unwrap();
+
+        let mut batch = backend.begin_batch();
+        let node_id = batch
+            .insert_node(NodeSpec {
+                kind: "Batch".to_string(),
+                name: "batched_node".to_string(),
+                file_path: None,
+                data: serde_json::json!({"mode": "batch"}),
+            })
+            .unwrap();
+        batch.commit().unwrap();
+
+        let props = backend.get_node_properties(node_id).unwrap();
+        let Some((kind, name, data)) = props else {
+            panic!("batched node properties missing");
+        };
+        assert_eq!(kind, "Batch");
+        assert_eq!(name, "batched_node");
+        assert_eq!(data["mode"], serde_json::json!("batch"));
     }
 
     #[test]
