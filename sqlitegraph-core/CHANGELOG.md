@@ -99,6 +99,11 @@
   new `backend/native/v3/transaction_state.rs` child module. This moved the
   frame/state structs plus backup/discard/rollback/reload helpers without
   changing behavior or widening visibility.
+- Extracted the native-v3 transaction-control methods into the new
+  `backend/native/v3/transaction_control.rs` child module. This moved
+  `begin_transaction`, `savepoint`, `commit_transaction`,
+  `rollback_transaction`, and the savepoint release/rollback helpers without
+  changing behavior or public transaction semantics.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
