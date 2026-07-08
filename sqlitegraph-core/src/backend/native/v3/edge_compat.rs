@@ -1098,7 +1098,14 @@ impl V3EdgeStore {
     ) -> NativeResult<&'m mut V3EdgeCluster> {
         let cache_key = (src, dir);
         if dirty.contains_key(&cache_key) {
-            return Ok(dirty.get_mut(&cache_key).unwrap());
+            return dirty
+                .get_mut(&cache_key)
+                .ok_or_else(|| NativeBackendError::InvalidOperation {
+                    context: format!(
+                        "dirty edge cluster missing despite existing key for src={} dir={:?}",
+                        src, dir
+                    ),
+                });
         }
 
         let key = edge_key(src, dir);
@@ -1124,9 +1131,15 @@ impl V3EdgeStore {
 
         let cluster =
             existing_cluster.unwrap_or_else(|| V3EdgeCluster::new(src, dir, page_id_to_use));
-
         dirty.insert(cache_key, cluster);
-        Ok(dirty.get_mut(&cache_key).unwrap())
+        dirty
+            .get_mut(&cache_key)
+            .ok_or_else(|| NativeBackendError::InvalidOperation {
+                context: format!(
+                    "dirty edge cluster missing after insertion for src={} dir={:?}",
+                    src, dir
+                ),
+            })
     }
 
     /// Insert an edge - uses interior mutability via RwLock, takes &self!

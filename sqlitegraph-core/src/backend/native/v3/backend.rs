@@ -70,6 +70,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::MutexGuard;
 use std::time::{SystemTime, UNIX_EPOCH};
 pub use transaction_guard::{V3SavepointGuard, V3TransactionGuard};
 use transaction_state::GraphTransactionState;
@@ -169,6 +170,37 @@ struct HnswIndexMetadata {
     embedding_count: Arc<std::sync::Mutex<usize>>,
     /// Vector dimension (must match all insertions)
     dimension: usize,
+}
+
+impl HnswIndexMetadata {
+    fn lock_hnsw(&self, index_name: &str) -> Result<MutexGuard<'_, HnswIndex>, SqliteGraphError> {
+        self.hnsw_index.lock().map_err(|_| {
+            SqliteGraphError::validation(format!("HNSW index lock poisoned: {}", index_name))
+        })
+    }
+
+    #[cfg(feature = "turbovec")]
+    fn lock_turbovec(
+        &self,
+        index_name: &str,
+    ) -> Result<MutexGuard<'_, Option<turbovec::IdMapIndex>>, SqliteGraphError> {
+        self.turbovec_index.lock().map_err(|_| {
+            SqliteGraphError::validation(format!("Turbovec index lock poisoned: {}", index_name))
+        })
+    }
+
+    #[cfg(feature = "turbovec")]
+    fn lock_embedding_count(
+        &self,
+        index_name: &str,
+    ) -> Result<MutexGuard<'_, usize>, SqliteGraphError> {
+        self.embedding_count.lock().map_err(|_| {
+            SqliteGraphError::validation(format!(
+                "HNSW embedding count lock poisoned: {}",
+                index_name
+            ))
+        })
+    }
 }
 
 /// Turbovec activation threshold: 1K vectors triggers compression
@@ -680,7 +712,7 @@ impl V3Backend {
         k: usize,
         ef_search_override: Option<usize>,
     ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
-        let mut hnsw = metadata_arc.hnsw_index.lock().unwrap();
+        let mut hnsw = metadata_arc.lock_hnsw("<exact-search>")?;
         let original_ef_search = hnsw.config.ef_search;
         if let Some(ef_search) = ef_search_override {
             hnsw.config.ef_search = ef_search;
@@ -1229,7 +1261,12 @@ impl V3Backend {
             "dimension": dimension,
             "created_at": std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
+                .map_err(|e| {
+                    SqliteGraphError::validation(format!(
+                        "System clock before UNIX epoch during HNSW metadata creation: {}",
+                        e
+                    ))
+                })?
                 .as_secs()
         });
         self.kv_set_v3(
@@ -1279,12 +1316,12 @@ impl V3Backend {
 
         #[cfg(feature = "turbovec")]
         {
-            return Ok(*metadata.embedding_count.lock().unwrap());
+            return Ok(*metadata.lock_embedding_count(index_name)?);
         }
 
         #[cfg(not(feature = "turbovec"))]
         {
-            let hnsw = metadata.hnsw_index.lock().unwrap();
+            let hnsw = metadata.lock_hnsw(index_name)?;
             Ok(hnsw.vector_count())
         }
     }
@@ -1298,7 +1335,7 @@ impl V3Backend {
 
         #[cfg(feature = "turbovec")]
         {
-            Ok(metadata.turbovec_index.lock().unwrap().is_some())
+            Ok(metadata.lock_turbovec(index_name)?.is_some())
         }
 
         #[cfg(not(feature = "turbovec"))]
@@ -1372,13 +1409,13 @@ impl V3Backend {
         }
 
         // Insert into HNSW
-        let mut hnsw = metadata_arc.hnsw_index.lock().unwrap();
+        let mut hnsw = metadata_arc.lock_hnsw(index_name)?;
         hnsw.insert_vector(vector, metadata)
             .map_err(|e| SqliteGraphError::validation(format!("HNSW insert failed: {:?}", e)))?;
         drop(hnsw);
 
         // Update embedding count
-        let mut count = metadata_arc.embedding_count.lock().unwrap();
+        let mut count = metadata_arc.lock_embedding_count(index_name)?;
         *count += 1;
         let current_count = *count;
         drop(count);
@@ -1418,7 +1455,7 @@ impl V3Backend {
         }
 
         // Insert into HNSW
-        let mut hnsw = metadata_arc.hnsw_index.lock().unwrap();
+        let mut hnsw = metadata_arc.lock_hnsw(index_name)?;
         hnsw.insert_vector(vector, metadata)
             .map_err(|e| SqliteGraphError::validation(format!("HNSW insert failed: {:?}", e)))?;
 
@@ -1489,14 +1526,14 @@ impl V3Backend {
         // Check if already built (guard against duplicate builds)
         #[cfg(feature = "turbovec")]
         {
-            let turbovec = metadata_arc.turbovec_index.lock().unwrap();
+            let turbovec = metadata_arc.lock_turbovec(index_name)?;
             if turbovec.is_some() {
                 return Ok(()); // Already built
             }
             drop(turbovec);
         }
 
-        let hnsw = metadata_arc.hnsw_index.lock().unwrap();
+        let hnsw = metadata_arc.lock_hnsw(index_name)?;
         let count = hnsw.vector_count();
 
         if count == 0 {
@@ -1530,7 +1567,7 @@ impl V3Backend {
             .add_with_ids(&embeddings, &ids)
             .map_err(|e| SqliteGraphError::validation(format!("Turbovec add failed: {}", e)))?;
         // Store the index
-        let mut turbovec = metadata_arc.turbovec_index.lock().unwrap();
+        let mut turbovec = metadata_arc.lock_turbovec(index_name)?;
         *turbovec = Some(turbovec_index);
 
         Ok(())
@@ -1556,7 +1593,7 @@ impl V3Backend {
         };
 
         // Check if already built
-        let turbovec = metadata_arc.turbovec_index.lock().unwrap();
+        let turbovec = metadata_arc.lock_turbovec(index_name)?;
         if turbovec.is_some() {
             return Ok(()); // Already built
         }
@@ -1644,11 +1681,11 @@ impl V3Backend {
         // Check if we should use turbovec (large dataset)
         #[cfg(feature = "turbovec")]
         {
-            let count = *metadata_arc.embedding_count.lock().unwrap();
+            let count = *metadata_arc.lock_embedding_count(index_name)?;
             if count > TURBOVEC_THRESHOLD && !config.force_exact {
                 self.ensure_turbovec_index(index_name)?;
 
-                let turbovec = metadata_arc.turbovec_index.lock().unwrap();
+                let turbovec = metadata_arc.lock_turbovec(index_name)?;
                 if let Some(ref index) = *turbovec {
                     return Ok(self.turbovec_search(index, query_vector, k));
                 }
@@ -2680,7 +2717,12 @@ impl GraphBackend for V3Backend {
         let data_json = serde_json::to_string(&data).unwrap_or_default();
         let timestamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .map_err(|e| {
+                SqliteGraphError::connection(format!(
+                    "System clock before UNIX epoch during node property insert: {}",
+                    e
+                ))
+            })?
             .as_secs() as i64;
         let conn = self.sqlite_conn.lock();
         conn.execute(

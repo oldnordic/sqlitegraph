@@ -108,6 +108,13 @@
   `backend/native/v3/snapshot_meta.rs` child module. This moved version helpers,
   snapshot registry helpers, and snapshot CRUD helpers without changing
   behavior or visibility contracts.
+- Hardened native-v3 runtime panic paths:
+  - replaced HNSW/turbovec metadata mutex `unwrap()` sites in
+    `backend/native/v3/backend.rs` with explicit lock-to-error conversion
+  - replaced two production timestamp `unwrap()` sites with explicit error
+    propagation
+  - removed `edge_compat.rs` dirty-cluster cache `unwrap()`s by returning
+    explicit `InvalidOperation` errors on impossible map misses
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
