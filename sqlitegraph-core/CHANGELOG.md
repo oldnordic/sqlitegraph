@@ -123,6 +123,11 @@
     and consumer-group operations
   - added regression tests proving both modules remain usable after lock
     poisoning
+- Extracted the native-v3 HNSW/vector-search block from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/hnsw_support.rs` child module. This moved the
+  `HnswIndexMetadata` wrapper, `HnswSearchConfig`, and the index
+  create/insert/delete/search helpers without changing public behavior.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
