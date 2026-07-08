@@ -27,7 +27,7 @@ fn encode_csr_adjacency(entries: &[(u32, f32, u32)]) -> Vec<u8> {
 }
 
 fn decode_csr_adjacency(blob: &[u8]) -> Result<Vec<(u32, f32, u32)>, SqliteGraphError> {
-    if blob.len() % 12 != 0 {
+    if !blob.len().is_multiple_of(12) {
         return Err(SqliteGraphError::GraphCorruption(format!(
             "combined CSR shard_data has invalid length {} (expected 12-byte records)",
             blob.len()

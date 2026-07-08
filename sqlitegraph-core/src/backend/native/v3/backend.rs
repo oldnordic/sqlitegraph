@@ -75,6 +75,9 @@ fn encode_csr_adjacency(entries: &[(u32, f32, u32)]) -> Vec<u8> {
     buf
 }
 
+type CsrRuntimeEntry = (u32, f32, String);
+type CsrRuntimeRow = (i64, Vec<CsrRuntimeEntry>);
+
 /// V3 Backend implementation with interior mutability
 ///
 /// This struct implements the GraphBackend trait using V3's page-based
@@ -614,29 +617,27 @@ impl V3Backend {
             let edge_types = edge_store.edge_types_lock().read();
             let mut distinct_types = std::collections::BTreeSet::new();
 
-            let collect_rows = |direction: EdgeDirection| -> Result<
-                Vec<(i64, Vec<(u32, f32, String)>)>,
-                SqliteGraphError,
-            > {
-                node_ids
-                    .iter()
-                    .map(|&node_id| {
-                        let weighted = edge_store
-                            .neighbors_weighted(node_id, direction)
-                            .map_err(map_v3_error)?;
-                        let entries = weighted
-                            .iter()
-                            .filter_map(|&(dst, weight)| {
-                                edge_types
-                                    .get(&(node_id, dst, direction))
-                                    .cloned()
-                                    .map(|edge_type| (dst as u32, weight, edge_type))
-                            })
-                            .collect();
-                        Ok((node_id, entries))
-                    })
-                    .collect()
-            };
+            let collect_rows =
+                |direction: EdgeDirection| -> Result<Vec<CsrRuntimeRow>, SqliteGraphError> {
+                    node_ids
+                        .iter()
+                        .map(|&node_id| {
+                            let weighted = edge_store
+                                .neighbors_weighted(node_id, direction)
+                                .map_err(map_v3_error)?;
+                            let entries = weighted
+                                .iter()
+                                .filter_map(|&(dst, weight)| {
+                                    edge_types
+                                        .get(&(node_id, dst, direction))
+                                        .cloned()
+                                        .map(|edge_type| (dst as u32, weight, edge_type))
+                                })
+                                .collect();
+                            Ok((node_id, entries))
+                        })
+                        .collect()
+                };
 
             let outgoing_rows = collect_rows(EdgeDirection::Outgoing)?;
             let incoming_rows = collect_rows(EdgeDirection::Incoming)?;
