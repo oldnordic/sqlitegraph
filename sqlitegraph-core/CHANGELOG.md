@@ -194,6 +194,11 @@
   typed-edge lookup enum, runtime row aliases, and adjacency encoder into
   `backend/native/v3/csr_support.rs`. Native-v3 backend tests now reuse that
   shared encoder instead of carrying a second local copy in `backend.rs`.
+- Extracted the native-v3 shared neighbor/cache support block into the new
+  `backend/native/v3/neighbor_support.rs` child module. This moved the shared
+  neighbor accessors, weighted-neighbor wrappers, cache warmup helper, and
+  edge-cache stats helpers without changing async traversal, CSR fallback, or
+  the public native-v3 benchmarking surface.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
