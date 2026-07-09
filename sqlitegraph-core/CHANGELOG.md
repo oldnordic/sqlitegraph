@@ -133,6 +133,11 @@
   `backend/native/v3/csr_support.rs` child module. This moved the CSR shard
   lookup, typed-edge mapping, shared-neighbor accessors, and
   runtime-view rebuild helpers without changing traversal behavior.
+- Extracted the native-v3 SQL/query helper block from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/sql_exec.rs` child module. This moved the compact
+  node-data parser plus the raw/parameterized SQL query and update helpers
+  without changing the SQL-facing API.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
