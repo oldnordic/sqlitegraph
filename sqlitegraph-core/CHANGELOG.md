@@ -236,6 +236,11 @@
   delegates its async neighbor reads there, and `edge_compat.rs` no longer
   needs the `clippy::items_after_test_module` allowance just to host async
   helpers after the embedded test block.
+- Extracted the large inline native-v3 edge-store test module from
+  `backend/native/v3/edge_compat.rs` into the new
+  `backend/native/v3/edge_compat_tests.rs` child module. This shrinks the
+  production edge-store file without changing the durability, WAL, reopen, or
+  weighted-neighbor regression coverage.
 - Extracted the native-v3 kind/name/triple-query support block into the new
   `backend/native/v3/query_support.rs` child module. `backend.rs` now delegates
   kind lookups, name-pattern dispatch, and triple matching through shared
