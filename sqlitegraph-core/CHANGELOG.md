@@ -241,6 +241,11 @@
   `backend/native/v3/edge_compat_tests.rs` child module. This shrinks the
   production edge-store file without changing the durability, WAL, reopen, or
   weighted-neighbor regression coverage.
+- Continued the edge-store test cleanup by moving the weighted-edge, packed
+  small-cluster, and warm-cache regressions into the new
+  `backend/native/v3/edge_compat_weighted_tests.rs` child module. The main
+  durability/WAL slab stays in `edge_compat_tests.rs`, but the reopen/weighted
+  coverage is now isolated by concern.
 - Extracted the native-v3 edge-cluster/page-codec block from
   `backend/native/v3/edge_compat.rs` into the new
   `backend/native/v3/edge_cluster_support.rs` child module. `edge_compat.rs`
