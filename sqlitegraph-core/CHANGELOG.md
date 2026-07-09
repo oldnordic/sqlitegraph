@@ -241,6 +241,11 @@
   `backend/native/v3/edge_compat_tests.rs` child module. This shrinks the
   production edge-store file without changing the durability, WAL, reopen, or
   weighted-neighbor regression coverage.
+- Extracted the native-v3 edge-cluster/page-codec block from
+  `backend/native/v3/edge_compat.rs` into the new
+  `backend/native/v3/edge_cluster_support.rs` child module. `edge_compat.rs`
+  now keeps the `V3EdgeStore` runtime while reusing shared cluster
+  serialization, packed-page encode/decode, and edge-cluster recovery helpers.
 - Extracted the native-v3 kind/name/triple-query support block into the new
   `backend/native/v3/query_support.rs` child module. `backend.rs` now delegates
   kind lookups, name-pattern dispatch, and triple matching through shared
