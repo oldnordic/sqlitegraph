@@ -128,6 +128,11 @@
   `backend/native/v3/hnsw_support.rs` child module. This moved the
   `HnswIndexMetadata` wrapper, `HnswSearchConfig`, and the index
   create/insert/delete/search helpers without changing public behavior.
+- Extracted the native-v3 CSR/materialization helper block from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/csr_support.rs` child module. This moved the CSR shard
+  lookup, typed-edge mapping, shared-neighbor accessors, and
+  runtime-view rebuild helpers without changing traversal behavior.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
