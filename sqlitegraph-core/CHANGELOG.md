@@ -89,6 +89,12 @@
   `backend/native/v3/backend.rs` into the new
   `backend/native/v3/backend_tests.rs` file and removed the now-unneeded
   `clippy::items_after_test_module` allowance from the production backend file.
+- Extracted the native-v3 node/entity orchestration helpers from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/entity_support.rs` child module. The `GraphBackend` trait
+  methods for node insert/update/delete, edge insert, entity ID listing, and
+  node lookup now delegate to support methods without changing snapshot, cache,
+  CSR rebuild, or property persistence behavior.
 - Extracted `WriteBatchGuard` from `backend/native/v3/backend.rs` into the new
   `backend/native/v3/batch_guard.rs` child module with no behavior change. The
   public type remains re-exported through `backend.rs`, so the cleanup reduces

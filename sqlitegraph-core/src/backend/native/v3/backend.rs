@@ -35,6 +35,8 @@ mod batch_guard;
 mod chain_support;
 #[path = "csr_support.rs"]
 mod csr_support;
+#[path = "entity_support.rs"]
+mod entity_support;
 #[path = "hnsw_support.rs"]
 mod hnsw_support;
 #[path = "index_rebuild.rs"]
@@ -81,8 +83,8 @@ use crate::backend::native::v3::edge_compat::Direction as EdgeDirection;
 use crate::backend::native::v3::name_index::NameIndex;
 use crate::backend::native::v3::wal::{V3WALPaths, WALWriter};
 use crate::backend::native::v3::{
-    AsyncFileCoordinator, FileCoordinator, KindIndex, KvStore, NodeCache, NodeRecordV3, NodeStore,
-    PageAllocator, PersistentHeaderV3, Publisher, V3EdgeStore,
+    AsyncFileCoordinator, FileCoordinator, KindIndex, KvStore, NodeCache, NodeStore, PageAllocator,
+    PersistentHeaderV3, Publisher, V3EdgeStore,
 };
 use crate::backend::{
     BackendDirection, ChainStep, EdgeSpec, GraphBackend, NeighborQuery, NodeSpec, PatternMatch,
@@ -263,38 +265,6 @@ impl V3Backend {
     pub fn clear_node_page_caches(&self) {
         self.node_store.write().clear_all_caches();
     }
-
-    /// Create a new V3 database at the specified path
-    ///
-    /// Get node by ID (internal method)
-    ///
-    /// Looks up a node record by its ID using the B+Tree index.
-    ///
-    /// # Arguments
-    ///
-    /// * `node_id` - The ID of the node to retrieve
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Some(NodeRecordV3))` - Node found
-    /// * `Ok(None)` - Node not found
-    /// * `Err(SqliteGraphError)` - Error during lookup
-    fn get_node_internal(&self, node_id: i64) -> Result<Option<NodeRecordV3>, SqliteGraphError> {
-        // Try cache first
-        if let Some(record) = self.node_cache.get(node_id) {
-            return Ok(Some(record));
-        }
-
-        // Cache miss - look up from storage
-        let mut node_store = self.node_store.write();
-        if let Some(record) = node_store.lookup_node(node_id).map_err(map_v3_error)? {
-            // Populate cache for future access
-            self.node_cache.insert(node_id, record.clone());
-            Ok(Some(record))
-        } else {
-            Ok(None)
-        }
-    }
 }
 
 impl GraphBackend for V3Backend {
@@ -303,128 +273,27 @@ impl GraphBackend for V3Backend {
     /// V3 only supports SnapshotId::current() (which returns 0).
     /// Any historical/non-zero snapshot ID is rejected with a clear error.
     fn insert_node(&self, node: NodeSpec) -> Result<i64, SqliteGraphError> {
-        let kind = node.kind.clone();
-        let name = node.name.clone();
-        let data = node.data.clone();
-        let next_version = self.next_graph_version();
-
-        let node_id = self.insert_node_inner(node)?;
-        self.sync_header()?;
-        self.persist_inserted_node_properties(node_id, &kind, &name, &data, next_version)?;
-
-        self.advance_snapshot_version();
-
-        Ok(node_id)
+        self.insert_node_support(node)
     }
 
     fn insert_edge(&self, edge: EdgeSpec) -> Result<i64, SqliteGraphError> {
-        let from = edge.from;
-        let to = edge.to;
-        let edge_type = edge.edge_type.clone();
-        let data = edge.data.clone();
-        let next_version = self.next_graph_version();
-
-        let edge_id = self.insert_edge_inner(edge)?;
-        self.sync_header()?;
-        self.persist_inserted_edge_attributes(from, to, &edge_type, &data, next_version)?;
-        self.rebuild_csr_runtime_views(next_version)?;
-        self.advance_snapshot_version();
-
-        Ok(edge_id)
+        self.insert_edge_support(edge)
     }
 
     fn update_node(&self, node_id: i64, node: NodeSpec) -> Result<i64, SqliteGraphError> {
-        let kind = node.kind.clone();
-        let name = node.name.clone();
-        let next_version = self.next_graph_version();
-
-        // Create updated node record
-        let updated_record = NodeRecordV3::new_inline(
-            node_id,
-            crate::backend::native::types::NodeFlags::empty(),
-            0, // kind_offset reserved for future index into kind_string_table
-            0, // name_offset reserved for future index into name_string_table
-            serde_json::to_vec(&node.data).unwrap_or_default(),
-            0, // outgoing_cluster_offset
-            0, // outgoing_edge_count
-            0, // incoming_cluster_offset
-            0, // incoming_edge_count
-        );
-
-        let mut node_store = self.node_store.write();
-        node_store
-            .update_node(node_id, updated_record)
-            .map_err(map_v3_error)?;
-        drop(node_store);
-
-        // Invalidate cache entry
-        self.node_cache.invalidate(node_id);
-
-        self.flush_to_disk()?;
-        self.persist_updated_node_properties(node_id, &kind, &name, &node.data, next_version)?;
-        self.rebuild_indexes();
-        self.advance_snapshot_version();
-
-        Ok(node_id)
+        self.update_node_support(node_id, node)
     }
 
     fn delete_entity(&self, id: i64) -> Result<(), SqliteGraphError> {
-        let next_version = self.next_graph_version();
-        let mut node_store = self.node_store.write();
-        node_store.delete_node(id).map_err(map_v3_error)?;
-        drop(node_store);
-
-        // Invalidate cache entry
-        self.node_cache.invalidate(id);
-
-        // Update header
-        {
-            let mut header = self.header.write();
-            header.node_count = header.node_count.saturating_sub(1);
-        }
-        self.sync_header()?;
-
-        self.flush_to_disk()?;
-        self.persist_deleted_node_marker(id, next_version)?;
-        self.rebuild_indexes();
-        self.advance_snapshot_version();
-
-        Ok(())
+        self.delete_entity_support(id)
     }
 
     fn entity_ids(&self) -> Result<Vec<i64>, SqliteGraphError> {
-        let node_store = self.node_store.read();
-        let ids = node_store.node_ids().map_err(map_v3_error)?;
-        Ok(ids)
+        self.entity_ids_support()
     }
 
     fn get_node(&self, snapshot_id: SnapshotId, id: i64) -> Result<GraphEntity, SqliteGraphError> {
-        let deleted_before_present = self.validate_node_snapshot_visibility(snapshot_id, id)?;
-
-        match self.get_node_internal(id)? {
-            Some(record) => {
-                let data_bytes = self.load_node_record_bytes(&record)?;
-                let (kind, name, data) = Self::parse_node_data(&data_bytes, id);
-
-                Ok(GraphEntity {
-                    id,
-                    kind,
-                    name,
-                    file_path: None, // V3 compact format does not persist file_path; use GraphEntity.metadata if needed
-                    data,
-                })
-            }
-            None => {
-                if deleted_before_present.is_some() {
-                    Err(SqliteGraphError::query(format!(
-                        "Historical version for node {} is unavailable after delete",
-                        id
-                    )))
-                } else {
-                    Err(SqliteGraphError::query(format!("Node {} not found", id)))
-                }
-            }
-        }
+        self.get_node_support(snapshot_id, id)
     }
 
     fn neighbors(
