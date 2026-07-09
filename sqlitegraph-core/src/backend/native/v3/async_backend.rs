@@ -215,7 +215,7 @@ impl crate::backend::AsyncGraphBackend for V3Backend {
                     BackendDirection::Incoming => EdgeDirection::Incoming,
                 };
 
-                let neighbors_arc = crate::backend::native::v3::edge_compat::neighbors_async(
+                let neighbors_arc = crate::backend::native::v3::edge_async::neighbors_async(
                     &btree_lock,
                     &cache_lock,
                     &edge_types_lock,

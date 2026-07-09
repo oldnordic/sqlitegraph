@@ -15,6 +15,7 @@ pub mod btree;
 pub mod compact_edge_record;
 pub mod compression;
 pub mod constants;
+pub mod edge_async;
 pub mod edge_compat;
 pub mod file_coordinator;
 #[cfg(feature = "v3-forensics")]

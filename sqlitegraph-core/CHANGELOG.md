@@ -231,6 +231,11 @@
   methods in `backend.rs` now delegate to shared helpers for checkpoint writes,
   backup creation, snapshot export, and JSONL snapshot import, with direct
   snapshot-import regressions re-run after the move.
+- Extracted the native-v3 standalone async edge-loading path into the new
+  `backend/native/v3/edge_async.rs` child module. `async_backend.rs` now
+  delegates its async neighbor reads there, and `edge_compat.rs` no longer
+  needs the `clippy::items_after_test_module` allowance just to host async
+  helpers after the embedded test block.
 - Extracted the native-v3 kind/name/triple-query support block into the new
   `backend/native/v3/query_support.rs` child module. `backend.rs` now delegates
   kind lookups, name-pattern dispatch, and triple matching through shared

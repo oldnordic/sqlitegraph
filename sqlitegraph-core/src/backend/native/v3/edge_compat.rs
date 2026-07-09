@@ -60,7 +60,6 @@
 #![allow(
     clippy::type_complexity,
     clippy::collapsible_if,
-    clippy::items_after_test_module,
     reason = "V3 cache types are complex by design; collapsed let-chains reduce readability"
 )]
 use crate::backend::native::v3::compression::edge_delta::{compress_edge_ids, decompress_edge_ids};
@@ -125,7 +124,7 @@ pub enum Direction {
 }
 
 const EDGE_CLUSTER_PAGE_MAGIC: [u8; 4] = *b"V3EC";
-const EDGE_CLUSTER_PAGE_HEADER_SIZE: usize = 16;
+pub(crate) const EDGE_CLUSTER_PAGE_HEADER_SIZE: usize = 16;
 const PACKED_EDGE_PAGE_MAGIC: [u8; 4] = *b"V3EP";
 const PACKED_EDGE_PAGE_HEADER_SIZE: usize = 8;
 const PACKED_EDGE_PAGE_SLOT_SIZE: usize = 16;
@@ -214,7 +213,7 @@ impl V3EdgeCluster {
 
     /// Extract edge type from edge data
     /// Returns None if edge_data is empty (no edge_type stored)
-    fn extract_edge_type(edge_data: &[u8]) -> Option<String> {
+    pub(crate) fn extract_edge_type(edge_data: &[u8]) -> Option<String> {
         if edge_data.is_empty() {
             return None;
         }
@@ -240,7 +239,7 @@ impl V3EdgeCluster {
 
     /// Extract edge weight from edge data
     /// Returns 1.0 if not specified (legacy or not provided)
-    fn extract_edge_weight(edge_data: &[u8]) -> f32 {
+    pub(crate) fn extract_edge_weight(edge_data: &[u8]) -> f32 {
         if edge_data.len() >= 5 && edge_data[0] == 0x80 {
             f32::from_be_bytes([edge_data[1], edge_data[2], edge_data[3], edge_data[4]])
         } else {
@@ -576,7 +575,7 @@ fn encode_edge_cluster_pages(
     Ok(pages)
 }
 
-fn decode_edge_cluster_page_header(page: &[u8]) -> Option<(usize, u64)> {
+pub(crate) fn decode_edge_cluster_page_header(page: &[u8]) -> Option<(usize, u64)> {
     if page.len() < EDGE_CLUSTER_PAGE_HEADER_SIZE || page[0..4] != EDGE_CLUSTER_PAGE_MAGIC {
         return None;
     }
@@ -645,7 +644,11 @@ fn encode_packed_edge_page(
     Ok(page)
 }
 
-fn decode_packed_edge_page(page: &[u8], src: i64, dir: Direction) -> NativeResult<Option<Vec<u8>>> {
+pub(crate) fn decode_packed_edge_page(
+    page: &[u8],
+    src: i64,
+    dir: Direction,
+) -> NativeResult<Option<Vec<u8>>> {
     if page.len() < PACKED_EDGE_PAGE_HEADER_SIZE || page[0..4] != PACKED_EDGE_PAGE_MAGIC {
         return Ok(None);
     }
@@ -760,7 +763,7 @@ pub struct V3EdgeStore {
 /// Negative src node IDs are encoded with a sign bit in the LSB.
 ///
 /// Ordering: Incoming edges sort before Outgoing edges for the same node.
-fn edge_key(src: i64, dir: Direction) -> i64 {
+pub(crate) fn edge_key(src: i64, dir: Direction) -> i64 {
     let dir_bit = if dir == Direction::Outgoing {
         0i64
     } else {
@@ -2900,207 +2903,4 @@ mod tests {
     //========================================================================
     // End TDD Tests
     //========================================================================
-}
-
-/// Standalone async neighbor retrieval function that takes references to avoid holding RwLockReadGuard across awaits
-pub async fn neighbors_async(
-    btree_lock: &parking_lot::RwLock<BTreeManager>,
-    cache_lock: &parking_lot::RwLock<HashMap<(i64, Direction), Arc<[i64]>>>,
-    edge_types_lock: &parking_lot::RwLock<HashMap<(i64, i64, Direction), String>>,
-    page_size: u64,
-    src: i64,
-    dir: Direction,
-    async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
-) -> Result<Arc<[i64]>, crate::errors::SqliteGraphError> {
-    let key = (src, dir);
-
-    {
-        let cache = cache_lock.read();
-        if let Some(neighbors) = cache.get(&key) {
-            return Ok(neighbors.clone());
-        }
-    }
-
-    let neighbors = load_neighbors_from_disk_async(
-        btree_lock,
-        edge_types_lock,
-        page_size,
-        src,
-        dir,
-        async_coordinator,
-    )
-    .await?;
-
-    if !neighbors.is_empty() {
-        let mut cache = cache_lock.write();
-        cache.insert(key, neighbors.clone());
-    }
-
-    Ok(neighbors)
-}
-
-/// Standalone async weighted neighbor retrieval function that takes references to avoid holding RwLockReadGuard across awaits
-pub async fn neighbors_weighted_async(
-    btree_lock: &parking_lot::RwLock<BTreeManager>,
-    cache_weighted_lock: &parking_lot::RwLock<HashMap<(i64, Direction), Arc<[(i64, f32)]>>>,
-    edge_types_lock: &parking_lot::RwLock<HashMap<(i64, i64, Direction), String>>,
-    page_size: u64,
-    src: i64,
-    dir: Direction,
-    async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
-) -> Result<Arc<[(i64, f32)]>, crate::errors::SqliteGraphError> {
-    let key = (src, dir);
-
-    {
-        let cache = cache_weighted_lock.read();
-        if let Some(neighbors) = cache.get(&key) {
-            return Ok(neighbors.clone());
-        }
-    }
-
-    let neighbors = load_neighbors_weighted_from_disk_async(
-        btree_lock,
-        cache_weighted_lock,
-        edge_types_lock,
-        page_size,
-        src,
-        dir,
-        async_coordinator,
-    )
-    .await?;
-
-    if !neighbors.is_empty() {
-        let mut cache = cache_weighted_lock.write();
-        cache.insert(key, neighbors.clone());
-    }
-
-    Ok(neighbors)
-}
-
-async fn load_neighbors_from_disk_async(
-    btree_lock: &parking_lot::RwLock<BTreeManager>,
-    edge_types_lock: &parking_lot::RwLock<HashMap<(i64, i64, Direction), String>>,
-    page_size: u64,
-    src: i64,
-    dir: Direction,
-    async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
-) -> Result<Arc<[i64]>, crate::errors::SqliteGraphError> {
-    let key = edge_key(src, dir);
-    let btree = btree_lock.read().clone();
-
-    let page_id = match btree.lookup_async(key, async_coordinator).await {
-        Ok(Some(pid)) => pid,
-        _ => {
-            return Ok(Arc::from([]));
-        }
-    };
-
-    match load_cluster_async(page_id, src, dir, page_size, async_coordinator).await {
-        Ok(cluster) => {
-            let edges_with_types = cluster.edges_with_types();
-            let mut edge_types = edge_types_lock.write();
-            for (dst, edge_type) in edges_with_types {
-                if let Some(et) = edge_type {
-                    edge_types.insert((src, dst, dir), et);
-                }
-            }
-
-            let neighbors: Vec<i64> = cluster.dsts();
-            Ok(Arc::from(neighbors.into_boxed_slice()))
-        }
-        Err(_) => Ok(Arc::from([])),
-    }
-}
-
-async fn load_neighbors_weighted_from_disk_async(
-    btree_lock: &parking_lot::RwLock<BTreeManager>,
-    _cache_weighted_lock: &parking_lot::RwLock<HashMap<(i64, Direction), Arc<[(i64, f32)]>>>,
-    edge_types_lock: &parking_lot::RwLock<HashMap<(i64, i64, Direction), String>>,
-    page_size: u64,
-    src: i64,
-    dir: Direction,
-    async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
-) -> Result<Arc<[(i64, f32)]>, crate::errors::SqliteGraphError> {
-    let key = edge_key(src, dir);
-    let btree = btree_lock.read().clone();
-
-    let page_id = match btree.lookup_async(key, async_coordinator).await {
-        Ok(Some(pid)) => pid,
-        _ => return Ok(Arc::from([])),
-    };
-
-    match load_cluster_async(page_id, src, dir, page_size, async_coordinator).await {
-        Ok(cluster) => {
-            let mut edge_types = edge_types_lock.write();
-            let mut neighbors = Vec::with_capacity(cluster.edges.len());
-            for e in &cluster.edges {
-                let edge_type = V3EdgeCluster::extract_edge_type(&e.edge_data);
-                if let Some(et) = edge_type {
-                    edge_types.insert((src, e.neighbor_id, dir), et);
-                }
-                let weight = V3EdgeCluster::extract_edge_weight(&e.edge_data);
-                neighbors.push((e.neighbor_id, weight));
-            }
-            neighbors.sort_by(|a, b| {
-                b.1.partial_cmp(&a.1)
-                    .unwrap_or(std::cmp::Ordering::Equal)
-                    .then_with(|| a.0.cmp(&b.0))
-            });
-            Ok(Arc::from(neighbors.into_boxed_slice()))
-        }
-        Err(_) => Ok(Arc::from([])),
-    }
-}
-
-async fn load_cluster_async(
-    page_id: u64,
-    src: i64,
-    dir: Direction,
-    page_size: u64,
-    async_coordinator: &crate::backend::native::v3::AsyncFileCoordinator,
-) -> Result<V3EdgeCluster, crate::errors::SqliteGraphError> {
-    let mut current_page_id = page_id;
-    let mut cluster_bytes = Vec::new();
-
-    let buf = vec![0u8; page_size as usize];
-    let (mut buffer, _) = async_coordinator.read_page(current_page_id, buf).await?;
-
-    loop {
-        if let Some(decoded_bytes) = decode_packed_edge_page(&buffer, src, dir).ok().flatten() {
-            let mut cluster = V3EdgeCluster::deserialize(&decoded_bytes, page_id).map_err(|e| {
-                crate::errors::SqliteGraphError::validation(format!(
-                    "Failed to deserialize edge cluster: {}",
-                    e
-                ))
-            })?;
-            cluster.page_id = 0;
-            return Ok(cluster);
-        }
-
-        if let Some((payload_len, next_page_id)) = decode_edge_cluster_page_header(&buffer) {
-            let payload_end = EDGE_CLUSTER_PAGE_HEADER_SIZE + payload_len;
-            cluster_bytes.extend_from_slice(&buffer[EDGE_CLUSTER_PAGE_HEADER_SIZE..payload_end]);
-            if next_page_id == 0 {
-                break;
-            }
-            current_page_id = next_page_id;
-            let buf = vec![0u8; page_size as usize];
-            let (next_buf, _) = async_coordinator.read_page(current_page_id, buf).await?;
-            buffer = next_buf;
-        } else {
-            return V3EdgeCluster::deserialize(&buffer, page_id).map_err(|e| {
-                crate::errors::SqliteGraphError::validation(format!(
-                    "Failed to deserialize edge cluster fallback: {}",
-                    e
-                ))
-            });
-        }
-    }
-
-    V3EdgeCluster::deserialize(&cluster_bytes, page_id).map_err(|e| {
-        crate::errors::SqliteGraphError::validation(format!(
-            "Failed to deserialize edge cluster end: {}",
-            e
-        ))
-    })
 }
