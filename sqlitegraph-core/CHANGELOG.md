@@ -252,6 +252,12 @@
   metadata persistence/recovery, disk cluster loading, page writes, and WAL
   coordination helpers now live together outside the main edge-store runtime
   file.
+- Extracted the native-v3 edge-store read/query block from
+  `backend/native/v3/edge_compat.rs` into the new
+  `backend/native/v3/edge_query_support.rs` child module. Constructors,
+  neighbor-cache reads, weighted warmup, edge-type lookups, and shared
+  edge-page read helpers now live together while dirty-cluster mutation logic
+  stays in `edge_compat.rs`.
 - Extracted the native-v3 kind/name/triple-query support block into the new
   `backend/native/v3/query_support.rs` child module. `backend.rs` now delegates
   kind lookups, name-pattern dispatch, and triple matching through shared
