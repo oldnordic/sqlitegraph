@@ -78,7 +78,7 @@ pub use batch_guard::WriteBatchGuard;
 use hnsw_support::HnswIndexMetadata;
 pub use hnsw_support::HnswSearchConfig;
 use parking_lot::{Mutex, RwLock};
-use rusqlite::{Connection, ToSql};
+use rusqlite::Connection;
 pub use sql_value::{SqlRow, SqlValue};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -944,78 +944,31 @@ impl GraphBackend for V3Backend {
     /// V3 only supports SnapshotId::current() (which returns 0).
     /// Any historical/non-zero snapshot ID is rejected with a clear error.
     fn insert_node(&self, node: NodeSpec) -> Result<i64, SqliteGraphError> {
-        // Extract properties for SQLite storage
         let kind = node.kind.clone();
         let name = node.name.clone();
         let data = node.data.clone();
         let next_version = self.next_graph_version();
 
-        // Use inner method - do NOT auto-flush to allow batching multiple nodes
-        // Caller must call flush() for durability
         let node_id = self.insert_node_inner(node)?;
         self.sync_header()?;
+        self.persist_inserted_node_properties(node_id, &kind, &name, &data, next_version)?;
 
-        // Store node properties in SQLite
-        let data_json = serde_json::to_string(&data).unwrap_or_default();
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|e| {
-                SqliteGraphError::connection(format!(
-                    "System clock before UNIX epoch during node property insert: {}",
-                    e
-                ))
-            })?
-            .as_secs() as i64;
-        let conn = self.sqlite_conn.lock();
-        conn.execute(
-            "INSERT INTO node_properties (node_id, kind, name, data, created_at, created_version) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            [
-                &node_id as &dyn ToSql,
-                &kind as &dyn ToSql,
-                &name as &dyn ToSql,
-                &data_json as &dyn ToSql,
-                &timestamp as &dyn ToSql,
-                &next_version as &dyn ToSql,
-            ],
-        ).map_err(|e| SqliteGraphError::connection(format!("Failed to insert node properties: {}", e)))?;
-        drop(conn);
-
-        // Increment snapshot version after successful insert
         self.advance_snapshot_version();
 
         Ok(node_id)
     }
 
     fn insert_edge(&self, edge: EdgeSpec) -> Result<i64, SqliteGraphError> {
-        // Extract edge attributes for SQLite storage
         let from = edge.from;
         let to = edge.to;
         let edge_type = edge.edge_type.clone();
-        let data_json = serde_json::to_string(&edge.data).unwrap_or_default();
+        let data = edge.data.clone();
         let next_version = self.next_graph_version();
 
-        // Use inner method - do NOT auto-flush to allow batching multiple edges
-        // Caller must call flush() for durability
         let edge_id = self.insert_edge_inner(edge)?;
         self.sync_header()?;
-
-        // Store edge attributes in SQLite
-        let conn = self.sqlite_conn.lock();
-        conn.execute(
-            "INSERT OR REPLACE INTO edge_attributes (src, dst, attr_name, attr_value, created_version) VALUES (?1, ?2, ?3, ?4, ?5)",
-            [
-                &from as &dyn ToSql,
-                &to as &dyn ToSql,
-                &edge_type as &dyn ToSql,
-                &data_json as &dyn ToSql,
-                &next_version as &dyn ToSql,
-            ],
-        ).map_err(|e| SqliteGraphError::connection(format!("Failed to insert edge attributes: {}", e)))?;
-        drop(conn);
-
+        self.persist_inserted_edge_attributes(from, to, &edge_type, &data, next_version)?;
         self.rebuild_csr_runtime_views(next_version)?;
-
-        // Increment snapshot version after successful insert
         self.advance_snapshot_version();
 
         Ok(edge_id)
@@ -1024,7 +977,6 @@ impl GraphBackend for V3Backend {
     fn update_node(&self, node_id: i64, node: NodeSpec) -> Result<i64, SqliteGraphError> {
         let kind = node.kind.clone();
         let name = node.name.clone();
-        let data_json = serde_json::to_string(&node.data).unwrap_or_default();
         let next_version = self.next_graph_version();
 
         // Create updated node record
@@ -1050,23 +1002,8 @@ impl GraphBackend for V3Backend {
         self.node_cache.invalidate(node_id);
 
         self.flush_to_disk()?;
-
-        let conn = self.sqlite_conn.lock();
-        conn.execute(
-            "UPDATE node_properties SET kind = ?1, name = ?2, data = ?3, updated_version = ?4 WHERE node_id = ?5 AND deleted_version IS NULL",
-            [
-                &kind as &dyn ToSql,
-                &name as &dyn ToSql,
-                &data_json as &dyn ToSql,
-                &next_version as &dyn ToSql,
-                &node_id as &dyn ToSql,
-            ],
-        ).map_err(|e| SqliteGraphError::connection(format!("Failed to update node properties: {}", e)))?;
-        drop(conn);
-
+        self.persist_updated_node_properties(node_id, &kind, &name, &node.data, next_version)?;
         self.rebuild_indexes();
-
-        // Increment snapshot version after successful update
         self.advance_snapshot_version();
 
         Ok(node_id)
@@ -1089,17 +1026,8 @@ impl GraphBackend for V3Backend {
         self.sync_header()?;
 
         self.flush_to_disk()?;
-
-        let conn = self.sqlite_conn.lock();
-        conn.execute(
-            "UPDATE node_properties SET deleted_version = ?1 WHERE node_id = ?2 AND deleted_version IS NULL",
-            [&next_version as &dyn ToSql, &id as &dyn ToSql],
-        ).map_err(|e| SqliteGraphError::connection(format!("Failed to mark node deleted: {}", e)))?;
-        drop(conn);
-
+        self.persist_deleted_node_marker(id, next_version)?;
         self.rebuild_indexes();
-
-        // Increment snapshot version after successful delete
         self.advance_snapshot_version();
 
         Ok(())

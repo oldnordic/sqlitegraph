@@ -163,6 +163,11 @@
   `backend/native/v3/mutation_support.rs` child module. This moved the
   unsynced node/edge insert helpers plus the page-offset helper without
   changing batch-write semantics or the public `GraphBackend` mutation API.
+- Continued the native-v3 mutation cleanup by moving the SQLite sidecar
+  insert/update/delete persistence helpers into
+  `backend/native/v3/mutation_support.rs`. The public `GraphBackend`
+  mutation methods remain in `backend.rs`, but now delegate their raw SQLite
+  sidecar writes through private helpers instead of inlining that boilerplate.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
