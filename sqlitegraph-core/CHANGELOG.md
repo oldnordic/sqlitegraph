@@ -250,6 +250,11 @@
   `backend/native/v3/backend_csr_neighbor_tests.rs` child module. The main
   `backend_tests.rs` file now keeps create/open/import/snapshot coverage while
   CSR neighbor read fallback coverage is isolated by concern.
+- Continued the backend test split by moving the native-v3 CSR traversal
+  regressions into the new
+  `backend/native/v3/backend_csr_traversal_tests.rs` child module. The main
+  `backend_tests.rs` file is now back under the 1K LOC limit and keeps the
+  create/open/import/snapshot slab separate from CSR traversal parity checks.
 - Extracted the native-v3 edge-cluster/page-codec block from
   `backend/native/v3/edge_compat.rs` into the new
   `backend/native/v3/edge_cluster_support.rs` child module. `edge_compat.rs`
