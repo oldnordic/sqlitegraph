@@ -36,6 +36,8 @@ mod batch_guard;
 mod csr_support;
 #[path = "hnsw_support.rs"]
 mod hnsw_support;
+#[path = "index_rebuild.rs"]
+mod index_rebuild;
 #[path = "property_support.rs"]
 mod property_support;
 #[path = "snapshot_meta.rs"]
@@ -1092,39 +1094,6 @@ impl V3Backend {
         let data_page_index = page_id.saturating_sub(1);
         crate::backend::native::v3::constants::V3_HEADER_SIZE
             + data_page_index * crate::backend::native::v3::constants::DEFAULT_PAGE_SIZE
-    }
-
-    fn rebuild_indexes(&self) {
-        self.kind_index.clear();
-        self.name_index.clear();
-
-        let header = self.header.read();
-        let node_count = header.node_count;
-        drop(header);
-
-        for id in 1..=node_count as i64 {
-            if let Ok(Some(record)) = self.get_node_internal(id) {
-                let data_bytes = if let Some(inline) = record.data_inline {
-                    inline
-                } else if let Some(offset) = record.data_external_offset {
-                    let actual_data_len = record.data_len
-                        & crate::backend::native::v3::node::record::constants::MAX_DATA_LEN;
-                    let mut buffer = vec![0u8; actual_data_len as usize];
-                    if let Ok(mut file) = OpenOptions::new().read(true).open(&self.db_path)
-                        && file.seek(SeekFrom::Start(offset)).is_ok()
-                    {
-                        let _ = file.read_exact(&mut buffer);
-                    }
-                    buffer
-                } else {
-                    Vec::new()
-                };
-
-                let (kind, name, _data) = Self::parse_node_data(&data_bytes, id);
-                self.kind_index.insert(kind, id);
-                self.name_index.insert(name, id);
-            }
-        }
     }
 
     /// Insert edge without syncing (internal use only)

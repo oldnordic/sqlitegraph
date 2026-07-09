@@ -153,6 +153,11 @@
   `backend/native/v3/sqlite_schema.rs` child module. This moved the schema
   bootstrap and additive-column migration helpers without changing create/open
   behavior or the sidecar table layout.
+- Extracted the native-v3 kind/name index rebuild helper from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/index_rebuild.rs` child module. This moved the fallback
+  index-rescan path used after open/rollback/update/delete without changing
+  the rebuild logic or visibility outside native-v3 sibling modules.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
