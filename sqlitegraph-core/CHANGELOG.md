@@ -148,6 +148,11 @@
   node-id enumeration, triple-match property filters, synthetic edge-id
   generation, and SQLite node/edge property readers without changing the
   public feature surface.
+- Extracted the native-v3 SQLite sidecar schema/migration helpers from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/sqlite_schema.rs` child module. This moved the schema
+  bootstrap and additive-column migration helpers without changing create/open
+  behavior or the sidecar table layout.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
