@@ -142,6 +142,12 @@
   `backend/native/v3/backend.rs` into `backend/native/v3/snapshot_meta.rs`.
   This keeps snapshot/version/path invariants in one place without changing
   the create/open or traversal validation behavior.
+- Extracted the native-v3 property/filter helper block from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/property_support.rs` child module. This moved the
+  node-id enumeration, triple-match property filters, synthetic edge-id
+  generation, and SQLite node/edge property readers without changing the
+  public feature surface.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
