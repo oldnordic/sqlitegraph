@@ -199,6 +199,12 @@
   neighbor accessors, weighted-neighbor wrappers, cache warmup helper, and
   edge-cache stats helpers without changing async traversal, CSR fallback, or
   the public native-v3 benchmarking surface.
+- Extracted the native-v3 lazy KV/pubsub support block into the new
+  `backend/native/v3/kv_pubsub_support.rs` child module. The real KV read/write,
+  WAL/event emission, v2/v3 value conversion, and pubsub subscribe/unsubscribe
+  behavior now lives there, while the `GraphBackend` trait methods in
+  `backend.rs` delegate through thin wrappers so lazy-init semantics stay
+  unchanged.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
