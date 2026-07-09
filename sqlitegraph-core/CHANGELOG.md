@@ -138,6 +138,10 @@
   `backend/native/v3/sql_exec.rs` child module. This moved the compact
   node-data parser plus the raw/parameterized SQL query and update helpers
   without changing the SQL-facing API.
+- Moved the native-v3 base-path / snapshot validation helpers from
+  `backend/native/v3/backend.rs` into `backend/native/v3/snapshot_meta.rs`.
+  This keeps snapshot/version/path invariants in one place without changing
+  the create/open or traversal validation behavior.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for

@@ -2,6 +2,7 @@
 
 use super::V3Backend;
 use crate::SqliteGraphError;
+use crate::snapshot::SnapshotId;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -53,6 +54,55 @@ impl V3Backend {
 
     pub(super) fn edge_metadata_path(db_path: &Path) -> PathBuf {
         db_path.with_extension("v3edgemeta")
+    }
+
+    pub(super) fn validate_base_path(db_path: &Path) -> Result<(), SqliteGraphError> {
+        let uses_reserved_sqlite_extension = db_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("sqlite"))
+            .unwrap_or(false);
+        if uses_reserved_sqlite_extension {
+            return Err(SqliteGraphError::connection(
+                "Base path must not use .sqlite extension; that suffix is reserved for the internal SQLite property store"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn sqlite_sidecar_path(db_path: &Path) -> Result<PathBuf, SqliteGraphError> {
+        Self::validate_base_path(db_path)?;
+        Ok(db_path.with_extension("sqlite"))
+    }
+
+    /// Check if snapshot is valid for V3 backend.
+    ///
+    /// V3 now supports MVCC snapshots:
+    /// - SnapshotId(0) = current state (sees all committed data)
+    /// - SnapshotId(lsn) = historical state at specific LSN (time travel)
+    /// - SnapshotId(u64::MAX) = invalid snapshot
+    pub(super) fn require_current_snapshot(
+        snapshot_id: SnapshotId,
+    ) -> Result<(), SqliteGraphError> {
+        if snapshot_id.0 == 0 {
+            return Ok(());
+        }
+
+        if snapshot_id.0 == u64::MAX {
+            return Err(SqliteGraphError::query(
+                "Invalid snapshot ID (u64::MAX sentinel)".to_string(),
+            ));
+        }
+
+        if snapshot_id.0 > 0 {
+            return Ok(());
+        }
+
+        Err(SqliteGraphError::query(format!(
+            "Invalid snapshot ID: {}",
+            snapshot_id.0
+        )))
     }
 
     /// Create a named snapshot with current LSN as version

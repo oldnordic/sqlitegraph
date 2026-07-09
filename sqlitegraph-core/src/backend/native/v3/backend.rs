@@ -263,56 +263,6 @@ impl V3Backend {
         self.node_store.write().clear_all_caches();
     }
 
-    fn validate_base_path(db_path: &Path) -> Result<(), SqliteGraphError> {
-        let uses_reserved_sqlite_extension = db_path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext.eq_ignore_ascii_case("sqlite"))
-            .unwrap_or(false);
-        if uses_reserved_sqlite_extension {
-            return Err(SqliteGraphError::connection(
-                "Base path must not use .sqlite extension; that suffix is reserved for the internal SQLite property store"
-                    .to_string(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn sqlite_sidecar_path(db_path: &Path) -> Result<PathBuf, SqliteGraphError> {
-        Self::validate_base_path(db_path)?;
-        Ok(db_path.with_extension("sqlite"))
-    }
-
-    /// Check if snapshot is valid for V3 backend.
-    ///
-    /// V3 now supports MVCC snapshots:
-    /// - SnapshotId(0) = current state (sees all committed data)
-    /// - SnapshotId(lsn) = historical state at specific LSN (time travel)
-    /// - SnapshotId(u64::MAX) = invalid snapshot
-    fn require_current_snapshot(snapshot_id: SnapshotId) -> Result<(), SqliteGraphError> {
-        // SnapshotId(0) is always valid (current state)
-        if snapshot_id.0 == 0 {
-            return Ok(());
-        }
-
-        // Invalid sentinel
-        if snapshot_id.0 == u64::MAX {
-            return Err(SqliteGraphError::query(
-                "Invalid snapshot ID (u64::MAX sentinel)".to_string(),
-            ));
-        }
-
-        // Historical snapshots must be positive LSNs
-        if snapshot_id.0 > 0 {
-            return Ok(());
-        }
-
-        Err(SqliteGraphError::query(format!(
-            "Invalid snapshot ID: {}",
-            snapshot_id.0
-        )))
-    }
-
     /// Create a new V3 database at the specified path
     ///
     /// # Arguments
