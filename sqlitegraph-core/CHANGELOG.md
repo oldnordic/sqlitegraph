@@ -205,6 +205,11 @@
   behavior now lives there, while the `GraphBackend` trait methods in
   `backend.rs` delegate through thin wrappers so lazy-init semantics stay
   unchanged.
+- Extracted the native-v3 maintenance/lifecycle helper block into the new
+  `backend/native/v3/maintenance_support.rs` child module. This moved the
+  db-path/header/WAL accessors, flush-to-disk path, header sync helper, batch
+  write entrypoint, and weighted edge batch insert helper without changing the
+  public maintenance API or durability behavior.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
