@@ -301,6 +301,11 @@
   - BFS, shortest-path, and k-hop traversal honor CSR ordering when
     shard data is present
   - node degree honors CSR-backed adjacency when shard data is present
+- Extracted the native-v3 WAL subsystem into focused child modules under
+  `backend/native/v3/wal/`. `wal.rs` now keeps the public WAL constants,
+  header, and record types, while `writer.rs`, `recovery.rs`,
+  `checkpoint.rs`, and `tests.rs` hold the append/recovery/checkpoint logic
+  and regression slab without changing the public native-v3 WAL API.
 
 ## [3.7.0] - 2026-07-04
 
