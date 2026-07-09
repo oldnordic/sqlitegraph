@@ -189,4 +189,36 @@ impl V3Backend {
 
         Ok(result)
     }
+
+    pub(super) fn k_hop_filtered_traversal(
+        &self,
+        snapshot_id: SnapshotId,
+        start: i64,
+        depth: u32,
+        direction: BackendDirection,
+        _allowed_edge_types: &[&str],
+    ) -> Result<Vec<i64>, SqliteGraphError> {
+        self.k_hop_traversal(snapshot_id, start, depth, direction)
+    }
+
+    pub(super) fn bfs_filtered_traversal(
+        &self,
+        snapshot_id: SnapshotId,
+        start: i64,
+        depth: u32,
+        _direction: BackendDirection,
+        _allowed_edge_types: &[&str],
+    ) -> Result<Vec<i64>, SqliteGraphError> {
+        self.bfs_traversal(snapshot_id, start, depth)
+    }
+
+    pub(super) fn shortest_path_filtered_traversal(
+        &self,
+        snapshot_id: SnapshotId,
+        start: i64,
+        end: i64,
+        _allowed_edge_types: &[&str],
+    ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
+        self.shortest_path_traversal(snapshot_id, start, end)
+    }
 }

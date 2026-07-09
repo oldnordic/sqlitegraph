@@ -177,6 +177,11 @@
   `backend/native/v3/traversal_support.rs` child module. This moved the BFS,
   shortest-path, node-degree, and k-hop traversal logic while leaving the
   corresponding `GraphBackend` methods in `backend.rs` as thin delegators.
+- Continued the traversal cleanup by moving the filtered traversal wrappers
+  into `backend/native/v3/traversal_support.rs`. The V3 backend still ignores
+  edge-type filters for these entry points and delegates to the unfiltered
+  traversal logic, but the wrapper behavior now lives beside the traversal
+  helpers instead of inside `backend.rs`.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for

@@ -1119,17 +1119,13 @@ impl GraphBackend for V3Backend {
 
     fn k_hop_filtered(
         &self,
-        _snapshot_id: SnapshotId,
-        _start: i64,
-        _depth: u32,
-        _direction: BackendDirection,
-        _allowed_edge_types: &[&str],
+        snapshot_id: SnapshotId,
+        start: i64,
+        depth: u32,
+        direction: BackendDirection,
+        allowed_edge_types: &[&str],
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        // V3 k-hop ignores the edge-type filter and traverses all edge types.
-        // `neighbors_filtered` exists on the edge store but these entry points
-        // do not thread a single type string per hop, so they delegate to the
-        // unfiltered `k_hop` implementation.
-        self.k_hop(_snapshot_id, _start, _depth, _direction)
+        self.k_hop_filtered_traversal(snapshot_id, start, depth, direction, allowed_edge_types)
     }
 
     fn bfs_filtered(
@@ -1137,14 +1133,10 @@ impl GraphBackend for V3Backend {
         snapshot_id: SnapshotId,
         start: i64,
         depth: u32,
-        _direction: BackendDirection,
-        _allowed_edge_types: &[&str],
+        direction: BackendDirection,
+        allowed_edge_types: &[&str],
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        // V3 BFS ignores the edge-type filter and traverses all edge types.
-        // The edge store exposes `neighbors_filtered`, but this entry point
-        // receives a slice of allowed types rather than a single type, so it
-        // delegates to the unfiltered `bfs` implementation.
-        self.bfs(snapshot_id, start, depth)
+        self.bfs_filtered_traversal(snapshot_id, start, depth, direction, allowed_edge_types)
     }
 
     fn shortest_path_filtered(
@@ -1152,11 +1144,9 @@ impl GraphBackend for V3Backend {
         snapshot_id: SnapshotId,
         start: i64,
         end: i64,
-        _allowed_edge_types: &[&str],
+        allowed_edge_types: &[&str],
     ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
-        // V3 shortest-path ignores the edge-type filter and traverses all edge
-        // types, delegating to the unfiltered `shortest_path` implementation.
-        self.shortest_path(snapshot_id, start, end)
+        self.shortest_path_filtered_traversal(snapshot_id, start, end, allowed_edge_types)
     }
 
     fn chain_query(
