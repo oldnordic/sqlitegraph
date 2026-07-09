@@ -258,6 +258,11 @@
   neighbor-cache reads, weighted warmup, edge-type lookups, and shared
   edge-page read helpers now live together while dirty-cluster mutation logic
   stays in `edge_compat.rs`.
+- Continued the native-v3 edge-store split by moving the dirty-cluster and
+  edge insert/update paths into the new
+  `backend/native/v3/edge_mutation_support.rs` child module. `edge_compat.rs`
+  now keeps the shared types plus cache-stat utilities, while mutation logic
+  stays grouped with its cache-update and WAL-write helpers.
 - Extracted the native-v3 kind/name/triple-query support block into the new
   `backend/native/v3/query_support.rs` child module. `backend.rs` now delegates
   kind lookups, name-pattern dispatch, and triple matching through shared
