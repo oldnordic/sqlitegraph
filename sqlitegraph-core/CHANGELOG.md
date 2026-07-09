@@ -173,6 +173,10 @@
   snapshot visibility check and compact/external node-byte loading helpers,
   while leaving `GraphBackend::get_node()` in `backend.rs` as a thin policy
   wrapper.
+- Extracted the native-v3 shared traversal helpers into the new
+  `backend/native/v3/traversal_support.rs` child module. This moved the BFS,
+  shortest-path, node-degree, and k-hop traversal logic while leaving the
+  corresponding `GraphBackend` methods in `backend.rs` as thin delegators.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for

@@ -58,6 +58,8 @@ mod transaction_control;
 mod transaction_guard;
 #[path = "transaction_state.rs"]
 mod transaction_state;
+#[path = "traversal_support.rs"]
+mod traversal_support;
 
 use crate::SqliteGraphError;
 use crate::backend::native::types::NativeBackendError;
@@ -1085,42 +1087,7 @@ impl GraphBackend for V3Backend {
         start: i64,
         depth: u32,
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        use std::collections::{HashSet, VecDeque};
-
-        Self::require_current_snapshot(snapshot_id)?;
-        let mut visited = HashSet::new();
-        let mut result = Vec::new();
-        let mut queue = VecDeque::new();
-
-        visited.insert(start);
-        queue.push_back((start, 0));
-
-        while let Some((node_id, current_depth)) = queue.pop_front() {
-            if current_depth > depth {
-                continue;
-            }
-
-            result.push(node_id);
-
-            if current_depth < depth {
-                let neighbors = self.neighbors_shared(
-                    snapshot_id,
-                    node_id,
-                    NeighborQuery {
-                        direction: BackendDirection::Outgoing,
-                        edge_type: None,
-                    },
-                )?;
-
-                for neighbor in neighbors.iter() {
-                    if visited.insert(*neighbor) {
-                        queue.push_back((*neighbor, current_depth + 1));
-                    }
-                }
-            }
-        }
-
-        Ok(result)
+        self.bfs_traversal(snapshot_id, start, depth)
     }
 
     fn shortest_path(
@@ -1129,57 +1096,7 @@ impl GraphBackend for V3Backend {
         start: i64,
         end: i64,
     ) -> Result<Option<Vec<i64>>, SqliteGraphError> {
-        use std::collections::{HashMap, VecDeque};
-
-        Self::require_current_snapshot(snapshot_id)?;
-
-        if start == end {
-            return Ok(Some(vec![start]));
-        }
-
-        let mut visited = HashMap::new();
-        let mut queue = VecDeque::new();
-
-        visited.insert(start, None);
-        queue.push_back(start);
-
-        while let Some(node_id) = queue.pop_front() {
-            let neighbors = self.neighbors_shared(
-                snapshot_id,
-                node_id,
-                NeighborQuery {
-                    direction: BackendDirection::Outgoing,
-                    edge_type: None,
-                },
-            )?;
-
-            for neighbor in neighbors.iter() {
-                if !visited.contains_key(neighbor) {
-                    visited.insert(*neighbor, Some(node_id));
-
-                    if *neighbor == end {
-                        // Reconstruct path
-                        let mut path = vec![end];
-                        let mut current = node_id;
-
-                        while let Some(&parent) = visited.get(&current) {
-                            path.push(current);
-                            match parent {
-                                Some(p) => current = p,
-                                None => break,
-                            }
-                        }
-
-                        path.reverse();
-                        return Ok(Some(path));
-                    }
-
-                    queue.push_back(*neighbor);
-                }
-            }
-        }
-
-        Ok(None)
+        self.shortest_path_traversal(snapshot_id, start, end)
     }
 
     fn node_degree(
@@ -1187,31 +1104,7 @@ impl GraphBackend for V3Backend {
         snapshot_id: SnapshotId,
         node: i64,
     ) -> Result<(usize, usize), SqliteGraphError> {
-        Self::require_current_snapshot(snapshot_id)?;
-
-        let outgoing = self
-            .neighbors_shared(
-                snapshot_id,
-                node,
-                NeighborQuery {
-                    direction: BackendDirection::Outgoing,
-                    edge_type: None,
-                },
-            )?
-            .len();
-
-        let incoming = self
-            .neighbors_shared(
-                snapshot_id,
-                node,
-                NeighborQuery {
-                    direction: BackendDirection::Incoming,
-                    edge_type: None,
-                },
-            )?
-            .len();
-
-        Ok((outgoing, incoming))
+        self.node_degree_counts(snapshot_id, node)
     }
 
     fn k_hop(
@@ -1221,55 +1114,7 @@ impl GraphBackend for V3Backend {
         depth: u32,
         direction: BackendDirection,
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        // For k_hop, we use BFS with direction filtering
-        use std::collections::{HashSet, VecDeque};
-
-        Self::require_current_snapshot(snapshot_id)?;
-        let mut visited = HashSet::new();
-        let mut result = Vec::new();
-        let mut queue = VecDeque::new();
-
-        visited.insert(start);
-        queue.push_back((start, 0));
-
-        while let Some((node_id, current_depth)) = queue.pop_front() {
-            if current_depth > depth {
-                continue;
-            }
-
-            if current_depth > 0 || depth == 0 {
-                result.push(node_id);
-            }
-
-            if current_depth < depth {
-                let neighbors = match direction {
-                    BackendDirection::Outgoing => self.neighbors_shared(
-                        snapshot_id,
-                        node_id,
-                        NeighborQuery {
-                            direction: BackendDirection::Outgoing,
-                            edge_type: None,
-                        },
-                    )?,
-                    BackendDirection::Incoming => self.neighbors_shared(
-                        snapshot_id,
-                        node_id,
-                        NeighborQuery {
-                            direction: BackendDirection::Incoming,
-                            edge_type: None,
-                        },
-                    )?,
-                };
-
-                for neighbor in neighbors.iter() {
-                    if visited.insert(*neighbor) {
-                        queue.push_back((*neighbor, current_depth + 1));
-                    }
-                }
-            }
-        }
-
-        Ok(result)
+        self.k_hop_traversal(snapshot_id, start, depth, direction)
     }
 
     fn k_hop_filtered(
