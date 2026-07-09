@@ -168,6 +168,11 @@
   `backend/native/v3/mutation_support.rs`. The public `GraphBackend`
   mutation methods remain in `backend.rs`, but now delegate their raw SQLite
   sidecar writes through private helpers instead of inlining that boilerplate.
+- Extracted the native-v3 `get_node()` read-path helpers into the new
+  `backend/native/v3/read_support.rs` child module. This moved the historical
+  snapshot visibility check and compact/external node-byte loading helpers,
+  while leaving `GraphBackend::get_node()` in `backend.rs` as a thin policy
+  wrapper.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for

@@ -42,6 +42,8 @@ mod index_rebuild;
 mod mutation_support;
 #[path = "property_support.rs"]
 mod property_support;
+#[path = "read_support.rs"]
+mod read_support;
 #[path = "snapshot_meta.rs"]
 mod snapshot_meta;
 #[path = "sql_exec.rs"]
@@ -1040,95 +1042,11 @@ impl GraphBackend for V3Backend {
     }
 
     fn get_node(&self, snapshot_id: SnapshotId, id: i64) -> Result<GraphEntity, SqliteGraphError> {
-        let mut deleted_before_present: Option<u64> = None;
-
-        // MVCC check: if snapshot is historical (non-zero LSN), verify node existed at that time
-        if snapshot_id.0 != 0 {
-            let conn = self.sqlite_conn.lock();
-            let mut stmt = conn.prepare(
-                "SELECT created_version, updated_version, deleted_version FROM node_properties WHERE node_id = ?1"
-            )
-                .map_err(|e| SqliteGraphError::connection(format!("Failed to prepare query: {}", e)))?;
-
-            let mut rows = stmt
-                .query([id])
-                .map_err(|e| SqliteGraphError::connection(format!("Failed to query: {}", e)))?;
-
-            if let Some(row) = rows
-                .next()
-                .map_err(|e| SqliteGraphError::connection(format!("Failed to fetch row: {}", e)))?
-            {
-                let created_version: u64 = row.get(0).map_err(|e| {
-                    SqliteGraphError::connection(format!("Failed to get created_version: {}", e))
-                })?;
-                let updated_version: Option<u64> = row.get(1).map_err(|e| {
-                    SqliteGraphError::connection(format!("Failed to get updated_version: {}", e))
-                })?;
-                let deleted_version: Option<u64> = row.get(2).map_err(|e| {
-                    SqliteGraphError::connection(format!("Failed to get deleted_version: {}", e))
-                })?;
-
-                if created_version > snapshot_id.0 {
-                    return Err(SqliteGraphError::query(format!(
-                        "Node {} not found in snapshot",
-                        id
-                    )));
-                }
-
-                if let Some(version) = updated_version
-                    && snapshot_id.0 < version
-                {
-                    return Err(SqliteGraphError::query(format!(
-                        "Historical version for node {} is unavailable after update",
-                        id
-                    )));
-                }
-
-                if let Some(version) = deleted_version {
-                    if snapshot_id.0 >= version {
-                        return Err(SqliteGraphError::query(format!(
-                            "Node {} not found in snapshot",
-                            id
-                        )));
-                    }
-                    deleted_before_present = Some(version);
-                }
-            } else {
-                // Node not in properties table at all - not found
-                return Err(SqliteGraphError::query(format!("Node {} not found", id)));
-            }
-        }
+        let deleted_before_present = self.validate_node_snapshot_visibility(snapshot_id, id)?;
 
         match self.get_node_internal(id)? {
             Some(record) => {
-                // Parse compact format: [kind_len: u8][kind bytes][name_len: u8][name bytes][json data]
-                let data_bytes = if let Some(inline) = record.data_inline {
-                    inline
-                } else if let Some(offset) = record.data_external_offset {
-                    // Read external data from file
-                    // Mask out the external flag to get actual data length
-                    let actual_data_len = record.data_len
-                        & crate::backend::native::v3::node::record::constants::MAX_DATA_LEN;
-                    let mut file =
-                        OpenOptions::new()
-                            .read(true)
-                            .open(&self.db_path)
-                            .map_err(|e| {
-                                SqliteGraphError::connection(format!("Failed to open file: {}", e))
-                            })?;
-
-                    let mut buffer = vec![0u8; actual_data_len as usize];
-                    file.seek(SeekFrom::Start(offset)).map_err(|e| {
-                        SqliteGraphError::connection(format!("Failed to seek: {}", e))
-                    })?;
-                    file.read_exact(&mut buffer).map_err(|e| {
-                        SqliteGraphError::connection(format!("Failed to read: {}", e))
-                    })?;
-                    buffer
-                } else {
-                    Vec::new()
-                };
-
+                let data_bytes = self.load_node_record_bytes(&record)?;
                 let (kind, name, data) = Self::parse_node_data(&data_bytes, id);
 
                 Ok(GraphEntity {
