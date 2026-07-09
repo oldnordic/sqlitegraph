@@ -182,6 +182,10 @@
   edge-type filters for these entry points and delegates to the unfiltered
   traversal logic, but the wrapper behavior now lives beside the traversal
   helpers instead of inside `backend.rs`.
+- Extracted the native-v3 chain traversal implementation into the new
+  `backend/native/v3/chain_support.rs` child module. `GraphBackend::chain_query()`
+  in `backend.rs` now delegates to the same per-step sorted/deduped traversal
+  logic instead of inlining it.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for

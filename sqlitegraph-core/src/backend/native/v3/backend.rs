@@ -32,6 +32,8 @@
 mod async_backend;
 #[path = "batch_guard.rs"]
 mod batch_guard;
+#[path = "chain_support.rs"]
+mod chain_support;
 #[path = "csr_support.rs"]
 mod csr_support;
 #[path = "hnsw_support.rs"]
@@ -1151,52 +1153,11 @@ impl GraphBackend for V3Backend {
 
     fn chain_query(
         &self,
-        _snapshot_id: SnapshotId,
+        snapshot_id: SnapshotId,
         start: i64,
         chain: &[ChainStep],
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        if chain.is_empty() {
-            return Ok(vec![start]);
-        }
-
-        let mut current_nodes = vec![start];
-
-        for step in chain {
-            let dir = match step.direction {
-                BackendDirection::Outgoing => EdgeDirection::Outgoing,
-                BackendDirection::Incoming => EdgeDirection::Incoming,
-            };
-
-            let mut next_nodes = Vec::new();
-            let edge_store = self.edge_store.read();
-
-            for &node_id in &current_nodes {
-                // When the step declares an edge type, restrict traversal to
-                // neighbors connected by an edge of that type via the edge
-                // store's type-indexed lookup. Otherwise return all neighbors
-                // in the requested direction.
-                let neighbors = match step.edge_type.as_ref() {
-                    Some(edge_type) => edge_store
-                        .neighbors_filtered(node_id, dir, edge_type)
-                        .map_err(map_v3_error)?,
-                    None => edge_store.neighbors(node_id, dir).map_err(map_v3_error)?,
-                };
-
-                next_nodes.extend(neighbors.iter().copied());
-            }
-
-            if next_nodes.is_empty() {
-                return Ok(Vec::new());
-            }
-
-            // Per-step sort and dedup mirrors multi_hop::chain_query so both
-            // backends produce identical, duplicate-free frontier ordering.
-            next_nodes.sort_unstable();
-            next_nodes.dedup();
-            current_nodes = next_nodes;
-        }
-
-        Ok(current_nodes)
+        self.chain_query_steps(snapshot_id, start, chain)
     }
 
     fn pattern_search(
