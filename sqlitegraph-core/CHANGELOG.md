@@ -246,6 +246,10 @@
   `backend/native/v3/edge_compat_weighted_tests.rs` child module. The main
   durability/WAL slab stays in `edge_compat_tests.rs`, but the reopen/weighted
   coverage is now isolated by concern.
+- Split the native-v3 backend CSR neighbor-parity regressions into the new
+  `backend/native/v3/backend_csr_neighbor_tests.rs` child module. The main
+  `backend_tests.rs` file now keeps create/open/import/snapshot coverage while
+  CSR neighbor read fallback coverage is isolated by concern.
 - Extracted the native-v3 edge-cluster/page-codec block from
   `backend/native/v3/edge_compat.rs` into the new
   `backend/native/v3/edge_cluster_support.rs` child module. `edge_compat.rs`
