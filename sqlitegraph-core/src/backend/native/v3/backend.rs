@@ -52,6 +52,8 @@ mod neighbor_support;
 mod pattern_support;
 #[path = "property_support.rs"]
 mod property_support;
+#[path = "query_support.rs"]
+mod query_support;
 #[path = "read_support.rs"]
 mod read_support;
 #[path = "snapshot_meta.rs"]
@@ -1179,8 +1181,7 @@ impl GraphBackend for V3Backend {
         snapshot_id: SnapshotId,
         kind: &str,
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        Self::require_current_snapshot(snapshot_id)?;
-        Ok(self.kind_index.get(kind))
+        self.query_nodes_by_kind_support(snapshot_id, kind)
     }
 
     fn query_nodes_by_name_pattern(
@@ -1188,28 +1189,7 @@ impl GraphBackend for V3Backend {
         snapshot_id: SnapshotId,
         pattern: &str,
     ) -> Result<Vec<i64>, SqliteGraphError> {
-        Self::require_current_snapshot(snapshot_id)?;
-
-        // GLOB dispatch matching the sqlite-backend (`name GLOB pattern`):
-        // - "prefix*" (ends with single star, no leading star) → fast prefix path
-        // - any pattern containing '*' or '?' → full GLOB matcher
-        //   (handles "*suffix", "*mid*", "a*b", "func?bar", "*user?")
-        // - no wildcards → exact match (a bare "User" matches only "User")
-        if pattern.ends_with('*') && !pattern.starts_with('*') && !pattern.contains('?') {
-            // "prefix*" — prefix search via the ordered index (O(k) matches).
-            let prefix = &pattern[..pattern.len() - 1];
-            Ok(self.name_index.get_prefix(prefix))
-        } else if pattern.contains('*') || pattern.contains('?') {
-            // Wildcard GLOB: delegate to the backtracking glob matcher. This
-            // also subsumes the old "*suffix"/"*mid*" substring fallback but
-            // with correct anchored GLOB semantics (e.g. "*User" matches names
-            // *ending* in "User", not names merely containing "User").
-            Ok(self.name_index.get_glob(pattern))
-        } else {
-            // No wildcards: exact match, identical to SQLite GLOB with a
-            // wildcard-free pattern.
-            Ok(self.name_index.get_exact(pattern))
-        }
+        self.query_nodes_by_name_pattern_support(snapshot_id, pattern)
     }
 
     fn kv_get(
@@ -1257,72 +1237,7 @@ impl GraphBackend for V3Backend {
         &self,
         pattern: &crate::pattern_engine::PatternTriple,
     ) -> Result<Vec<crate::pattern_engine::TripleMatch>, crate::SqliteGraphError> {
-        use crate::backend::native::v3::edge_compat::Direction;
-        use crate::pattern_engine::TripleMatch;
-
-        pattern.validate()?;
-
-        let mut matches = Vec::new();
-
-        // Convert BackendDirection to V3 Direction
-        let v3_direction = match pattern.direction {
-            crate::backend::BackendDirection::Outgoing => Direction::Outgoing,
-            crate::backend::BackendDirection::Incoming => Direction::Incoming,
-        };
-
-        // Get candidate start nodes based on start_label filter
-        let start_candidates: Vec<i64> = if let Some(ref start_label) = pattern.start_label {
-            self.kind_index.get(start_label)
-        } else {
-            // No label filter - need to scan all nodes
-            // This is expensive, but matches the expected behavior
-            self.get_all_node_ids()?
-        };
-
-        // For each start node, get matching edges and end nodes
-        for start_id in start_candidates {
-            // Get neighbors filtered by edge_type
-            let edge_store = self.edge_store.read();
-            let neighbors =
-                match edge_store.neighbors_filtered(start_id, v3_direction, &pattern.edge_type) {
-                    Ok(neighbors) => neighbors,
-                    Err(_) => continue, // Skip nodes where edge lookup fails
-                };
-
-            drop(edge_store); // Release read lock before property checks
-
-            // For each neighbor (potential end node), check filters
-            for end_id in neighbors.iter() {
-                // Check end_label filter if specified
-                if let Some(ref end_label) = pattern.end_label {
-                    let label_matches = self.kind_index.get(end_label).contains(end_id);
-                    if !label_matches {
-                        continue;
-                    }
-                }
-
-                // Check property filters if specified
-                if !self.check_property_filters(start_id, *end_id, pattern)? {
-                    continue;
-                }
-
-                // Generate synthetic edge_id (hash-based for uniqueness)
-                let edge_id =
-                    self.generate_edge_id(start_id, *end_id, v3_direction, &pattern.edge_type);
-
-                matches.push(TripleMatch::new(start_id, edge_id, *end_id));
-            }
-        }
-
-        // Sort results for deterministic output
-        matches.sort_by(|a, b| {
-            a.start_id
-                .cmp(&b.start_id)
-                .then_with(|| a.edge_id.cmp(&b.edge_id))
-                .then_with(|| a.end_id.cmp(&b.end_id))
-        });
-
-        Ok(matches)
+        self.match_triples_support(pattern)
     }
 
     fn vector_search(

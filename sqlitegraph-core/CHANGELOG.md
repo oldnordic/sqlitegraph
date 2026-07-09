@@ -215,6 +215,11 @@
   methods in `backend.rs` now delegate to shared helpers for checkpoint writes,
   backup creation, snapshot export, and JSONL snapshot import, with direct
   snapshot-import regressions re-run after the move.
+- Extracted the native-v3 kind/name/triple-query support block into the new
+  `backend/native/v3/query_support.rs` child module. `backend.rs` now delegates
+  kind lookups, name-pattern dispatch, and triple matching through shared
+  helpers beside the existing property-query support instead of inlining those
+  query paths in the trait implementation.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
