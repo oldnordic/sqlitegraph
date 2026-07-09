@@ -306,6 +306,12 @@
   header, and record types, while `writer.rs`, `recovery.rs`,
   `checkpoint.rs`, and `tests.rs` hold the append/recovery/checkpoint logic
   and regression slab without changing the public native-v3 WAL API.
+- Continued the native-v3 node-store split by extracting support-only code
+  into `backend/native/v3/node/store/`. `store.rs` now re-exports
+  `TraversalCache`, `TraversalCacheBuilder`, `PageLoader`, and
+  `lookup_node_async` from focused child modules, and the embedded node-store
+  regression slab moved out of the production file so the temporary
+  `clippy::items_after_test_module` allowance could be removed.
 
 ## [3.7.0] - 2026-07-04
 
