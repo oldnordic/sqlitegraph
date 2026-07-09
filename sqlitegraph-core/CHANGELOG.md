@@ -79,6 +79,12 @@
 
 ### Native V3
 
+- Extracted the native-v3 lifecycle orchestration path from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/lifecycle_support.rs` child module. This moved
+  `create`, `create_with_wal`, and `open` without changing WAL recovery,
+  SQLite sidecar initialization, index restore/rebuild, or file coordinator
+  wiring behavior.
 - Extracted `WriteBatchGuard` from `backend/native/v3/backend.rs` into the new
   `backend/native/v3/batch_guard.rs` child module with no behavior change. The
   public type remains re-exported through `backend.rs`, so the cleanup reduces
