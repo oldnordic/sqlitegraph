@@ -85,6 +85,10 @@
   `create`, `create_with_wal`, and `open` without changing WAL recovery,
   SQLite sidecar initialization, index restore/rebuild, or file coordinator
   wiring behavior.
+- Extracted the large inline native-v3 backend test module from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/backend_tests.rs` file and removed the now-unneeded
+  `clippy::items_after_test_module` allowance from the production backend file.
 - Extracted `WriteBatchGuard` from `backend/native/v3/backend.rs` into the new
   `backend/native/v3/batch_guard.rs` child module with no behavior change. The
   public type remains re-exported through `backend.rs`, so the cleanup reduces
