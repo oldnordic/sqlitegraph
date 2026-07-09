@@ -210,6 +210,11 @@
   db-path/header/WAL accessors, flush-to-disk path, header sync helper, batch
   write entrypoint, and weighted edge batch insert helper without changing the
   public maintenance API or durability behavior.
+- Extracted the native-v3 checkpoint/backup/snapshot I/O logic into the new
+  `backend/native/v3/snapshot_io_support.rs` child module. The `GraphBackend`
+  methods in `backend.rs` now delegate to shared helpers for checkpoint writes,
+  backup creation, snapshot export, and JSONL snapshot import, with direct
+  snapshot-import regressions re-run after the move.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
