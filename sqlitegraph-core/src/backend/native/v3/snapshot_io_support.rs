@@ -1,7 +1,9 @@
 use super::V3Backend;
 use crate::SqliteGraphError;
-use crate::backend::{BackupResult, EdgeSpec, GraphBackend, ImportMetadata, NodeSpec, SnapshotMetadata};
 use crate::backend::native::v3::wal::V3WALPaths;
+use crate::backend::{
+    BackupResult, EdgeSpec, GraphBackend, ImportMetadata, NodeSpec, SnapshotMetadata,
+};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -29,7 +31,10 @@ impl V3Backend {
         Ok(())
     }
 
-    pub(super) fn backup_support(&self, backup_dir: &Path) -> Result<BackupResult, SqliteGraphError> {
+    pub(super) fn backup_support(
+        &self,
+        backup_dir: &Path,
+    ) -> Result<BackupResult, SqliteGraphError> {
         std::fs::create_dir_all(backup_dir).map_err(|e| {
             SqliteGraphError::connection(format!("Failed to create backup dir: {}", e))
         })?;
@@ -169,14 +174,15 @@ impl V3Backend {
                             )
                         })?
                         .to_string();
-                    let raw_value = record
-                        .get("value")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| {
-                            SqliteGraphError::invalid_input(
-                                "property record missing value".to_string(),
-                            )
-                        })?;
+                    let raw_value =
+                        record
+                            .get("value")
+                            .and_then(|v| v.as_str())
+                            .ok_or_else(|| {
+                                SqliteGraphError::invalid_input(
+                                    "property record missing value".to_string(),
+                                )
+                            })?;
                     let parsed: serde_json::Value = serde_json::from_str(raw_value)
                         .unwrap_or(serde_json::Value::String(raw_value.to_string()));
                     props_by_entity

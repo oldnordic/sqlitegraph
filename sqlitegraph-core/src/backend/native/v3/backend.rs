@@ -59,6 +59,8 @@ mod property_support;
 mod query_support;
 #[path = "read_support.rs"]
 mod read_support;
+#[path = "snapshot_io_support.rs"]
+mod snapshot_io_support;
 #[path = "snapshot_meta.rs"]
 mod snapshot_meta;
 #[path = "sql_exec.rs"]
@@ -81,7 +83,7 @@ use crate::backend::native::types::NativeBackendError;
 use crate::backend::native::v3::btree::BTreeManager;
 use crate::backend::native::v3::edge_compat::Direction as EdgeDirection;
 use crate::backend::native::v3::name_index::NameIndex;
-use crate::backend::native::v3::wal::{V3WALPaths, WALWriter};
+use crate::backend::native::v3::wal::WALWriter;
 use crate::backend::native::v3::{
     AsyncFileCoordinator, FileCoordinator, KindIndex, KvStore, NodeCache, NodeStore, PageAllocator,
     PersistentHeaderV3, Publisher, V3EdgeStore,
@@ -99,8 +101,6 @@ use parking_lot::{Mutex, RwLock};
 use rusqlite::Connection;
 pub use sql_value::{SqlRow, SqlValue};
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 pub use transaction_guard::{V3SavepointGuard, V3TransactionGuard};
@@ -392,23 +392,7 @@ impl GraphBackend for V3Backend {
     }
 
     fn checkpoint(&self) -> Result<(), SqliteGraphError> {
-        if let Some(ref wal) = self.wal {
-            let header = self.header.read();
-            let btree = self.btree.read();
-            let allocator = self.allocator.read();
-
-            wal.write()
-                .checkpoint(
-                    btree.root_page_id(),
-                    allocator.total_pages(),
-                    btree.tree_height(),
-                    allocator.free_list_head(),
-                    &header,
-                )
-                .map_err(|e| SqliteGraphError::connection(format!("Checkpoint failed: {:?}", e)))?;
-        }
-
-        Ok(())
+        self.checkpoint_support()
     }
 
     fn flush(&self) -> Result<(), SqliteGraphError> {
@@ -416,312 +400,21 @@ impl GraphBackend for V3Backend {
     }
 
     fn backup(&self, backup_dir: &Path) -> Result<crate::backend::BackupResult, SqliteGraphError> {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        // Ensure backup directory exists
-        std::fs::create_dir_all(backup_dir).map_err(|e| {
-            SqliteGraphError::connection(format!("Failed to create backup dir: {}", e))
-        })?;
-
-        // Generate backup filename
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-
-        let backup_filename = format!("v3_backup_{}.graph", timestamp);
-        let backup_path = backup_dir.join(&backup_filename);
-
-        // Copy database file
-        std::fs::copy(&self.db_path, &backup_path)
-            .map_err(|e| SqliteGraphError::connection(format!("Failed to copy database: {}", e)))?;
-
-        // Copy WAL if exists
-        let wal_path = V3WALPaths::wal_file(&self.db_path);
-        if wal_path.exists() {
-            let backup_wal_path = V3WALPaths::wal_file(&backup_path);
-            std::fs::copy(&wal_path, &backup_wal_path)
-                .map_err(|e| SqliteGraphError::connection(format!("Failed to copy WAL: {}", e)))?;
-        }
-
-        // Get file size
-        let metadata = std::fs::metadata(&backup_path).map_err(|e| {
-            SqliteGraphError::connection(format!("Failed to get backup metadata: {}", e))
-        })?;
-
-        Ok(crate::backend::BackupResult {
-            snapshot_path: backup_path,
-            manifest_path: backup_dir.join(format!("v3_backup_{}.manifest", timestamp)),
-            size_bytes: metadata.len(),
-            checksum: 0, // V3 backup checksum not yet implemented; use external fs hash
-            record_count: self.header.read().node_count,
-            duration_secs: 0.0, // backup duration not instrumented; client should time externally
-            timestamp,
-            checkpoint_performed: self.wal.is_some(),
-        })
+        self.backup_support(backup_dir)
     }
 
     fn snapshot_export(
         &self,
         export_dir: &Path,
     ) -> Result<crate::backend::SnapshotMetadata, SqliteGraphError> {
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        // Ensure export directory exists
-        std::fs::create_dir_all(export_dir).map_err(|e| {
-            SqliteGraphError::connection(format!("Failed to create export dir: {}", e))
-        })?;
-
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-
-        let snapshot_filename = format!("v3_snapshot_{}", timestamp);
-        let snapshot_path = export_dir.join(&snapshot_filename);
-
-        // Perform checkpoint first if WAL is enabled
-        self.checkpoint()?;
-
-        // Copy database file
-        std::fs::copy(&self.db_path, &snapshot_path).map_err(|e| {
-            SqliteGraphError::connection(format!("Failed to export snapshot: {}", e))
-        })?;
-
-        let metadata = std::fs::metadata(&snapshot_path).map_err(|e| {
-            SqliteGraphError::connection(format!("Failed to get snapshot metadata: {}", e))
-        })?;
-
-        let header = self.header.read();
-
-        Ok(crate::backend::SnapshotMetadata {
-            snapshot_path,
-            size_bytes: metadata.len(),
-            entity_count: header.node_count,
-            edge_count: header.edge_count,
-        })
+        self.snapshot_export_support(export_dir)
     }
 
     fn snapshot_import(
         &self,
         import_dir: &Path,
     ) -> Result<crate::backend::ImportMetadata, SqliteGraphError> {
-        // The JSONL dump format is produced by `recovery::dump_graph_to_path`
-        // and consumed by `recovery::load_graph_from_path` on the sqlite-backend.
-        // Each line is a JSON object tagged with `type`:
-        //   {"type":"entity","id":..,"kind":..,"name":..,"file_path":..,"data":..}
-        //   {"type":"edge","id":..,"from_id":..,"to_id":..,"edge_type":..,"data":..}
-        //   {"type":"label","entity_id":..,"label":..}
-        //   {"type":"property","entity_id":..,"key":..,"value":..}
-        //
-        // V3 has no separate labels/properties tables: labels become the node
-        // `kind` (the first label wins, matching how kind_index is keyed) and
-        // properties/labels are merged into the node's `data` JSON object so
-        // nothing is lost on a round-trip.
-        let snapshot_file = import_dir.join("snapshot.json");
-        if !snapshot_file.exists() {
-            return Err(SqliteGraphError::connection(format!(
-                "Snapshot file not found: {}",
-                snapshot_file.display()
-            )));
-        }
-
-        let file = File::open(&snapshot_file)
-            .map_err(|e| SqliteGraphError::connection(format!("Failed to open snapshot: {}", e)))?;
-        let reader = BufReader::new(file);
-
-        // First pass: collect pending labels and properties keyed by source
-        // entity id so we can fold them into each node's data before insert.
-        let mut labels_by_entity: HashMap<i64, Vec<String>> = HashMap::new();
-        let mut props_by_entity: HashMap<i64, Vec<(String, serde_json::Value)>> = HashMap::new();
-        let mut entity_records: Vec<serde_json::Value> = Vec::new();
-        let mut edge_records: Vec<serde_json::Value> = Vec::new();
-
-        for line in reader.lines() {
-            let line = line.map_err(|e| {
-                SqliteGraphError::invalid_input(format!("Failed to read line: {}", e))
-            })?;
-            if line.trim().is_empty() {
-                continue;
-            }
-            let record: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
-                SqliteGraphError::invalid_input(format!("Failed to parse JSONL record: {}", e))
-            })?;
-            let rec_type = record.get("type").and_then(|v| v.as_str()).unwrap_or("");
-            match rec_type {
-                "entity" => entity_records.push(record),
-                "edge" => edge_records.push(record),
-                "label" => {
-                    let entity_id = record
-                        .get("entity_id")
-                        .and_then(|v| v.as_i64())
-                        .ok_or_else(|| {
-                            SqliteGraphError::invalid_input(
-                                "label record missing entity_id".to_string(),
-                            )
-                        })?;
-                    let label = record
-                        .get("label")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| {
-                            SqliteGraphError::invalid_input(
-                                "label record missing label".to_string(),
-                            )
-                        })?
-                        .to_string();
-                    labels_by_entity.entry(entity_id).or_default().push(label);
-                }
-                "property" => {
-                    let entity_id = record
-                        .get("entity_id")
-                        .and_then(|v| v.as_i64())
-                        .ok_or_else(|| {
-                            SqliteGraphError::invalid_input(
-                                "property record missing entity_id".to_string(),
-                            )
-                        })?;
-                    let key = record
-                        .get("key")
-                        .and_then(|v| v.as_str())
-                        .ok_or_else(|| {
-                            SqliteGraphError::invalid_input(
-                                "property record missing key".to_string(),
-                            )
-                        })?
-                        .to_string();
-                    let raw_value =
-                        record
-                            .get("value")
-                            .and_then(|v| v.as_str())
-                            .ok_or_else(|| {
-                                SqliteGraphError::invalid_input(
-                                    "property record missing value".to_string(),
-                                )
-                            })?;
-                    // Property values are stored as strings in the JSONL dump;
-                    // attempt to parse as JSON to recover typed values, falling
-                    // back to the raw string when not valid JSON.
-                    let parsed: serde_json::Value = serde_json::from_str(raw_value)
-                        .unwrap_or(serde_json::Value::String(raw_value.to_string()));
-                    props_by_entity
-                        .entry(entity_id)
-                        .or_default()
-                        .push((key, parsed));
-                }
-                "" => {
-                    return Err(SqliteGraphError::invalid_input(
-                        "JSONL record missing `type` field".to_string(),
-                    ));
-                }
-                other => {
-                    return Err(SqliteGraphError::invalid_input(format!(
-                        "unknown JSONL record type: {other}"
-                    )));
-                }
-            }
-        }
-
-        if entity_records.is_empty() && edge_records.is_empty() {
-            return Ok(crate::backend::ImportMetadata {
-                snapshot_path: snapshot_file,
-                entities_imported: 0,
-                edges_imported: 0,
-            });
-        }
-
-        // Track original-id → inserted-id so edges can be remapped. The V3
-        // backend assigns its own ids, so we remap edge endpoints to the ids
-        // actually handed out during this import.
-        let mut id_map: HashMap<i64, i64> = HashMap::new();
-        let mut entities_imported: u64 = 0;
-
-        for rec in &entity_records {
-            let original_id = rec.get("id").and_then(|v| v.as_i64()).ok_or_else(|| {
-                SqliteGraphError::invalid_input("entity record missing id".to_string())
-            })?;
-            let kind = rec
-                .get("kind")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Entity")
-                .to_string();
-            let name = rec
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let file_path = rec
-                .get("file_path")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let mut data = rec.get("data").cloned().unwrap_or(serde_json::Value::Null);
-
-            // Fold labels and properties into the data object so they survive
-            // the round-trip through V3 (which stores a single JSON blob).
-            let extra_labels = labels_by_entity.remove(&original_id);
-            let extra_props = props_by_entity.remove(&original_id);
-            if extra_labels.is_some() || extra_props.is_some() {
-                if !data.is_object() {
-                    data = serde_json::Value::Object(serde_json::Map::new());
-                }
-                if let Some(obj) = data.as_object_mut() {
-                    if let Some(labels) = extra_labels {
-                        obj.insert(
-                            "_labels".to_string(),
-                            serde_json::Value::Array(
-                                labels.into_iter().map(serde_json::Value::String).collect(),
-                            ),
-                        );
-                    }
-                    if let Some(props) = extra_props {
-                        for (k, v) in props {
-                            obj.insert(k, v);
-                        }
-                    }
-                }
-            }
-
-            let node_id = self.insert_node(NodeSpec {
-                kind,
-                name,
-                file_path,
-                data,
-            })?;
-            id_map.insert(original_id, node_id);
-            entities_imported += 1;
-        }
-
-        let mut edges_imported: u64 = 0;
-        for rec in &edge_records {
-            let from_original = rec.get("from_id").and_then(|v| v.as_i64()).ok_or_else(|| {
-                SqliteGraphError::invalid_input("edge record missing from_id".to_string())
-            })?;
-            let to_original = rec.get("to_id").and_then(|v| v.as_i64()).ok_or_else(|| {
-                SqliteGraphError::invalid_input("edge record missing to_id".to_string())
-            })?;
-            let edge_type = rec
-                .get("edge_type")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let data = rec.get("data").cloned().unwrap_or(serde_json::Value::Null);
-
-            let from = id_map.get(&from_original).copied().unwrap_or(from_original);
-            let to = id_map.get(&to_original).copied().unwrap_or(to_original);
-
-            self.insert_edge(EdgeSpec {
-                from,
-                to,
-                edge_type,
-                data,
-            })?;
-            edges_imported += 1;
-        }
-
-        Ok(crate::backend::ImportMetadata {
-            snapshot_path: snapshot_file,
-            entities_imported,
-            edges_imported,
-        })
+        self.snapshot_import_support(import_dir)
     }
 
     fn query_nodes_by_kind(
