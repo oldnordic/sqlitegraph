@@ -158,6 +158,11 @@
   `backend/native/v3/index_rebuild.rs` child module. This moved the fallback
   index-rescan path used after open/rollback/update/delete without changing
   the rebuild logic or visibility outside native-v3 sibling modules.
+- Extracted the native-v3 inner mutation helper block from
+  `backend/native/v3/backend.rs` into the new
+  `backend/native/v3/mutation_support.rs` child module. This moved the
+  unsynced node/edge insert helpers plus the page-offset helper without
+  changing batch-write semantics or the public `GraphBackend` mutation API.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
