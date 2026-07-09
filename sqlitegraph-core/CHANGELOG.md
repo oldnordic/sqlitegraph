@@ -186,6 +186,10 @@
   `backend/native/v3/chain_support.rs` child module. `GraphBackend::chain_query()`
   in `backend.rs` now delegates to the same per-step sorted/deduped traversal
   logic instead of inlining it.
+- Extracted the native-v3 pattern-query implementation into the new
+  `backend/native/v3/pattern_support.rs` child module. `GraphBackend::pattern_search()`
+  in `backend.rs` now delegates to the same sequence-building and constraint
+  matching logic instead of inlining it.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for
