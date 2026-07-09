@@ -1,6 +1,5 @@
 use super::{
-    LSN_INVALID, MAX_RECORD_SIZE, V3_WAL_HEADER_SIZE, V3WALHeader, V3WALRecord,
-    read_kv_checkpoint,
+    LSN_INVALID, MAX_RECORD_SIZE, V3_WAL_HEADER_SIZE, V3WALHeader, V3WALRecord, read_kv_checkpoint,
 };
 use crate::backend::native::v3::header::PersistentHeaderV3;
 use crate::backend::native::{NativeBackendError, NativeResult};
