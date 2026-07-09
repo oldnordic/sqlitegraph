@@ -190,6 +190,10 @@
   `backend/native/v3/pattern_support.rs` child module. `GraphBackend::pattern_search()`
   in `backend.rs` now delegates to the same sequence-building and constraint
   matching logic instead of inlining it.
+- Finished the CSR support ownership cleanup by moving the CSR shard constants,
+  typed-edge lookup enum, runtime row aliases, and adjacency encoder into
+  `backend/native/v3/csr_support.rs`. Native-v3 backend tests now reuse that
+  shared encoder instead of carrying a second local copy in `backend.rs`.
 - Added a CSR runtime bridge for native-v3 traversal reads.
 - `neighbors_shared`, `neighbors_weighted_shared`, and the async
   `GraphBackend::neighbors(...)` path now consult `csr_shards` first for

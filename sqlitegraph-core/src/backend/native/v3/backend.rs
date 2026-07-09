@@ -96,29 +96,6 @@ use std::sync::Arc;
 pub use transaction_guard::{V3SavepointGuard, V3TransactionGuard};
 use transaction_state::GraphTransactionState;
 
-const CSR_SHARD_OUTGOING: i64 = 0;
-const CSR_SHARD_INCOMING: i64 = 1;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CsrEdgeTypeLookup {
-    MissingTable,
-    MissingType,
-    Found(u32),
-}
-
-fn encode_csr_adjacency(entries: &[(u32, f32, u32)]) -> Vec<u8> {
-    let mut buf = Vec::with_capacity(entries.len() * 12);
-    for &(dst, weight, flags) in entries {
-        buf.extend_from_slice(&dst.to_le_bytes());
-        buf.extend_from_slice(&weight.to_le_bytes());
-        buf.extend_from_slice(&flags.to_le_bytes());
-    }
-    buf
-}
-
-type CsrRuntimeEntry = (u32, f32, String);
-type CsrRuntimeRow = (i64, Vec<CsrRuntimeEntry>);
-
 /// V3 Backend implementation with interior mutability
 ///
 /// This struct implements the GraphBackend trait using V3's page-based
@@ -1915,19 +1892,10 @@ impl GraphBackend for V3Backend {
 
 #[cfg(test)]
 mod tests {
+    use super::csr_support::encode_csr_adjacency;
     use super::*;
     use crate::backend::native::v3::{V3_FORMAT_VERSION, V3_MAGIC};
     use tempfile::TempDir;
-
-    fn encode_csr_adjacency(entries: &[(u32, f32, u32)]) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(entries.len() * 12);
-        for &(dst, weight, flags) in entries {
-            buf.extend_from_slice(&dst.to_le_bytes());
-            buf.extend_from_slice(&weight.to_le_bytes());
-            buf.extend_from_slice(&flags.to_le_bytes());
-        }
-        buf
-    }
 
     #[test]
     fn test_v3_backend_create() {

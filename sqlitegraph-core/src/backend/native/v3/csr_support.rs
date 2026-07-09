@@ -1,7 +1,4 @@
-use super::{
-    CSR_SHARD_INCOMING, CSR_SHARD_OUTGOING, CsrEdgeTypeLookup, CsrRuntimeRow, V3Backend,
-    encode_csr_adjacency, map_v3_error,
-};
+use super::{V3Backend, map_v3_error};
 use crate::SqliteGraphError;
 use crate::backend::native::v3::edge_compat::Direction as EdgeDirection;
 use crate::backend::{BackendDirection, NeighborQuery};
@@ -9,6 +6,29 @@ use crate::snapshot::SnapshotId;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+const CSR_SHARD_OUTGOING: i64 = 0;
+const CSR_SHARD_INCOMING: i64 = 1;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum CsrEdgeTypeLookup {
+    MissingTable,
+    MissingType,
+    Found(u32),
+}
+
+type CsrRuntimeEntry = (u32, f32, String);
+type CsrRuntimeRow = (i64, Vec<CsrRuntimeEntry>);
+
+pub(super) fn encode_csr_adjacency(entries: &[(u32, f32, u32)]) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(entries.len() * 12);
+    for &(dst, weight, flags) in entries {
+        buf.extend_from_slice(&dst.to_le_bytes());
+        buf.extend_from_slice(&weight.to_le_bytes());
+        buf.extend_from_slice(&flags.to_le_bytes());
+    }
+    buf
+}
 
 impl V3Backend {
     pub(super) fn csr_shard_id(direction: BackendDirection) -> i64 {
