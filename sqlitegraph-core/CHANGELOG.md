@@ -989,6 +989,21 @@ let graph = SqliteGraph::with_config(config)?;
 
 ## [Unreleased]
 
+### Internal: Split Native V3 NodeStore Support Modules
+
+Reduced `src/backend/native/v3/node/store.rs` from 1495 lines to 408 lines by
+extracting the remaining mutation and lookup support slabs into dedicated child
+modules:
+
+- `src/backend/native/v3/node/store/mutation_support.rs`
+- `src/backend/native/v3/node/store/lookup_support.rs`
+
+The split keeps `NodeStore`'s public API stable while moving page mutation,
+node insertion/update/delete, cache plumbing, and read-side lookup helpers out
+of the parent file. During the extraction, a stale read-only lookup chain
+(`lookup_node_ro` plus its private helpers) was removed instead of being kept
+behind dead-code warnings.
+
 ### Internal: Dead Code Audit Completed
 A full audit of all clippy `dead_code` warnings was performed:
 
