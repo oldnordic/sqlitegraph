@@ -9,6 +9,7 @@
 - **Native-v3 WAL seam cleanup** — Moved `V3WALHeader` parsing/serialization and `V3WALRecord` helper logic out of `sqlitegraph-core/src/backend/native/v3/wal.rs` into `wal/header_support.rs` and `wal/record_support.rs` without changing WAL types or behavior.
 - **Native-v3 backend test seam cleanup** — Split `sqlitegraph-core/src/backend/native/v3/backend_tests.rs` into topical submodules for basic backend flow, HNSW coverage, query/index coverage, and snapshot coverage without changing the asserted behavior.
 - **Native-v3 forensics seam cleanup** — Moved forensic snapshot/delta/reporting logic out of `sqlitegraph-core/src/backend/native/v3/forensics.rs` into `forensics/snapshot_support.rs` while keeping the counter registry and ownership tracking behavior unchanged.
+- **Native-v3 node page seam cleanup** — Moved node-page record packing, lazy decode, and record-skip helpers out of `sqlitegraph-core/src/backend/native/v3/node/page/codec.rs` into `node/page/codec_support.rs` without changing page layout or lookup behavior.
 
 ## [3.6.0] - 2026-07-03
 

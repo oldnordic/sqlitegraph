@@ -20,6 +20,7 @@ use crate::backend::native::v3::compression::varint::{
 use crate::backend::native::v3::constants as v3_constants;
 
 mod codec;
+mod codec_support;
 #[cfg(test)]
 mod tests;
 
