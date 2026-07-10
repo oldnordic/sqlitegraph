@@ -989,6 +989,18 @@ let graph = SqliteGraph::with_config(config)?;
 
 ## [Unreleased]
 
+### Internal: Split Native V3 Forensics Ownership Support
+
+Reduced `src/backend/native/v3/forensics.rs` from 1534 lines to 809 lines by
+extracting page-ownership tracking, ownership-report helpers, scan/report
+types, and related macros into:
+
+- `src/backend/native/v3/forensics/ownership.rs`
+
+The parent file now focuses on forensic counters, snapshots, and deltas, while
+the ownership registry API remains stable through re-exports from the parent
+module.
+
 ### Internal: Split Native V3 NodePage Codec And Tests
 
 Reduced `src/backend/native/v3/node/page.rs` from 1648 lines to 452 lines by
