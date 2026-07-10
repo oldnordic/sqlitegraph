@@ -30,6 +30,8 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::Path;
 
+mod support;
+
 /// Magic number for the index file
 pub const INDEX_MAGIC: &[u8; 4] = b"V3XI";
 /// Current version of the index file format
@@ -81,55 +83,36 @@ pub fn persist_indexes(
         .map_err(|e| IndexPersistenceError::Io(format!("Failed to create temp file: {}", e)))?;
 
     // Write magic and version
-    file.write_all(INDEX_MAGIC)
-        .map_err(|e| IndexPersistenceError::Io(format!("Failed to write magic: {}", e)))?;
-    file.write_all(&INDEX_VERSION.to_be_bytes())
-        .map_err(|e| IndexPersistenceError::Io(format!("Failed to write version: {}", e)))?;
+    support::write_all(&mut file, INDEX_MAGIC, "magic")?;
+    support::write_all(&mut file, &INDEX_VERSION.to_be_bytes(), "version")?;
 
     // Write DB node count (staleness guard)
-    file.write_all(&db_node_count.to_be_bytes())
-        .map_err(|e| IndexPersistenceError::Io(format!("Failed to write db node count: {}", e)))?;
+    support::write_all(&mut file, &db_node_count.to_be_bytes(), "db node count")?;
 
     // Write kind index
     let kind_data = kind_index.export();
     let kind_entries: Vec<(&String, &Vec<i64>)> = kind_data.iter().collect();
-    file.write_all(&(kind_entries.len() as u32).to_be_bytes())
-        .map_err(|e| IndexPersistenceError::Io(format!("Failed to write kind count: {}", e)))?;
+    support::write_all(
+        &mut file,
+        &(kind_entries.len() as u32).to_be_bytes(),
+        "kind count",
+    )?;
 
     for (kind, node_ids) in kind_entries {
-        let kind_bytes = kind.as_bytes();
-        file.write_all(&(kind_bytes.len() as u32).to_be_bytes())
-            .map_err(|e| IndexPersistenceError::Io(format!("Failed to write kind len: {}", e)))?;
-        file.write_all(kind_bytes)
-            .map_err(|e| IndexPersistenceError::Io(format!("Failed to write kind bytes: {}", e)))?;
-        file.write_all(&(node_ids.len() as u32).to_be_bytes())
-            .map_err(|e| IndexPersistenceError::Io(format!("Failed to write node count: {}", e)))?;
-        for &node_id in node_ids {
-            file.write_all(&node_id.to_be_bytes()).map_err(|e| {
-                IndexPersistenceError::Io(format!("Failed to write node ID: {}", e))
-            })?;
-        }
+        support::write_string_entry(&mut file, kind, node_ids, "kind")?;
     }
 
     // Write name index
     let name_data = name_index.export();
     let name_entries: Vec<(&String, &Vec<i64>)> = name_data.iter().collect();
-    file.write_all(&(name_entries.len() as u32).to_be_bytes())
-        .map_err(|e| IndexPersistenceError::Io(format!("Failed to write name count: {}", e)))?;
+    support::write_all(
+        &mut file,
+        &(name_entries.len() as u32).to_be_bytes(),
+        "name count",
+    )?;
 
     for (name, node_ids) in name_entries {
-        let name_bytes = name.as_bytes();
-        file.write_all(&(name_bytes.len() as u32).to_be_bytes())
-            .map_err(|e| IndexPersistenceError::Io(format!("Failed to write name len: {}", e)))?;
-        file.write_all(name_bytes)
-            .map_err(|e| IndexPersistenceError::Io(format!("Failed to write name bytes: {}", e)))?;
-        file.write_all(&(node_ids.len() as u32).to_be_bytes())
-            .map_err(|e| IndexPersistenceError::Io(format!("Failed to write node count: {}", e)))?;
-        for &node_id in node_ids {
-            file.write_all(&node_id.to_be_bytes()).map_err(|e| {
-                IndexPersistenceError::Io(format!("Failed to write node ID: {}", e))
-            })?;
-        }
+        support::write_string_entry(&mut file, name, node_ids, "name")?;
     }
 
     // Sync to ensure data is written
@@ -171,28 +154,20 @@ pub fn restore_indexes(
     let file_open_start = std::time::Instant::now();
 
     // Read and verify magic
-    let mut magic = [0u8; 4];
-    file.read_exact(&mut magic)
-        .map_err(|e| IndexPersistenceError::Corrupted(format!("Failed to read magic: {}", e)))?;
+    let magic = support::read_array::<4, _>(&mut file, "magic")?;
     if &magic != INDEX_MAGIC {
         return Err(IndexPersistenceError::InvalidMagic(magic.to_vec()));
     }
 
     // Read and verify version
-    let mut version_bytes = [0u8; 4];
-    file.read_exact(&mut version_bytes)
-        .map_err(|e| IndexPersistenceError::Corrupted(format!("Failed to read version: {}", e)))?;
-    let version = u32::from_be_bytes(version_bytes);
+    let version = u32::from_be_bytes(support::read_array::<4, _>(&mut file, "version")?);
     if version != INDEX_VERSION {
         return Err(IndexPersistenceError::UnsupportedVersion(version));
     }
 
     // Read and verify DB node count (staleness guard)
-    let mut stored_node_count_bytes = [0u8; 8];
-    file.read_exact(&mut stored_node_count_bytes).map_err(|e| {
-        IndexPersistenceError::Corrupted(format!("Failed to read stored node count: {}", e))
-    })?;
-    let stored_node_count = u64::from_be_bytes(stored_node_count_bytes);
+    let stored_node_count =
+        u64::from_be_bytes(support::read_array::<8, _>(&mut file, "stored node count")?);
 
     // Staleness check: sidecar must match current DB node count
     if stored_node_count != db_node_count {
@@ -219,117 +194,26 @@ pub fn restore_indexes(
     let bulk_read_elapsed = bulk_read_start.elapsed();
 
     // Parse from in-memory buffer using a cursor
-    let mut cursor = &remaining_data[..];
-
-    // Build HashMaps first, then import in single operation
-    // This avoids acquiring write lock for each individual insert
-    let mut kind_data: HashMap<String, Vec<i64>> = HashMap::new();
-    let mut name_data: HashMap<String, Vec<i64>> = HashMap::new();
-
-    // Helper to read bytes from cursor
-    let mut read_bytes = |count: usize| -> Result<&[u8], IndexPersistenceError> {
-        if cursor.len() < count {
-            return Err(IndexPersistenceError::Corrupted(format!(
-                "Unexpected EOF: needed {} bytes, got {}",
-                count,
-                cursor.len()
-            )));
-        }
-        let (head, tail) = cursor.split_at(count);
-        cursor = tail;
-        Ok(head)
-    };
+    let mut cursor = support::SliceCursor::new(&remaining_data);
 
     // Read kind index
-    let kind_count_bytes = read_bytes(4)?;
-    let kind_count = u32::from_be_bytes(
-        kind_count_bytes
-            .try_into()
-            .expect("invariant: read_bytes guaranteed 4 bytes"),
-    ) as usize;
+    let kind_count = cursor.read_u32()? as usize;
 
     #[cfg(feature = "v3-forensics")]
     let kind_loop_start = std::time::Instant::now();
 
-    for _ in 0..kind_count {
-        let kind_len_bytes = read_bytes(4)?;
-        let kind_len = u32::from_be_bytes(
-            kind_len_bytes
-                .try_into()
-                .expect("invariant: read_bytes guaranteed 4 bytes"),
-        ) as usize;
-
-        let kind_bytes = read_bytes(kind_len)?;
-        let kind_str = std::str::from_utf8(kind_bytes)
-            .map_err(|_| IndexPersistenceError::Corrupted("Invalid UTF-8 in kind".to_string()))?;
-        let kind = kind_str.to_string();
-
-        let node_count_bytes = read_bytes(4)?;
-        let node_count = u32::from_be_bytes(
-            node_count_bytes
-                .try_into()
-                .expect("invariant: read_bytes guaranteed 4 bytes"),
-        ) as usize;
-
-        let mut node_ids = Vec::with_capacity(node_count);
-        for _ in 0..node_count {
-            let node_id_bytes = read_bytes(8)?;
-            let node_id = i64::from_be_bytes(
-                node_id_bytes
-                    .try_into()
-                    .expect("invariant: read_bytes guaranteed 8 bytes"),
-            );
-            node_ids.push(node_id);
-        }
-        kind_data.insert(kind, node_ids);
-    }
+    let kind_data = support::read_string_index_entries(&mut cursor, kind_count, "kind")?;
 
     #[cfg(feature = "v3-forensics")]
     let kind_loop_elapsed = kind_loop_start.elapsed();
 
     // Read name index
-    let name_count_bytes = read_bytes(4)?;
-    let name_count = u32::from_be_bytes(
-        name_count_bytes
-            .try_into()
-            .expect("invariant: read_bytes guaranteed 4 bytes"),
-    ) as usize;
+    let name_count = cursor.read_u32()? as usize;
 
     #[cfg(feature = "v3-forensics")]
     let name_loop_start = std::time::Instant::now();
 
-    for _ in 0..name_count {
-        let name_len_bytes = read_bytes(4)?;
-        let name_len = u32::from_be_bytes(
-            name_len_bytes
-                .try_into()
-                .expect("invariant: read_bytes guaranteed 4 bytes"),
-        ) as usize;
-
-        let name_bytes = read_bytes(name_len)?;
-        let name_str = std::str::from_utf8(name_bytes)
-            .map_err(|_| IndexPersistenceError::Corrupted("Invalid UTF-8 in name".to_string()))?;
-        let name = name_str.to_string();
-
-        let node_count_bytes = read_bytes(4)?;
-        let node_count = u32::from_be_bytes(
-            node_count_bytes
-                .try_into()
-                .expect("invariant: read_bytes guaranteed 4 bytes"),
-        ) as usize;
-
-        let mut node_ids = Vec::with_capacity(node_count);
-        for _ in 0..node_count {
-            let node_id_bytes = read_bytes(8)?;
-            let node_id = i64::from_be_bytes(
-                node_id_bytes
-                    .try_into()
-                    .expect("invariant: read_bytes guaranteed 8 bytes"),
-            );
-            node_ids.push(node_id);
-        }
-        name_data.insert(name, node_ids);
-    }
+    let name_data = support::read_string_index_entries(&mut cursor, name_count, "name")?;
 
     #[cfg(feature = "v3-forensics")]
     let name_loop_elapsed = name_loop_start.elapsed();
@@ -416,86 +300,4 @@ pub fn remove_index_file(db_path: &Path) -> Result<(), std::io::Error> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use tempfile::TempDir;
-
-    #[test]
-    fn test_persist_and_restore_roundtrip() {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-
-        // Create sample indexes
-        let kind_index = KindIndex::new();
-        kind_index.insert("Function".to_string(), 1);
-        kind_index.insert("Function".to_string(), 2);
-        kind_index.insert("Function".to_string(), 3);
-        kind_index.insert("Class".to_string(), 4);
-        kind_index.insert("Class".to_string(), 5);
-
-        let name_index = NameIndex::new();
-        name_index.insert("func_a".to_string(), 1);
-        name_index.insert("func_b".to_string(), 2);
-        name_index.insert("func_b".to_string(), 3);
-        name_index.insert("class_a".to_string(), 4);
-
-        // Persist
-        persist_indexes(&db_path, &kind_index, &name_index, 5).unwrap();
-
-        // Restore
-        let (restored_kind, restored_name) = restore_indexes(&db_path, 5).unwrap();
-
-        // Verify kind index
-        assert_eq!(restored_kind.get("Function"), vec![1, 2, 3]);
-        assert_eq!(restored_kind.get("Class"), vec![4, 5]);
-
-        // Verify name index
-        assert_eq!(restored_name.get_exact("func_a"), vec![1]);
-        assert_eq!(restored_name.get_exact("func_b"), vec![2, 3]);
-        assert_eq!(restored_name.get_exact("class_a"), vec![4]);
-    }
-
-    #[test]
-    fn test_restore_missing_file_fails() {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("nonexistent.db");
-
-        let result = restore_indexes(&db_path, 100);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_index_path_generation() {
-        let cases = vec![
-            ("test.db", "test.v3index"),
-            ("mydb.sqlite", "mydb.v3index"),
-            ("path/to/data.db", "path/to/data.v3index"),
-        ];
-
-        for (db, expected) in cases {
-            let path = std::path::Path::new(db);
-            let index_path = index_path_for_db(path);
-            assert_eq!(index_path, std::path::Path::new(expected));
-        }
-    }
-
-    #[test]
-    fn test_stale_index_detected() {
-        let temp_dir = TempDir::new().unwrap();
-        let db_path = temp_dir.path().join("test.db");
-
-        // Create and persist indexes with node_count = 5
-        let kind_index = KindIndex::new();
-        kind_index.insert("Function".to_string(), 1);
-        kind_index.insert("Class".to_string(), 2);
-
-        let name_index = NameIndex::new();
-        name_index.insert("func_a".to_string(), 1);
-
-        persist_indexes(&db_path, &kind_index, &name_index, 5).unwrap();
-
-        // Try to restore with different node_count (simulating staleness)
-        let result = restore_indexes(&db_path, 10); // DB now has 10 nodes, but index says 5
-        assert!(result.is_err());
-    }
-}
+mod tests;
