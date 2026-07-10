@@ -6,6 +6,7 @@
 - **Native-v3 BTree seam cleanup** — Moved `BTreeManager` page I/O and batched-write support out of `sqlitegraph-core/src/backend/native/v3/btree.rs` into `btree/io_batch_support.rs`, and moved the embedded BTree regression module into `btree/tests.rs` without changing the public behavior.
 - **Native-v3 index page seam cleanup** — Moved `IndexPage` serialization, checksum, and invariant logic out of `sqlitegraph-core/src/backend/native/v3/index/page.rs` into `index/page/serde_support.rs`, and moved the embedded page regressions into `index/page/tests.rs` without changing the public behavior.
 - **Native-v3 node record seam cleanup** — Moved `NodeRecordV3` byte-codec logic out of `sqlitegraph-core/src/backend/native/v3/node/record.rs` into `node/record/codec_support.rs`, and moved the embedded node-record regressions into `node/record/tests.rs` without changing the record layout or public behavior.
+- **Native-v3 WAL seam cleanup** — Moved `V3WALHeader` parsing/serialization and `V3WALRecord` helper logic out of `sqlitegraph-core/src/backend/native/v3/wal.rs` into `wal/header_support.rs` and `wal/record_support.rs` without changing WAL types or behavior.
 
 ## [3.6.0] - 2026-07-03
 
