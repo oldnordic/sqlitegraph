@@ -5,6 +5,10 @@ use crate::hnsw::{HnswConfigBuilder, HnswIndex};
 use crate::snapshot::SnapshotId;
 use std::sync::{Arc, MutexGuard};
 
+#[cfg(feature = "turbovec")]
+#[path = "hnsw_support/turbovec_support.rs"]
+mod turbovec_support;
+
 /// Metadata wrapper for HNSW index with turbovec integration.
 ///
 /// Tracks embedding count and turbovec compression state.
@@ -59,10 +63,10 @@ impl HnswIndexMetadata {
 
 /// Turbovec activation threshold: 1K vectors triggers compression.
 #[cfg(feature = "turbovec")]
-const TURBOVEC_THRESHOLD: usize = 1_000;
+pub(super) const TURBOVEC_THRESHOLD: usize = 1_000;
 
 #[cfg(feature = "turbovec")]
-const TURBOVEC_BIT_WIDTH: usize = 4;
+pub(super) const TURBOVEC_BIT_WIDTH: usize = 4;
 
 #[derive(Debug, Clone, Copy, Default, Eq, PartialEq)]
 pub struct HnswSearchConfig {
@@ -334,71 +338,12 @@ impl V3Backend {
 
     #[cfg(feature = "turbovec")]
     fn build_turbovec_index(&self, index_name: &str) -> Result<(), SqliteGraphError> {
-        let metadata_arc = {
-            let indexes = self.hnsw_indexes.read();
-            indexes.get(index_name).cloned().ok_or_else(|| {
-                SqliteGraphError::validation(format!("HNSW index not found: {}", index_name))
-            })?
-        };
-
-        let turbovec = metadata_arc.lock_turbovec(index_name)?;
-        if turbovec.is_some() {
-            return Ok(());
-        }
-        drop(turbovec);
-
-        let hnsw = metadata_arc.lock_hnsw(index_name)?;
-        let count = hnsw.vector_count();
-        if count == 0 {
-            return Ok(());
-        }
-
-        let mut embeddings: Vec<f32> = Vec::with_capacity(count * metadata_arc.dimension);
-        let mut ids: Vec<u64> = Vec::with_capacity(count);
-
-        for i in 1..=count {
-            if let Ok(Some((vector, metadata))) = hnsw.get_vector(i as u64) {
-                let id = metadata
-                    .get("node_id")
-                    .and_then(|v| v.as_u64())
-                    .unwrap_or(i as u64);
-
-                embeddings.extend_from_slice(&vector);
-                ids.push(id);
-            }
-        }
-
-        drop(hnsw);
-
-        let mut turbovec_index =
-            turbovec::IdMapIndex::new(metadata_arc.dimension, TURBOVEC_BIT_WIDTH).map_err(|e| {
-                SqliteGraphError::validation(format!("Turbovec construction failed: {}", e))
-            })?;
-        turbovec_index
-            .add_with_ids(&embeddings, &ids)
-            .map_err(|e| SqliteGraphError::validation(format!("Turbovec add failed: {}", e)))?;
-        let mut turbovec = metadata_arc.lock_turbovec(index_name)?;
-        *turbovec = Some(turbovec_index);
-
-        Ok(())
+        turbovec_support::build_turbovec_index(self, index_name)
     }
 
     #[cfg(feature = "turbovec")]
     fn ensure_turbovec_index(&self, index_name: &str) -> Result<(), SqliteGraphError> {
-        let metadata_arc = {
-            let indexes = self.hnsw_indexes.read();
-            indexes.get(index_name).cloned().ok_or_else(|| {
-                SqliteGraphError::validation(format!("HNSW index not found: {}", index_name))
-            })?
-        };
-
-        let turbovec = metadata_arc.lock_turbovec(index_name)?;
-        if turbovec.is_some() {
-            return Ok(());
-        }
-        drop(turbovec);
-
-        self.build_turbovec_index(index_name)
+        turbovec_support::ensure_turbovec_index(self, index_name)
     }
 
     #[cfg(feature = "turbovec")]
@@ -408,12 +353,7 @@ impl V3Backend {
         query_vector: &[f32],
         k: usize,
     ) -> Vec<(i64, f32)> {
-        let (scores, ids) = index.search(query_vector, k);
-        scores
-            .into_iter()
-            .zip(ids)
-            .map(|(distance, node_id)| (node_id as i64, distance))
-            .collect()
+        turbovec_support::turbovec_search(index, query_vector, k)
     }
 
     pub fn hnsw_vector_search(
