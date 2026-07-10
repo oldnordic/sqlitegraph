@@ -18,6 +18,7 @@
 - **Native-v3 edge cluster seam cleanup** — Moved packed-edge and chained-page codec helpers out of `sqlitegraph-core/src/backend/native/v3/edge_cluster_support.rs` into `edge_cluster_support/page_codec_support.rs`, and added direct regressions in `edge_cluster_support/tests.rs` without changing cluster serialization or edge-page behavior.
 - **Native-v3 HNSW turbovec seam cleanup** — Moved turbovec build/rebuild/search helpers out of `sqlitegraph-core/src/backend/native/v3/hnsw_support.rs` into `hnsw_support/turbovec_support.rs` without changing HNSW routing or public search behavior.
 - **Native-v3 edge compat core seam cleanup** — Moved edge compatibility enums, page-format constants, composite edge-key encoding, and small cache/stat helpers out of `sqlitegraph-core/src/backend/native/v3/edge_compat.rs` into `edge_compat/core_support.rs` without changing edge-store behavior or compatibility tests.
+- **Native-v3 HNSW index-ops seam cleanup** — Moved HNSW metadata lookup, dimension validation, index lifecycle, and status helpers out of `sqlitegraph-core/src/backend/native/v3/hnsw_support.rs` into `hnsw_support/index_ops_support.rs` without changing the public HNSW API or search behavior.
 
 ## [3.6.0] - 2026-07-03
 

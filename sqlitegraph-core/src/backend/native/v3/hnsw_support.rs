@@ -1,10 +1,10 @@
 use super::V3Backend;
 use crate::SqliteGraphError;
-use crate::backend::native::v3::KvValue;
-use crate::hnsw::{HnswConfigBuilder, HnswIndex};
-use crate::snapshot::SnapshotId;
+use crate::hnsw::HnswIndex;
 use std::sync::{Arc, MutexGuard};
 
+#[path = "hnsw_support/index_ops_support.rs"]
+mod index_ops_support;
 #[cfg(feature = "turbovec")]
 #[path = "hnsw_support/turbovec_support.rs"]
 mod turbovec_support;
@@ -75,6 +75,18 @@ pub struct HnswSearchConfig {
 }
 
 impl V3Backend {
+    fn hnsw_metadata(&self, index_name: &str) -> Result<HnswIndexMetadata, SqliteGraphError> {
+        index_ops_support::hnsw_metadata(self, index_name)
+    }
+
+    fn validate_hnsw_vector_dimension(
+        metadata_arc: &HnswIndexMetadata,
+        vector: &[f32],
+        expected_label: &str,
+    ) -> Result<(), SqliteGraphError> {
+        index_ops_support::validate_hnsw_vector_dimension(metadata_arc, vector, expected_label)
+    }
+
     fn normalize_vector_result_id(
         hnsw: &HnswIndex,
         vector_id: u64,
@@ -129,123 +141,26 @@ impl V3Backend {
         index_name: &str,
         dimension: usize,
     ) -> Result<(), SqliteGraphError> {
-        self.ensure_hnsw_not_in_graph_transaction("create_hnsw_index")?;
-
-        {
-            let indexes = self.hnsw_indexes.read();
-            if indexes.contains_key(index_name) {
-                return Ok(());
-            }
-        }
-
-        let config = HnswConfigBuilder::new()
-            .dimension(dimension)
-            .distance_metric(crate::hnsw::DistanceMetric::Euclidean)
-            .build()
-            .map_err(|e| SqliteGraphError::validation(format!("HNSW config error: {:?}", e)))?;
-
-        #[cfg(feature = "native-v3")]
-        let hnsw_index = {
-            let storage_handle =
-                crate::hnsw::v3_storage::V3VectorStorageHandle::new(self, index_name);
-            HnswIndex::with_storage(index_name, config, Box::new(storage_handle)).map_err(|e| {
-                SqliteGraphError::validation(format!("HNSW index creation error: {:?}", e))
-            })?
-        };
-
-        #[cfg(not(feature = "native-v3"))]
-        let hnsw_index = {
-            HnswIndex::new(index_name, config).map_err(|e| {
-                SqliteGraphError::validation(format!("HNSW index creation error: {:?}", e))
-            })?
-        };
-
-        let metadata_key = format!("hnsw:{}:metadata", index_name);
-        let metadata_value = serde_json::json!({
-            "name": index_name,
-            "dimension": dimension,
-            "created_at": std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|e| {
-                    SqliteGraphError::validation(format!(
-                        "System clock before UNIX epoch during HNSW metadata creation: {}",
-                        e
-                    ))
-                })?
-                .as_secs()
-        });
-        self.kv_set_v3(
-            metadata_key.into_bytes(),
-            KvValue::Json(metadata_value),
-            None,
-        );
-
-        let mut indexes = self.hnsw_indexes.write();
-        indexes.insert(
-            index_name.to_string(),
-            HnswIndexMetadata {
-                hnsw_index: Arc::new(std::sync::Mutex::new(hnsw_index)),
-                #[cfg(feature = "turbovec")]
-                turbovec_index: Arc::new(std::sync::Mutex::new(None)),
-                #[cfg(feature = "turbovec")]
-                embedding_count: Arc::new(std::sync::Mutex::new(0)),
-                dimension,
-            },
-        );
-
-        Ok(())
+        index_ops_support::create_hnsw_index(self, index_name, dimension)
     }
 
     pub fn has_hnsw_index(&self, index_name: &str) -> bool {
-        let indexes = self.hnsw_indexes.read();
-        indexes.contains_key(index_name)
+        index_ops_support::has_hnsw_index(self, index_name)
     }
 
     pub fn hnsw_embedding_count(&self, index_name: &str) -> Result<usize, SqliteGraphError> {
-        let indexes = self.hnsw_indexes.read();
-        let metadata = indexes.get(index_name).ok_or_else(|| {
-            SqliteGraphError::validation(format!("HNSW index not found: {}", index_name))
-        })?;
-
-        #[cfg(feature = "turbovec")]
-        {
-            return Ok(*metadata.lock_embedding_count(index_name)?);
-        }
-
-        #[cfg(not(feature = "turbovec"))]
-        {
-            let hnsw = metadata.lock_hnsw(index_name)?;
-            Ok(hnsw.vector_count())
-        }
+        index_ops_support::hnsw_embedding_count(self, index_name)
     }
 
     pub fn hnsw_turbovec_ready(&self, index_name: &str) -> Result<bool, SqliteGraphError> {
-        let indexes = self.hnsw_indexes.read();
-        let metadata = indexes.get(index_name).ok_or_else(|| {
-            SqliteGraphError::validation(format!("HNSW index not found: {}", index_name))
-        })?;
-
-        #[cfg(feature = "turbovec")]
-        {
-            Ok(metadata.lock_turbovec(index_name)?.is_some())
-        }
-
-        #[cfg(not(feature = "turbovec"))]
-        {
-            let _ = metadata;
-            Ok(false)
-        }
+        index_ops_support::hnsw_turbovec_ready(self, index_name)
     }
 
     pub fn get_hnsw_index(
         &self,
         index_name: &str,
     ) -> Result<Option<Arc<std::sync::Mutex<HnswIndex>>>, SqliteGraphError> {
-        self.ensure_hnsw_not_in_graph_transaction("get_hnsw_index")?;
-        let indexes = self.hnsw_indexes.read();
-        Ok(indexes
-            .get(index_name)
-            .map(|metadata| metadata.hnsw_index.clone()))
+        index_ops_support::get_hnsw_index(self, index_name)
     }
 
     #[cfg(feature = "turbovec")]
@@ -256,20 +171,8 @@ impl V3Backend {
         metadata: Option<serde_json::Value>,
     ) -> Result<(), SqliteGraphError> {
         self.ensure_hnsw_not_in_graph_transaction("insert_hnsw_vector")?;
-        let metadata_arc = {
-            let indexes = self.hnsw_indexes.read();
-            indexes.get(index_name).cloned().ok_or_else(|| {
-                SqliteGraphError::validation(format!("HNSW index not found: {}", index_name))
-            })?
-        };
-
-        if vector.len() != metadata_arc.dimension {
-            return Err(SqliteGraphError::validation(format!(
-                "Vector dimension mismatch: expected {}, got {}",
-                metadata_arc.dimension,
-                vector.len()
-            )));
-        }
+        let metadata_arc = self.hnsw_metadata(index_name)?;
+        Self::validate_hnsw_vector_dimension(&metadata_arc, vector, "Vector")?;
 
         let mut hnsw = metadata_arc.lock_hnsw(index_name)?;
         hnsw.insert_vector(vector, metadata)
@@ -296,20 +199,8 @@ impl V3Backend {
         metadata: Option<serde_json::Value>,
     ) -> Result<(), SqliteGraphError> {
         self.ensure_hnsw_not_in_graph_transaction("insert_hnsw_vector")?;
-        let metadata_arc = {
-            let indexes = self.hnsw_indexes.read();
-            indexes.get(index_name).cloned().ok_or_else(|| {
-                SqliteGraphError::validation(format!("HNSW index not found: {}", index_name))
-            })?
-        };
-
-        if vector.len() != metadata_arc.dimension {
-            return Err(SqliteGraphError::validation(format!(
-                "Vector dimension mismatch: expected {}, got {}",
-                metadata_arc.dimension,
-                vector.len()
-            )));
-        }
+        let metadata_arc = self.hnsw_metadata(index_name)?;
+        Self::validate_hnsw_vector_dimension(&metadata_arc, vector, "Vector")?;
 
         let mut hnsw = metadata_arc.lock_hnsw(index_name)?;
         hnsw.insert_vector(vector, metadata)
@@ -319,21 +210,7 @@ impl V3Backend {
     }
 
     pub fn delete_hnsw_index(&self, index_name: &str) -> Result<(), SqliteGraphError> {
-        self.ensure_hnsw_not_in_graph_transaction("delete_hnsw_index")?;
-        let mut indexes = self.hnsw_indexes.write();
-        indexes.remove(index_name);
-
-        let metadata_key = format!("hnsw:{}:metadata", index_name);
-        self.kv_delete_v3(metadata_key.as_bytes());
-
-        let vector_prefix = format!("hnsw:{}:vector:", index_name);
-        let snapshot_id = SnapshotId::current();
-        let vectors = self.kv_prefix_scan_v3(snapshot_id, vector_prefix.as_bytes());
-        for (key, _) in vectors {
-            self.kv_delete_v3(&key);
-        }
-
-        Ok(())
+        index_ops_support::delete_hnsw_index(self, index_name)
     }
 
     #[cfg(feature = "turbovec")]
@@ -377,20 +254,8 @@ impl V3Backend {
         k: usize,
         config: HnswSearchConfig,
     ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
-        let metadata_arc = {
-            let indexes = self.hnsw_indexes.read();
-            indexes.get(index_name).cloned().ok_or_else(|| {
-                SqliteGraphError::validation(format!("HNSW index not found: {}", index_name))
-            })?
-        };
-
-        if query_vector.len() != metadata_arc.dimension {
-            return Err(SqliteGraphError::validation(format!(
-                "Query vector dimension mismatch: expected {}, got {}",
-                metadata_arc.dimension,
-                query_vector.len()
-            )));
-        }
+        let metadata_arc = self.hnsw_metadata(index_name)?;
+        Self::validate_hnsw_vector_dimension(&metadata_arc, query_vector, "Query vector")?;
 
         if let Some(ef_search) = config.ef_search_override
             && (ef_search == 0 || ef_search > 200)
