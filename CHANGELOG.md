@@ -15,6 +15,7 @@
 - **Native-v3 allocator seam cleanup** — Moved page checksum and free-page header helpers out of `sqlitegraph-core/src/backend/native/v3/allocator.rs` into `allocator/free_page_support.rs`, and moved the embedded allocator regressions into `allocator/tests.rs` without changing allocation or free-list behavior.
 - **Native-v3 edge query seam cleanup** — Moved edge-store constructors, page-read I/O, and weighted/unweighted neighbor conversion helpers out of `sqlitegraph-core/src/backend/native/v3/edge_query_support.rs` into `edge_query_support/io_support.rs` without changing query or cache behavior.
 - **Native-v3 edge disk seam cleanup** — Moved edge metadata persistence/recovery and page-write helpers out of `sqlitegraph-core/src/backend/native/v3/edge_disk_support.rs` into `edge_disk_support/metadata_support.rs` without changing flush or reload behavior.
+- **Native-v3 edge cluster seam cleanup** — Moved packed-edge and chained-page codec helpers out of `sqlitegraph-core/src/backend/native/v3/edge_cluster_support.rs` into `edge_cluster_support/page_codec_support.rs`, and added direct regressions in `edge_cluster_support/tests.rs` without changing cluster serialization or edge-page behavior.
 
 ## [3.6.0] - 2026-07-03
 
