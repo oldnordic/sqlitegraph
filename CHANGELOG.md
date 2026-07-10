@@ -10,6 +10,7 @@
 - **Native-v3 backend test seam cleanup** — Split `sqlitegraph-core/src/backend/native/v3/backend_tests.rs` into topical submodules for basic backend flow, HNSW coverage, query/index coverage, and snapshot coverage without changing the asserted behavior.
 - **Native-v3 forensics seam cleanup** — Moved forensic snapshot/delta/reporting logic out of `sqlitegraph-core/src/backend/native/v3/forensics.rs` into `forensics/snapshot_support.rs` while keeping the counter registry and ownership tracking behavior unchanged.
 - **Native-v3 node page seam cleanup** — Moved node-page record packing, lazy decode, and record-skip helpers out of `sqlitegraph-core/src/backend/native/v3/node/page/codec.rs` into `node/page/codec_support.rs` without changing page layout or lookup behavior.
+- **Native-v3 header seam cleanup** — Moved persistent-header byte readers out of `sqlitegraph-core/src/backend/native/v3/header.rs` into `header_support.rs`, and moved the embedded header regressions into `header/tests.rs` without changing the on-disk header contract.
 
 ## [3.6.0] - 2026-07-03
 
