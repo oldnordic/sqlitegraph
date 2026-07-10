@@ -4,6 +4,7 @@
 
 ### Changed
 - **Native-v3 BTree seam cleanup** — Moved `BTreeManager` page I/O and batched-write support out of `sqlitegraph-core/src/backend/native/v3/btree.rs` into `btree/io_batch_support.rs`, and moved the embedded BTree regression module into `btree/tests.rs` without changing the public behavior.
+- **Native-v3 index page seam cleanup** — Moved `IndexPage` serialization, checksum, and invariant logic out of `sqlitegraph-core/src/backend/native/v3/index/page.rs` into `index/page/serde_support.rs`, and moved the embedded page regressions into `index/page/tests.rs` without changing the public behavior.
 
 ## [3.6.0] - 2026-07-03
 
