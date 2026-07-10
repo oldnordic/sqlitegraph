@@ -989,6 +989,18 @@ let graph = SqliteGraph::with_config(config)?;
 
 ## [Unreleased]
 
+### Internal: Split Native V3 NodePage Codec And Tests
+
+Reduced `src/backend/native/v3/node/page.rs` from 1648 lines to 452 lines by
+extracting the serialization codec and test suite into child modules:
+
+- `src/backend/native/v3/node/page/codec.rs`
+- `src/backend/native/v3/node/page/tests.rs`
+
+The parent file now keeps the `NodePage` data model, page-capacity logic, and
+core mutation behavior, while the delta/varint pack-unpack path and round-trip
+coverage live beside it in focused support files.
+
 ### Internal: Split Native V3 NodeStore Support Modules
 
 Reduced `src/backend/native/v3/node/store.rs` from 1495 lines to 408 lines by
