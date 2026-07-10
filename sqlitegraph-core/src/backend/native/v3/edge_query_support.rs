@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::atomic::Ordering;
 
 #[path = "edge_query_support/io_support.rs"]
 mod io_support;
