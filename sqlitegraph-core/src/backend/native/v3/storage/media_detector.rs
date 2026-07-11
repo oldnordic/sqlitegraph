@@ -65,6 +65,7 @@ impl MediaDetector {
 
         #[cfg(not(target_os = "linux"))]
         {
+            let _ = path;
             MediaType::Unknown // Conservative default
         }
     }

@@ -208,7 +208,7 @@ impl FileCoordinator {
 /// bytes than requested. Works on `&File` without changing the file offset.
 fn write_all_at(file: &std::fs::File, mut data: &[u8], mut offset: u64) -> std::io::Result<()> {
     while !data.is_empty() {
-        let written = file.write_at(data, offset)?;
+        let written = positioned_write(file, data, offset)?;
         if written == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::WriteZero,
@@ -228,7 +228,7 @@ fn write_all_at(file: &std::fs::File, mut data: &[u8], mut offset: u64) -> std::
 fn read_all_at(file: &std::fs::File, buffer: &mut [u8], mut offset: u64) -> std::io::Result<()> {
     let mut filled = 0;
     while filled < buffer.len() {
-        let read = file.read_at(&mut buffer[filled..], offset)?;
+        let read = positioned_read(file, &mut buffer[filled..], offset)?;
         if read == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
@@ -239,6 +239,26 @@ fn read_all_at(file: &std::fs::File, buffer: &mut [u8], mut offset: u64) -> std:
         offset += read as u64;
     }
     Ok(())
+}
+
+#[cfg(unix)]
+fn positioned_write(file: &std::fs::File, data: &[u8], offset: u64) -> std::io::Result<usize> {
+    file.write_at(data, offset)
+}
+
+#[cfg(windows)]
+fn positioned_write(file: &std::fs::File, data: &[u8], offset: u64) -> std::io::Result<usize> {
+    file.seek_write(data, offset)
+}
+
+#[cfg(unix)]
+fn positioned_read(file: &std::fs::File, buffer: &mut [u8], offset: u64) -> std::io::Result<usize> {
+    file.read_at(buffer, offset)
+}
+
+#[cfg(windows)]
+fn positioned_read(file: &std::fs::File, buffer: &mut [u8], offset: u64) -> std::io::Result<usize> {
+    file.seek_read(buffer, offset)
 }
 
 #[cfg(test)]
