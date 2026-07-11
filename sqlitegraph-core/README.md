@@ -68,56 +68,27 @@ See the benchmarks below for workload-specific behavior.
 
 **Keyword index:** embedded graph database · HNSW vector search · Cypher · MVCC · write-ahead log · persistent homology · temporal versioning · louvain · SQLite · Native V3 · Python bindings · Rust
 
-## What's New in 3.4
+## What's New in the 3.9 Line
 
-The 3.4 release adds **MVCC snapshot tracking** and **scale optimizations** for
-time-travel queries, eliminating expensive COUNT(*) table scans on large
-datasets.
+The current 3.9.x line on `main` tightens the combined-backend contract,
+continues the native-v3 cleanup wave, and makes the capability story explicit
+instead of aspirational:
 
-- **MVCC snapshot tracking (v8)** — named snapshots (`create_snapshot()`,
-  `list_snapshots()`, `delete_snapshot()`), batch insert with snapshot tagging
-  (`batch_insert_entities_with_snapshot()`, `batch_insert_edges_with_snapshot()`),
-  and time-travel queries (`query_as_of(timestamp)`) filter by `created_at` for
-  historical graph state.
-- **scale optimization (v9)** — pre-aggregated `snapshot_stats` table for O(1)
-  time-travel vs O(N) COUNT(*) scans, composite indexes on `(snapshot_id,
-  created_at)` for multi-dimensional queries, partition-ready schema design.
+- **Combined backend remains SQLite-authoritative** — combined mode is now
+  documented as an explicit SQLite-truth path with optional
+  `CombinedReadMode::PreferMaterialized` for specialist live-read workloads.
+- **Native-v3 internals were cleaned up aggressively without widening the public API** —
+  large mixed-responsibility modules were split into focused child modules while
+  keeping trait-facing behavior and regression coverage intact.
+- **Status docs now match verified behavior** — native-v3 and combined-mode
+  docs describe what is green, what is experimental, and where the materialized
+  path is still opt-in.
 
-See [CHANGELOG](https://github.com/oldnordic/sqlitegraph/blob/main/CHANGELOG.md) for full history.
+Known native-v3 gaps still remain:
 
-## What's New in 3.3
-
-The 3.3 release adds a **temporal version chain** with persistent-homology
-topology analysis, a **bounded adjacency cache** (was unbounded — a memory
-leak under large traversals), and fixes **13 silently-broken criterion
-benchmarks**.
-
-- **Temporal topology (`sqlitegraph::temporal`)** — capture graph versions with
-  `checkpoint()`, read historical adjacency with `snapshot_as_of(n)`, and run
-  persistent-homology analysis over the version chain: exact H₀ component
-  lifetimes (`scc_lineage_barcode`), circular-dependency lifecycle
-  (`cycle_scc_barcode`), and β₁ cyclomatic-number trajectory
-  (`cycle_rank_snapshot`). `as_of` lookup: 24.7 ns at 1000 versions.
-- **Bounded LRU cache** — adjacency lists stored as `Arc<Vec<i64>>`; cache hit
-  at degree 1000 drops from ~131 ns to ~13 ns (–90 %).
-- **HNSW cosine guard** — zero-magnitude / non-finite vectors return a typed
-  error instead of panicking.
-
-See [CHANGELOG](https://github.com/oldnordic/sqlitegraph/blob/main/CHANGELOG.md) for full history.
-
-## What's New in the 3.2 Line
-
-The current 3.2 release line builds on the 3.0 backend/model transition with
-concrete HNSW and traversal improvements:
-
-- `HnswIndex::batch_insert_vectors()` for lower-overhead bulk vector ingestion.
-- Transactional topology persistence for HNSW metadata and layers.
-- `HnswIndexStats` runtime counters for inserts, searches, vector-cache hits,
-  and vector-cache misses.
-- Streaming traversal iterators for BFS, DFS, topological sort, and connected
-  components, so callers can avoid materializing full `Vec`s when they only
-  need incremental results.
-- `parking_lot`-based lock cleanup across the HNSW path and related hot locks.
+- multi-hop Cypher still fails on V3
+- `query_nodes_by_name_pattern(...)` still uses substring semantics instead of SQLite `GLOB`
+- `snapshot_import(...)` is still unsupported
 
 See [CHANGELOG](https://github.com/oldnordic/sqlitegraph/blob/main/CHANGELOG.md) for full history.
 
@@ -172,15 +143,15 @@ See [examples/](https://github.com/oldnordic/sqlitegraph/tree/main/sqlitegraph-c
 ```toml
 [dependencies]
 # SQLite backend (default)
-sqlitegraph = "3.8"
+sqlitegraph = "3.9.0"
 
 # OR Native V3 backend (graph-oriented storage)
-sqlitegraph = { version = "3.8", features = ["native-v3"] }
+sqlitegraph = { version = "3.9.0", features = ["native-v3"] }
 ```
 
 ```rust
-use sqlitegraph_core::backend::{GraphBackend, NodeSpec};
-use sqlitegraph_core::backend::sqlite::SqliteGraphBackend;
+use sqlitegraph::backend::{GraphBackend, NodeSpec};
+use sqlitegraph::backend::sqlite::SqliteGraphBackend;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let backend = SqliteGraphBackend::in_memory()?;

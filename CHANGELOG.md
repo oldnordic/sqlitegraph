@@ -3,6 +3,12 @@
 ## [Unreleased]
 
 ### Changed
+- **GitHub Actions Node runtime refresh** — bumped `actions/checkout` to `v5`
+  and `actions/setup-python` to `v6` so the CI workflows stop relying on the
+  deprecated Node 20 action runtime on GitHub-hosted runners.
+- **Release-line version sync** — aligned the CLI crate, Python wheel metadata,
+  README snippets, and manual examples to the current 3.9.x / 0.5.6 line so
+  user-facing docs match the code and packaging manifests on `main`.
 - **Native-v3 mutation seam cleanup** — Moved node-property/edge-attribute SQLite persistence out of `sqlitegraph-core/src/backend/native/v3/mutation_support.rs` into `mutation_support/persistence_support.rs`, and moved node-record payload selection/external-page write logic into `mutation_support/node_record_support.rs` without changing insert/update/delete behavior.
 - **Native-v3 edge query weighted seam cleanup** — Moved weighted neighbor lookup, weighted cache warmup, and weighted edge-type filtering out of `sqlitegraph-core/src/backend/native/v3/edge_query_support.rs` into `edge_query_support/weighted_support.rs` without changing neighbor query or cache semantics.
 - **Native-v3 CSR runtime seam cleanup** — Moved CSR runtime-view rebuild and CSR edge-type persistence out of `sqlitegraph-core/src/backend/native/v3/csr_support.rs` into `csr_support/runtime_view_support.rs` while preserving read-side lookup behavior and the existing test-facing `encode_csr_adjacency(...)` surface.
@@ -51,6 +57,15 @@
 - **Native-v3 edge cluster record seam cleanup** — Moved edge-data encoding/decoding and edge-cluster serialize/deserialize byte-codec logic out of `sqlitegraph-core/src/backend/native/v3/edge_cluster_support.rs` into `edge_cluster_support/record_codec_support.rs` without changing cluster record layout or edge compatibility behavior.
 - **Native-v3 HNSW search seam cleanup** — Moved exact-search ID normalization, `ef_search` validation, and routed HNSW/turbovec search helpers out of `sqlitegraph-core/src/backend/native/v3/hnsw_support.rs` into `hnsw_support/search_support.rs` without changing the public search API or result semantics.
 - **Native-v3 HNSW insert seam cleanup** — Moved shared HNSW insert flow and turbovec-threshold activation out of `sqlitegraph-core/src/backend/native/v3/hnsw_support.rs` into `hnsw_support/insert_support.rs` without changing insert semantics or public API.
+
+### Fixed
+- **Windows native-v3 positioned I/O** — `FileCoordinator` now uses
+  platform-correct positioned read/write wrappers (`read_at`/`write_at` on
+  Unix, `seek_read`/`seek_write` on Windows), restoring wheel-build
+  compatibility after the file-coordination refactor.
+- **Non-Linux media detector warning** — `MediaDetector::detect(...)` now
+  consumes the path argument on non-Linux targets instead of emitting an unused
+  variable warning in wheel builds.
 
 ## [3.6.0] - 2026-07-03
 

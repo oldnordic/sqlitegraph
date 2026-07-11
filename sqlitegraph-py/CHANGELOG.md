@@ -3,6 +3,14 @@
 This file tracks releases of the `sqlitegraph` package on PyPI. The Rust
 crate of the same name has its own changelog at the repository root.
 
+## [0.5.6] - 2026-07-11
+
+### Changed
+
+- Bundled core crate is now **sqlitegraph 3.9.0** — brings the combined-backend
+  authority contract, the audited native-v3 status docs, and the full native-v3
+  cleanup wave tracked in the root changelog into the Python wheel line.
+
 ## [0.5.4] - 2026-06-29
 
 ### Changed

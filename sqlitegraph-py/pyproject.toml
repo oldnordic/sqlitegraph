@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "sqlitegraph"
-version = "0.5.3"
+version = "0.5.6"
 description = "Embedded graph database with HNSW vector search — Python bindings to the sqlitegraph Rust crate."
 license = { text = "GPL-3.0-only" }
 authors = [{ name = "Luiz Spies", email = "luiz.spies@gmail.com" }]

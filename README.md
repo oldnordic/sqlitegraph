@@ -3,20 +3,24 @@
 [![crates.io](https://img.shields.io/crates/v/sqlitegraph.svg)](https://crates.io/crates/sqlitegraph)
 [![Documentation](https://docs.rs/sqlitegraph/badge.svg)](https://docs.rs/sqlitegraph)
 
-Embedded graph database with dual backend architecture, graph algorithms,
+Embedded graph database with explicit backend modes, graph algorithms,
 Cypher-inspired queries, and HNSW vector search.
 
 **Positioning:** Single-binary embedded database (no server). Persistent storage with
 atomic batch commits. Graph algorithms + HNSW vector search in one engine.
 SQLite: stable, mature, and easy to inspect with standard tooling. Native V3:
-graph-oriented storage with cache, KV, pub/sub, and traversal features. See the
-benchmarks below for workload-specific behavior.
+experimental graph-oriented storage with cache, KV, pub/sub, and traversal
+features. Combined mode keeps SQLite as authority while the materialized graph
+layer continues to harden. See the benchmarks below for workload-specific behavior.
 
 ## Technical Architecture
 
-**Dual backend**
+**Backend modes**
 - SQLite backend — stable, mature, inspectable with standard tooling
 - Native V3 backend — graph-oriented storage with bounded adjacency cache, KV, pub/sub, and traversal primitives
+- Combined mode — explicit SQLite-authoritative contract with optional
+  `CombinedReadMode::PreferMaterialized` for specialist live-read workloads;
+  materialized reads are still opt-in and version-gated
 
 **Vector + graph queries**
 - HNSW vector similarity search (`HnswIndex`, batch insert, cosine guard)
@@ -37,20 +41,23 @@ benchmarks below for workload-specific behavior.
 
 **Keyword index:** embedded graph database · HNSW vector search · Cypher · MVCC · write-ahead log · persistent homology · temporal versioning · louvain · SQLite · Native V3 · Python bindings · Rust
 
-## What's New in 3.6.0
+## What's New in the 3.9 Line
 
-The 3.6.0 minor release tightens native-v3 query support and corrects the
-public capability story:
+The current 3.9.x line on `main` tightens the combined-backend contract,
+continues the native-v3 cleanup wave, and makes the capability story explicit
+instead of aspirational:
 
-- **Trait-level pattern search now works on native-v3** — `V3Backend::pattern_search()`
-  now supports ordered leg expansion with root and per-leg node constraints.
-- **Edge-pattern semantic filters improved** — native-v3 edge-pattern matching
-  now honors semantic node fields such as `name`, `kind`, and `file_path`.
-- **User-facing status is now audited rather than aspirational** — the native-v3
-  status docs now describe the verified feature matrix instead of claiming full
-  Cypher parity.
+- **Combined backend remains SQLite-authoritative** — combined mode is now
+  documented as an explicit SQLite-truth path with optional
+  `CombinedReadMode::PreferMaterialized` for specialist live-read workloads.
+- **Native-v3 internals were cleaned up aggressively without widening the public API** —
+  large mixed-responsibility modules were split into focused child modules while
+  keeping trait-facing behavior and regression coverage intact.
+- **Status docs now match verified behavior** — native-v3 and combined-mode
+  docs describe what is green, what is experimental, and where the materialized
+  path is still opt-in.
 
-Known native-v3 gaps remain:
+Known native-v3 gaps still remain:
 
 - multi-hop Cypher still fails on V3
 - `query_nodes_by_name_pattern(...)` still uses substring semantics instead of SQLite `GLOB`
@@ -136,18 +143,18 @@ HNSW and traversal improvements:
 
 ## Backends
 
-| Feature | SQLite | Native V3 |
-|---------|--------|-----------|
-| Status | Stable | Experimental (storage/features strong, query parity partial) |
-| Storage | `.db` file | `.graph` file |
-| Capacity model | Storage-limited | Storage-limited |
-| Graph algorithms | 35+ | 35+ |
-| HNSW vectors | Yes | Yes |
-| Pub/Sub | Yes | Yes |
-| LRU Cache | No | Yes |
-| Parallel BFS | No | Yes |
-| MVCC snapshots | Yes (v8) | Yes (v8) |
-| Time-travel queries | Yes (optimized v9) | Yes (optimized v9) |
+| Feature | SQLite | Native V3 | Combined |
+|---------|--------|-----------|----------|
+| Status | Stable | Experimental (storage/features strong, query parity partial) | Phase 2 authority seam |
+| Authority | SQLite | Native V3 | SQLite |
+| Storage | `.db` file | `.graph` file | `.db` file |
+| Graph algorithms | 35+ | 35+ | Delegates to SQLite today |
+| HNSW vectors | Yes | Yes | Delegates to SQLite today |
+| Pub/Sub | Yes | Yes | Delegates to SQLite today |
+| LRU Cache | No | Yes | Materialized read cache only |
+| Parallel BFS | No | Yes | Delegates to SQLite today |
+| MVCC snapshots | Yes (v8) | Yes (v8) | Delegates to SQLite today |
+| Time-travel queries | Yes (optimized v9) | Yes (optimized v9) | Delegates to SQLite today |
 
 ## Benchmarks
 
@@ -183,10 +190,10 @@ cargo bench --features native-v3 --bench sqlite_v3_curated
 ```toml
 [dependencies]
 # SQLite backend (default)
-sqlitegraph = "3.6.0"
+sqlitegraph = "3.9.0"
 
 # OR Native V3 backend (graph-oriented storage)
-sqlitegraph = { version = "3.6.0", features = ["native-v3"] }
+sqlitegraph = { version = "3.9.0", features = ["native-v3"] }
 ```
 
 ```rust
