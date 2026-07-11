@@ -2,18 +2,19 @@ use super::V3Backend;
 use crate::SqliteGraphError;
 use crate::backend::native::v3::btree::BTreeManager;
 use crate::backend::native::v3::storage::AdaptivePageManager;
-use crate::backend::native::v3::wal::{V3WALPaths, WALWriter};
 use crate::backend::native::v3::{
-    FileCoordinator, KindIndex, KvStore, NodeCache, NodeStore, PageAllocator, PersistentHeaderV3,
-    V3_HEADER_SIZE, V3EdgeStore,
+    FileCoordinator, KindIndex, NodeStore, PageAllocator, PersistentHeaderV3, V3_HEADER_SIZE,
+    V3EdgeStore,
 };
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 use rusqlite::Connection;
-use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::Arc;
+
+#[path = "lifecycle_support/assembly_support.rs"]
+mod assembly_support;
 
 impl V3Backend {
     /// Create a new V3 database file at the specified path.
@@ -88,29 +89,19 @@ impl V3Backend {
         })?;
         Self::init_sqlite_schema(&sqlite_conn)?;
 
-        Ok(Self {
+        Ok(Self::assemble_backend(
             db_path,
-            file_coordinator: Some(coordinator),
-            async_coordinator: std::sync::OnceLock::new(),
-            sqlite_conn: Arc::new(Mutex::new(sqlite_conn)),
-            btree: RwLock::new(node_btree),
-            node_store: RwLock::new(node_store),
-            edge_store: RwLock::new(edge_store),
+            coordinator,
+            sqlite_conn,
+            node_btree,
+            node_store,
+            edge_store,
             allocator,
-            wal: None,
-            header: RwLock::new(header),
-            kv_store: RwLock::new(None),
-            publisher: RwLock::new(None),
-            kind_index: KindIndex::new(),
-            name_index: super::NameIndex::new(),
-            node_cache: NodeCache::new(
-                crate::backend::native::v3::constants::node_cache::DEFAULT_CACHE_CAPACITY,
-            ),
-            current_snapshot_version: RwLock::new(1),
-            snapshot_registry: RwLock::new(HashMap::new()),
-            hnsw_indexes: RwLock::new(HashMap::new()),
-            graph_tx_state: Mutex::new(super::GraphTransactionState::default()),
-        })
+            None,
+            header,
+            KindIndex::new(),
+            super::NameIndex::new(),
+        ))
     }
 
     /// Create a new V3 database with WAL enabled
@@ -121,14 +112,7 @@ impl V3Backend {
         let mut backend = Self::create(path)?;
 
         if enable_wal {
-            let wal_path = V3WALPaths::wal_file(&backend.db_path);
-            let wal_writer = WALWriter::new(wal_path, 1).map_err(|e| {
-                SqliteGraphError::connection(format!("Failed to create WAL: {:?}", e))
-            })?;
-            wal_writer.write_header().map_err(|e| {
-                SqliteGraphError::connection(format!("Failed to write WAL header: {:?}", e))
-            })?;
-            backend.wal = Some(Arc::new(RwLock::new(wal_writer)));
+            backend.wal = Some(Self::create_wal_writer(&backend.db_path)?);
         }
 
         Ok(backend)
@@ -205,15 +189,7 @@ impl V3Backend {
 
         let _ = edge_store.restore_btree_from_metadata();
 
-        let wal_path = V3WALPaths::wal_file(&db_path);
-        let wal: Option<Arc<RwLock<WALWriter>>> = if wal_path.exists() {
-            let wal_writer = WALWriter::new(wal_path, 1).map_err(|e| {
-                SqliteGraphError::connection(format!("Failed to open WAL: {:?}", e))
-            })?;
-            Some(Arc::new(RwLock::new(wal_writer)))
-        } else {
-            None
-        };
+        let wal = Self::open_wal_if_present(&db_path)?;
 
         if let Some(ref wal_arc) = wal {
             edge_store.set_wal(Arc::clone(wal_arc));
@@ -232,50 +208,25 @@ impl V3Backend {
                 Err(_) => (KindIndex::new(), super::NameIndex::new()),
             };
 
-        let backend = Self {
-            db_path: db_path.clone(),
-            file_coordinator: Some(coordinator),
-            async_coordinator: std::sync::OnceLock::new(),
-            sqlite_conn: Arc::new(Mutex::new(sqlite_conn)),
-            btree: RwLock::new(btree),
-            node_store: RwLock::new(node_store),
-            edge_store: RwLock::new(edge_store),
+        let backend = Self::assemble_backend(
+            db_path.clone(),
+            coordinator,
+            sqlite_conn,
+            btree,
+            node_store,
+            edge_store,
             allocator,
             wal,
-            header: RwLock::new(header),
-            kv_store: RwLock::new(None),
-            publisher: RwLock::new(None),
+            header,
             kind_index,
             name_index,
-            node_cache: NodeCache::new(
-                crate::backend::native::v3::constants::node_cache::DEFAULT_CACHE_CAPACITY,
-            ),
-            current_snapshot_version: RwLock::new(1),
-            snapshot_registry: RwLock::new(HashMap::new()),
-            hnsw_indexes: RwLock::new(HashMap::new()),
-            graph_tx_state: Mutex::new(super::GraphTransactionState::default()),
-        };
+        );
 
         if backend.kind_index.kind_count() == 0 && backend.header.read().node_count > 0 {
             backend.rebuild_indexes();
         }
 
-        let wal_path = V3WALPaths::wal_file(&db_path);
-        let mut kv_store = KvStore::new();
-        let mut recovered = false;
-        if wal_path.exists() {
-            let mut recovery = crate::backend::native::v3::wal::WALRecovery::new(wal_path);
-            if let Ok(count) = recovery.recover_kv(&mut kv_store) {
-                recovered = count > 0;
-            }
-        }
-        if !recovered
-            && let Ok(found) =
-                crate::backend::native::v3::wal::read_kv_checkpoint(&db_path, &mut kv_store)
-        {
-            recovered = found;
-        }
-        if recovered {
+        if let Some(kv_store) = Self::recover_kv_store(&db_path) {
             let mut kv_guard = backend.kv_store.write();
             *kv_guard = Some(kv_store);
         }
