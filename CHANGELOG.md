@@ -3,6 +3,35 @@
 ## [Unreleased]
 
 ### Changed
+- **Native-v3 mutation seam cleanup** — Moved node-property/edge-attribute SQLite persistence out of `sqlitegraph-core/src/backend/native/v3/mutation_support.rs` into `mutation_support/persistence_support.rs`, and moved node-record payload selection/external-page write logic into `mutation_support/node_record_support.rs` without changing insert/update/delete behavior.
+- **Native-v3 edge query weighted seam cleanup** — Moved weighted neighbor lookup, weighted cache warmup, and weighted edge-type filtering out of `sqlitegraph-core/src/backend/native/v3/edge_query_support.rs` into `edge_query_support/weighted_support.rs` without changing neighbor query or cache semantics.
+- **Native-v3 CSR runtime seam cleanup** — Moved CSR runtime-view rebuild and CSR edge-type persistence out of `sqlitegraph-core/src/backend/native/v3/csr_support.rs` into `csr_support/runtime_view_support.rs` while preserving read-side lookup behavior and the existing test-facing `encode_csr_adjacency(...)` surface.
+- **Native-v3 KV/PubSub seam cleanup** — Moved V2 KV compatibility/WAL bridge logic and Pub/Sub bridge logic out of `sqlitegraph-core/src/backend/native/v3/kv_pubsub_support.rs` into `kv_pubsub_support/v2_bridge_support.rs` and `kv_pubsub_support/pubsub_bridge_support.rs` without changing trait-facing KV or subscription behavior.
+- **Native-v3 lifecycle seam cleanup** — Moved shared backend assembly, WAL open/create wiring, and KV recovery logic out of `sqlitegraph-core/src/backend/native/v3/lifecycle_support.rs` into `lifecycle_support/assembly_support.rs` without changing `create`, `create_with_wal`, or `open` semantics.
+- **Native-v3 edge flush seam cleanup** — Moved the edge-store flush pipeline out of `sqlitegraph-core/src/backend/native/v3/edge_disk_support.rs` into `edge_disk_support/flush_support.rs` without changing packed-page writes, overflow-page writes, WAL checkpoint/truncate flow, or edge metadata persistence.
+- **Native-v3 snapshot import seam cleanup** — Moved JSONL snapshot import parsing/grouping/entity import/edge import logic out of `sqlitegraph-core/src/backend/native/v3/snapshot_io_support.rs` into `snapshot_io_support/import_support.rs` without changing backup/export/checkpoint behavior or snapshot import semantics.
+- **Native-v3 cleanup state** — The native-v3 cleanup wave is now past the core mixed-responsibility hotspots. Parent modules reduced materially in this pass include:
+  - `mutation_support.rs`: `326 -> 139` lines
+  - `edge_query_support.rs`: `359 -> 182` lines
+  - `csr_support.rs`: `379 -> 204` lines
+  - `kv_pubsub_support.rs`: `303 -> 87` lines
+  - `lifecycle_support.rs`: `285 -> 236` lines
+  - `edge_disk_support.rs`: `333 -> 163` lines
+  - `snapshot_io_support.rs`: `310 -> 115` lines
+- **Native-v3 findings** — This cleanup wave surfaced only module-boundary issues, not logic regressions:
+  - sibling-module visibility had to be widened where helpers moved out of parent files
+  - a few test imports depended on parent-module helper symbols staying visible
+  - all such issues were fixed at the module surface instead of by suppressing warnings
+- **Native-v3 verification status** — After the seam wave:
+  - `cargo fmt --all -- --check`: pass
+  - `cargo check --all-targets`: pass
+  - `cargo clippy --all-targets -- -D warnings`: pass
+  - `cargo test --test native_v3_comprehensive_feature_test -- --nocapture`: `12 passed`
+  - `timeout 180 cargo test --lib -- --test-threads=1 --nocapture`: `1425 passed; 0 failed; 1 ignored`
+- **Native-v3 remaining work** — What remains is lower-value than the seams already extracted:
+  - decide whether `backend.rs` should stay as a trait/struct surface or be slimmed further
+  - inspect remaining storage-path files such as `index_persistence.rs` and `file_coordinator.rs` only if another real responsibility split is justified
+  - refresh architecture/API docs so the new child-module layout is documented explicitly
 - **Native-v3 BTree seam cleanup** — Moved `BTreeManager` page I/O and batched-write support out of `sqlitegraph-core/src/backend/native/v3/btree.rs` into `btree/io_batch_support.rs`, and moved the embedded BTree regression module into `btree/tests.rs` without changing the public behavior.
 - **Native-v3 index page seam cleanup** — Moved `IndexPage` serialization, checksum, and invariant logic out of `sqlitegraph-core/src/backend/native/v3/index/page.rs` into `index/page/serde_support.rs`, and moved the embedded page regressions into `index/page/tests.rs` without changing the public behavior.
 - **Native-v3 node record seam cleanup** — Moved `NodeRecordV3` byte-codec logic out of `sqlitegraph-core/src/backend/native/v3/node/record.rs` into `node/record/codec_support.rs`, and moved the embedded node-record regressions into `node/record/tests.rs` without changing the record layout or public behavior.
