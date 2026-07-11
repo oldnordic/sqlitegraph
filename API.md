@@ -1,7 +1,7 @@
 # SQLiteGraph API Reference
 
-**Version:** 3.5.0
-**Last Updated:** 2026-06-29
+**Version:** 3.9.0
+**Last Updated:** 2026-07-11
 
 The complete API documentation is available at **[docs.rs/sqlitegraph](https://docs.rs/sqlitegraph)**.
 
@@ -147,6 +147,10 @@ Both `V3Backend` (under `native-v3` feature) and its snapshots implement `AsyncG
 ## Native V3 Backend API
 
 **Status:** Experimental. Functional bugs should be reported.
+
+Internal native-v3 support modules were refactored heavily during the 3.9.x
+cleanup wave, but the public `V3Backend` constructor, traversal, KV, pub/sub,
+snapshot, and HNSW entry points described here did not change.
 
 ```rust
 use sqlitegraph::backend::native::v3::V3Backend;
