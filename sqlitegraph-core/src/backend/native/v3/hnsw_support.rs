@@ -5,6 +5,8 @@ use std::sync::{Arc, MutexGuard};
 
 #[path = "hnsw_support/index_ops_support.rs"]
 mod index_ops_support;
+#[path = "hnsw_support/insert_support.rs"]
+mod insert_support;
 #[path = "hnsw_support/search_support.rs"]
 mod search_support;
 #[cfg(feature = "turbovec")]
@@ -133,25 +135,7 @@ impl V3Backend {
         vector: &[f32],
         metadata: Option<serde_json::Value>,
     ) -> Result<(), SqliteGraphError> {
-        self.ensure_hnsw_not_in_graph_transaction("insert_hnsw_vector")?;
-        let metadata_arc = self.hnsw_metadata(index_name)?;
-        Self::validate_hnsw_vector_dimension(&metadata_arc, vector, "Vector")?;
-
-        let mut hnsw = metadata_arc.lock_hnsw(index_name)?;
-        hnsw.insert_vector(vector, metadata)
-            .map_err(|e| SqliteGraphError::validation(format!("HNSW insert failed: {:?}", e)))?;
-        drop(hnsw);
-
-        let mut count = metadata_arc.lock_embedding_count(index_name)?;
-        *count += 1;
-        let current_count = *count;
-        drop(count);
-
-        if current_count == TURBOVEC_THRESHOLD + 1 {
-            self.build_turbovec_index(index_name)?;
-        }
-
-        Ok(())
+        insert_support::insert_hnsw_vector_turbovec(self, index_name, vector, metadata)
     }
 
     #[cfg(not(feature = "turbovec"))]
@@ -161,15 +145,7 @@ impl V3Backend {
         vector: &[f32],
         metadata: Option<serde_json::Value>,
     ) -> Result<(), SqliteGraphError> {
-        self.ensure_hnsw_not_in_graph_transaction("insert_hnsw_vector")?;
-        let metadata_arc = self.hnsw_metadata(index_name)?;
-        Self::validate_hnsw_vector_dimension(&metadata_arc, vector, "Vector")?;
-
-        let mut hnsw = metadata_arc.lock_hnsw(index_name)?;
-        hnsw.insert_vector(vector, metadata)
-            .map_err(|e| SqliteGraphError::validation(format!("HNSW insert failed: {:?}", e)))?;
-
-        Ok(())
+        insert_support::insert_hnsw_vector(self, index_name, vector, metadata)
     }
 
     pub fn delete_hnsw_index(&self, index_name: &str) -> Result<(), SqliteGraphError> {

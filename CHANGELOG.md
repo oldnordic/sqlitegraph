@@ -21,6 +21,7 @@
 - **Native-v3 HNSW index-ops seam cleanup** — Moved HNSW metadata lookup, dimension validation, index lifecycle, and status helpers out of `sqlitegraph-core/src/backend/native/v3/hnsw_support.rs` into `hnsw_support/index_ops_support.rs` without changing the public HNSW API or search behavior.
 - **Native-v3 edge cluster record seam cleanup** — Moved edge-data encoding/decoding and edge-cluster serialize/deserialize byte-codec logic out of `sqlitegraph-core/src/backend/native/v3/edge_cluster_support.rs` into `edge_cluster_support/record_codec_support.rs` without changing cluster record layout or edge compatibility behavior.
 - **Native-v3 HNSW search seam cleanup** — Moved exact-search ID normalization, `ef_search` validation, and routed HNSW/turbovec search helpers out of `sqlitegraph-core/src/backend/native/v3/hnsw_support.rs` into `hnsw_support/search_support.rs` without changing the public search API or result semantics.
+- **Native-v3 HNSW insert seam cleanup** — Moved shared HNSW insert flow and turbovec-threshold activation out of `sqlitegraph-core/src/backend/native/v3/hnsw_support.rs` into `hnsw_support/insert_support.rs` without changing insert semantics or public API.
 
 ## [3.6.0] - 2026-07-03
 
