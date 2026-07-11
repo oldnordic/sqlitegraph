@@ -5,6 +5,8 @@ use std::sync::{Arc, MutexGuard};
 
 #[path = "hnsw_support/index_ops_support.rs"]
 mod index_ops_support;
+#[path = "hnsw_support/search_support.rs"]
+mod search_support;
 #[cfg(feature = "turbovec")]
 #[path = "hnsw_support/turbovec_support.rs"]
 mod turbovec_support;
@@ -87,28 +89,6 @@ impl V3Backend {
         index_ops_support::validate_hnsw_vector_dimension(metadata_arc, vector, expected_label)
     }
 
-    fn normalize_vector_result_id(
-        hnsw: &HnswIndex,
-        vector_id: u64,
-    ) -> Result<i64, SqliteGraphError> {
-        let normalized_id = hnsw
-            .get_vector(vector_id)
-            .map_err(|e| {
-                SqliteGraphError::validation(format!(
-                    "HNSW metadata lookup failed for vector {}: {:?}",
-                    vector_id, e
-                ))
-            })?
-            .map(|(_, metadata)| {
-                metadata
-                    .get("node_id")
-                    .and_then(|value| value.as_i64())
-                    .unwrap_or(vector_id as i64)
-            })
-            .unwrap_or(vector_id as i64);
-        Ok(normalized_id)
-    }
-
     fn hnsw_exact_search(
         &self,
         metadata_arc: &HnswIndexMetadata,
@@ -116,24 +96,7 @@ impl V3Backend {
         k: usize,
         ef_search_override: Option<usize>,
     ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
-        let mut hnsw = metadata_arc.lock_hnsw("<exact-search>")?;
-        let original_ef_search = hnsw.config.ef_search;
-        if let Some(ef_search) = ef_search_override {
-            hnsw.config.ef_search = ef_search;
-        }
-
-        let results = hnsw
-            .search(query_vector, k)
-            .map_err(|e| SqliteGraphError::validation(format!("HNSW search error: {:?}", e)));
-        hnsw.config.ef_search = original_ef_search;
-
-        let results = results?;
-        results
-            .into_iter()
-            .map(|(vector_id, distance)| {
-                Self::normalize_vector_result_id(&hnsw, vector_id).map(|id| (id, distance))
-            })
-            .collect()
+        search_support::hnsw_exact_search(metadata_arc, query_vector, k, ef_search_override)
     }
 
     pub fn create_hnsw_index(
@@ -256,29 +219,13 @@ impl V3Backend {
     ) -> Result<Vec<(i64, f32)>, SqliteGraphError> {
         let metadata_arc = self.hnsw_metadata(index_name)?;
         Self::validate_hnsw_vector_dimension(&metadata_arc, query_vector, "Query vector")?;
-
-        if let Some(ef_search) = config.ef_search_override
-            && (ef_search == 0 || ef_search > 200)
-        {
-            return Err(SqliteGraphError::validation(format!(
-                "Invalid ef_search_override: {}. Must be in 1..=200",
-                ef_search
-            )));
-        }
-
-        #[cfg(feature = "turbovec")]
-        {
-            let count = *metadata_arc.lock_embedding_count(index_name)?;
-            if count > TURBOVEC_THRESHOLD && !config.force_exact {
-                self.ensure_turbovec_index(index_name)?;
-
-                let turbovec = metadata_arc.lock_turbovec(index_name)?;
-                if let Some(ref index) = *turbovec {
-                    return Ok(self.turbovec_search(index, query_vector, k));
-                }
-            }
-        }
-
-        self.hnsw_exact_search(&metadata_arc, query_vector, k, config.ef_search_override)
+        search_support::hnsw_vector_search_with_config(
+            self,
+            index_name,
+            &metadata_arc,
+            query_vector,
+            k,
+            config,
+        )
     }
 }
